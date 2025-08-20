@@ -6,7 +6,8 @@ const vscode = acquireVsCodeApi();
 type ChatMessage = { author: 'user' | 'agent', text: string };
 
 interface MainViewState {
-  inputValue: string;
+  webSearchInput: string;
+  terminalCommandInput: string;
   chatHistory: ChatMessage[];
 }
 
@@ -14,7 +15,8 @@ export class MainView extends React.Component<{}, MainViewState> {
   constructor(props: {}) {
     super(props);
     this.state = {
-      inputValue: '',
+      webSearchInput: '',
+      terminalCommandInput: '',
       chatHistory: [],
     };
   }
@@ -42,31 +44,41 @@ export class MainView extends React.Component<{}, MainViewState> {
   };
 
   private handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    this.setState({ inputValue: event.target.value });
+    const { name, value } = event.target;
+    this.setState({ [name]: value } as any);
   };
 
   private handleSendMessage = () => {
-    const { inputValue } = this.state;
-    if (!inputValue.trim()) return;
-
-    vscode.postMessage({
-      command: 'searchWeb',
-      query: inputValue,
-    });
-
-    // Optimistically add the user's message to the UI.
-    // The agent will also save it to the persistent state.
+    const { webSearchInput } = this.state;
+    if (!webSearchInput.trim()) return;
+    vscode.postMessage({ command: 'searchWeb', query: webSearchInput });
     this.setState(prevState => ({
-      chatHistory: [...prevState.chatHistory, { author: 'user', text: inputValue }],
-      inputValue: '',
+      chatHistory: [...prevState.chatHistory, { author: 'user', text: `Search for: ${webSearchInput}` }],
+      webSearchInput: '',
     }));
   };
 
   private handleAnalyzeFile = () => {
     vscode.postMessage({ command: 'analyzeActiveFile' });
-
     this.setState(prevState => ({
       chatHistory: [...prevState.chatHistory, { author: 'user', text: 'Analyze the active file' }]
+    }));
+  };
+
+  private handleGitStatus = () => {
+    vscode.postMessage({ command: 'gitStatus' });
+    this.setState(prevState => ({
+      chatHistory: [...prevState.chatHistory, { author: 'user', text: 'Get Git status' }]
+    }));
+  };
+
+  private handleRunTerminalCommand = () => {
+    const { terminalCommandInput } = this.state;
+    if (!terminalCommandInput.trim()) return;
+    vscode.postMessage({ command: 'runTerminalCommand', commandString: terminalCommandInput });
+    this.setState(prevState => ({
+      chatHistory: [...prevState.chatHistory, { author: 'user', text: `Run: ${terminalCommandInput}` }],
+      terminalCommandInput: '',
     }));
   };
 
@@ -75,6 +87,7 @@ export class MainView extends React.Component<{}, MainViewState> {
       <div className="main-view">
         <div className="action-buttons">
           <button onClick={this.handleAnalyzeFile}>Analyze Active File</button>
+          <button onClick={this.handleGitStatus}>Git Status</button>
         </div>
         <div className="chat-history">
           {this.state.chatHistory.map((message, index) => (
@@ -83,15 +96,26 @@ export class MainView extends React.Component<{}, MainViewState> {
             </div>
           ))}
         </div>
-        <div className="chat-input-container">
+        <div className="input-group">
           <input
+            name="webSearchInput"
             type="text"
-            value={this.state.inputValue}
+            value={this.state.webSearchInput}
             onChange={this.handleInputChange}
-            onKeyPress={(event) => event.key === 'Enter' && this.handleSendMessage()}
             placeholder="Ask the AI to search the web..."
           />
-          <button onClick={this.handleSendMessage}>Send</button>
+          <button onClick={this.handleSendMessage}>Search</button>
+        </div>
+        <div className="input-group">
+          <input
+            name="terminalCommandInput"
+            type="text"
+            value={this.state.terminalCommandInput}
+            onChange={this.handleInputChange}
+            onKeyPress={(event) => event.key === 'Enter' && this.handleRunTerminalCommand()}
+            placeholder="Enter a terminal command..."
+          />
+          <button onClick={this.handleRunTerminalCommand}>Run Command</button>
         </div>
       </div>
     );

@@ -22,14 +22,12 @@ export class OrchestratorAgent {
         this.dispatch = dispatch;
         this.mcpServer = mcpServer;
         this.state = state;
-        // Load the chat history from persistence when the agent is created.
         this.chatHistory = this.state.get<ChatMessage[]>(OrchestratorAgent.CHAT_HISTORY_KEY, []);
     }
 
     public registerWebviewPanel(panel: vscode.WebviewPanel | undefined): void {
         this.webviewPanel = panel;
         console.log(`[${OrchestratorAgent.AGENT_ID}] Webview panel registered.`);
-        // When the panel is registered, send the existing chat history to it.
         if (panel) {
             this.postMessageToUI({ command: 'loadHistory', payload: this.chatHistory });
         }
@@ -38,28 +36,34 @@ export class OrchestratorAgent {
     public handleUIMessage(message: any): void {
         console.log(`[${OrchestratorAgent.AGENT_ID}] Received UI message:`, message);
 
-        const userMessageText = message.command === 'analyzeActiveFile' ? 'Analyze the active file' : message.query;
-        const userMessage: ChatMessage = { author: 'user', text: userMessageText };
+        const userMessage: ChatMessage = { author: 'user', text: message.command === 'analyzeActiveFile' ? 'Analyze the active file' : message.command === 'gitStatus' ? 'Get Git status' : message.query || message.commandString };
         this.addMessageToHistory(userMessage);
 
-        if (message.command === 'searchWeb') {
-            this.sendMCPRequest('WebSearchTool', { query: message.query });
-        } else if (message.command === 'analyzeActiveFile') {
-            const activeEditor = vscode.window.activeTextEditor;
-            if (activeEditor) {
-                const filePath = activeEditor.document.uri.fsPath;
-                this.dispatch({
-                    sender: OrchestratorAgent.AGENT_ID,
-                    recipient: 'CodeAnalysisAgent',
-                    timestamp: new Date().toISOString(),
-                    type: 'request-code-analysis',
-                    payload: { filePath }
-                });
-            } else {
-                const errorResponse: ChatMessage = { author: 'agent', text: 'Error: No active file open to analyze.' };
-                this.addMessageToHistory(errorResponse);
-                this.postMessageToUI({ command: 'response', payload: errorResponse });
-            }
+        switch (message.command) {
+            case 'searchWeb':
+                this.sendMCPRequest('WebSearchTool', { query: message.query });
+                break;
+            case 'analyzeActiveFile':
+                const activeEditor = vscode.window.activeTextEditor;
+                if (activeEditor) {
+                    const filePath = activeEditor.document.uri.fsPath;
+                    this.dispatch({
+                        sender: OrchestratorAgent.AGENT_ID,
+                        recipient: 'CodeAnalysisAgent',
+                        timestamp: new Date().toISOString(),
+                        type: 'request-code-analysis',
+                        payload: { filePath }
+                    });
+                } else {
+                    this.sendErrorToUI('No active file open to analyze.');
+                }
+                break;
+            case 'gitStatus':
+                this.sendMCPRequest('GitAutomationTool', { args: ['status'] });
+                break;
+            case 'runTerminalCommand':
+                this.sendMCPRequest('TerminalExecutionTool', { command: message.commandString });
+                break;
         }
     }
 
@@ -109,7 +113,7 @@ export class OrchestratorAgent {
 
         let agentResponseText = '';
         if (response.result && response.result.content) {
-            agentResponseText = response.result.content[0]?.text || 'No content returned.';
+            agentResponseText = response.result.content.map((c: any) => c.text).join('\n');
         } else if (response.error) {
             agentResponseText = `Error: ${response.error.message}`;
         }
@@ -117,6 +121,12 @@ export class OrchestratorAgent {
         const agentResponse: ChatMessage = { author: 'agent', text: agentResponseText };
         this.addMessageToHistory(agentResponse);
         this.postMessageToUI({ command: 'response', payload: agentResponse });
+    }
+
+    private sendErrorToUI(errorMessage: string): void {
+        const errorResponse: ChatMessage = { author: 'agent', text: `Error: ${errorMessage}` };
+        this.addMessageToHistory(errorResponse);
+        this.postMessageToUI({ command: 'response', payload: errorResponse });
     }
 
     private addMessageToHistory(message: ChatMessage): void {

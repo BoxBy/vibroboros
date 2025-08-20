@@ -21,12 +21,12 @@
 
 ## Season 2: Advanced Features & Intelligence
 
-- [ ] **Phase 11: State Management & Resilience**
+- [x] **Phase 11: State Management & Resilience**
 - [ ] **Phase 12: Advanced Tool Integration**
 - [ ] **Phase 13: Dynamic UI & Settings Implementation**
 - [ ] **Phase 14: Agent Intelligence Enhancement**
 
-## Next Tasks (Phase 11)
-- [ ] Update `extension.ts` to use `context.workspaceState` for persisting data.
-- [ ] Update `OrchestratorAgent` to save and load chat history from the workspace state.
-- [ ] Update `MainView.tsx` to request and render the persisted chat history on startup.
+## Next Tasks (Phase 12)
+- [ ] Enhance `MainView.tsx` to include UI elements for Git and Terminal commands.
+- [ ] Update `OrchestratorAgent` to handle the new commands from the UI.
+- [ ] Modify `TerminalExecutionTool` to handle more complex scenarios.
