@@ -35,7 +35,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Pass dependencies to all agents that need them.
     agentRegistry.set('OrchestratorAgent', new OrchestratorAgent(dispatchA2AMessage, mcpServer, llmService, context.workspaceState, diagnosticCollection));
-    agentRegistry.set('CodeAnalysisAgent', new CodeAnalysisAgent(dispatchA2AMessage));
+    agentRegistry.set('CodeAnalysisAgent', new CodeAnalysisAgent(dispatchA2AMessage, context.workspaceState)); // Provide workspaceState for indexing
     agentRegistry.set('ContextManagementAgent', new ContextManagementAgent(dispatchA2AMessage));
     agentRegistry.set('DocumentationGenerationAgent', new DocumentationGenerationAgent(dispatchA2AMessage, mcpServer, llmService));
     agentRegistry.set('RefactoringSuggestionAgent', new RefactoringSuggestionAgent(dispatchA2AMessage, mcpServer, llmService));
@@ -45,7 +45,6 @@ export function activate(context: vscode.ExtensionContext) {
     agentRegistry.set('CodeWatcherAgent', codeWatcher);
     codeWatcher.activate();
 
-    // Provide workspaceState to the learning agent for persistence.
     agentRegistry.set('AILedLearningAgent', new AILedLearningAgent(dispatchA2AMessage, context.workspaceState));
 
     const startCommand = vscode.commands.registerCommand('ai-partner.start', () => {
@@ -61,6 +60,11 @@ export function activate(context: vscode.ExtensionContext) {
 
         panel.webview.onDidReceiveMessage(message => { orchestrator.handleUIMessage(message); }, undefined, context.subscriptions);
         panel.onDidDispose(() => { orchestrator.registerWebviewPanel(undefined); }, null, context.subscriptions);
+
+        // Trigger the initial indexing process shortly after activation.
+        setTimeout(() => {
+            dispatchA2AMessage({ sender: 'extension', recipient: 'CodeAnalysisAgent', type: 'request-initial-index', payload: {}, timestamp: new Date().toISOString() });
+        }, 2000); // Delay to ensure everything is loaded
     });
 
     context.subscriptions.push(startCommand);

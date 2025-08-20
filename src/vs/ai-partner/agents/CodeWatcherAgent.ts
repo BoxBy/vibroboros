@@ -3,7 +3,7 @@ import { A2AMessage } from '../interfaces/A2AMessage';
 
 /**
  * @class CodeWatcherAgent
- * A background agent that monitors file changes and triggers proactive analysis.
+ * A background agent that monitors file changes and triggers proactive analysis and re-indexing.
  */
 export class CodeWatcherAgent {
     private static readonly AGENT_ID = 'CodeWatcherAgent';
@@ -34,13 +34,12 @@ export class CodeWatcherAgent {
     }
 
     /**
-     * Handles the file save event by dispatching analysis requests to specialized agents.
+     * Handles the file save event by dispatching analysis and re-indexing requests.
      * @param document The document that was saved.
      */
     private handleFileSave(document: vscode.TextDocument) {
         console.log(`[${CodeWatcherAgent.AGENT_ID}] Detected save for:`, document.uri.fsPath);
 
-        // For efficiency, we can add logic here to ignore certain files (e.g., in node_modules, or non-code files)
         if (document.uri.scheme !== 'file') {
             return;
         }
@@ -56,16 +55,13 @@ export class CodeWatcherAgent {
             payload: { filePath }
         });
 
-        // We can also trigger a proactive refactoring suggestion check here in the future.
-        // For now, we focus on the security aspect to manage LLM costs.
-        /*
+        // Trigger a re-index of the saved file to keep the codebase index fresh.
         this.dispatch({
             sender: CodeWatcherAgent.AGENT_ID,
-            recipient: 'RefactoringSuggestionAgent',
+            recipient: 'CodeAnalysisAgent',
             timestamp: new Date().toISOString(),
-            type: 'request-proactive-refactoring-check',
+            type: 'request-reindex-file',
             payload: { filePath }
         });
-        */
     }
 }
