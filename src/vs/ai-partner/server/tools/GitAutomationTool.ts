@@ -3,7 +3,6 @@
  * Defines the parameters for the GitAutomationTool.
  */
 interface GitAutomationParams {
-  // e.g., ['status'], ['commit', '-m', 'Initial commit']
   args: string[];
 }
 
@@ -13,7 +12,7 @@ interface GitAutomationParams {
  */
 export class GitAutomationTool {
   /**
-   * Prepares a Git command for execution.
+   * Prepares a Git command and returns a structured, actionable response for the UI.
    * @param params The Git command arguments.
    * @returns A promise that resolves with the content array for the MCP result.
    */
@@ -24,13 +23,21 @@ export class GitAutomationTool {
       throw new Error('Args parameter is required for GitAutomationTool.');
     }
 
-    const command = `git ${params.args.join(' ')}`;
+    const commandStr = `git ${params.args.join(' ')}`;
 
-    // Return the prepared command in the content format expected by the MCP server.
+    // Instead of just text, return a structured object that the UI can render as a button.
     return [
       {
         type: 'text',
-        text: `Prepared command: ${command}`,
+        text: `Prepared command: ${commandStr}`,
+      },
+      {
+        type: 'ui-action', // A custom type for the UI to interpret.
+        action: {
+          label: `Run '${commandStr}'`,
+          command: 'runTerminalCommand', // The command to send back to the orchestrator.
+          payload: { commandString: commandStr }, // The data for that command.
+        },
       },
     ];
   }

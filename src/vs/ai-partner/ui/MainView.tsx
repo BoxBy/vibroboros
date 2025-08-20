@@ -3,7 +3,7 @@ import * as React from 'react';
 declare const acquireVsCodeApi: any;
 const vscode = acquireVsCodeApi();
 
-type ChatMessage = { author: 'user' | 'agent', text: string };
+type ChatMessage = { author: 'user' | 'agent', content: any[] };
 
 interface MainViewState {
   webSearchInput: string;
@@ -53,7 +53,7 @@ export class MainView extends React.Component<{}, MainViewState> {
     if (!webSearchInput.trim()) return;
     vscode.postMessage({ command: 'searchWeb', query: webSearchInput });
     this.setState(prevState => ({
-      chatHistory: [...prevState.chatHistory, { author: 'user', text: `Search for: ${webSearchInput}` }],
+      chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: `Search for: ${webSearchInput}` }] }],
       webSearchInput: '',
     }));
   };
@@ -61,14 +61,14 @@ export class MainView extends React.Component<{}, MainViewState> {
   private handleAnalyzeFile = () => {
     vscode.postMessage({ command: 'analyzeActiveFile' });
     this.setState(prevState => ({
-      chatHistory: [...prevState.chatHistory, { author: 'user', text: 'Analyze the active file' }]
+      chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: 'Analyze the active file' }] }]
     }));
   };
 
   private handleGitStatus = () => {
     vscode.postMessage({ command: 'gitStatus' });
     this.setState(prevState => ({
-      chatHistory: [...prevState.chatHistory, { author: 'user', text: 'Get Git status' }]
+      chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: 'Get Git status' }] }]
     }));
   };
 
@@ -77,10 +77,28 @@ export class MainView extends React.Component<{}, MainViewState> {
     if (!terminalCommandInput.trim()) return;
     vscode.postMessage({ command: 'runTerminalCommand', commandString: terminalCommandInput });
     this.setState(prevState => ({
-      chatHistory: [...prevState.chatHistory, { author: 'user', text: `Run: ${terminalCommandInput}` }],
+      chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: `Run: ${terminalCommandInput}` }] }],
       terminalCommandInput: '',
     }));
   };
+
+  private handleUiActionClick = (action: { command: string, payload: any, label: string }) => {
+    vscode.postMessage({ command: action.command, ...action.payload });
+    this.setState(prevState => ({
+      chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: `Clicked: "${action.label}"` }] }]
+    }));
+  };
+
+  private renderContent = (contentItem: any, index: number) => {
+    switch (contentItem.type) {
+      case 'text':
+        return <pre key={index}>{contentItem.text}</pre>;
+      case 'ui-action':
+        return <button key={index} onClick={() => this.handleUiActionClick(contentItem.action)}>{contentItem.action.label}</button>;
+      default:
+        return <pre key={index}>{JSON.stringify(contentItem, null, 2)}</pre>;
+    }
+  }
 
   public render() {
     return (
@@ -90,9 +108,10 @@ export class MainView extends React.Component<{}, MainViewState> {
           <button onClick={this.handleGitStatus}>Git Status</button>
         </div>
         <div className="chat-history">
-          {this.state.chatHistory.map((message, index) => (
-            <div key={index} className={`message ${message.author}`}>
-              <strong>{message.author}:</strong> <pre>{message.text}</pre>
+          {this.state.chatHistory.map((message, msgIndex) => (
+            <div key={msgIndex} className={`message ${message.author}`}>
+              <strong>{message.author}:</strong>
+              {message.content.map(this.renderContent)}
             </div>
           ))}
         </div>

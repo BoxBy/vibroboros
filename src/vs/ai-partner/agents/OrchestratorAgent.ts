@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { A2AMessage } from '../interfaces/A2AMessage';
 import { MCPServer } from '../server/MCPServer';
 
-type ChatMessage = { author: 'user' | 'agent', text: string };
+type ChatMessage = { author: 'user' | 'agent', content: any[] };
 
 /**
  * @class OrchestratorAgent
@@ -36,7 +36,22 @@ export class OrchestratorAgent {
     public handleUIMessage(message: any): void {
         console.log(`[${OrchestratorAgent.AGENT_ID}] Received UI message:`, message);
 
-        const userMessage: ChatMessage = { author: 'user', text: message.command === 'analyzeActiveFile' ? 'Analyze the active file' : message.command === 'gitStatus' ? 'Get Git status' : message.query || message.commandString };
+        // Handle non-chat commands first
+        if (message.command === 'loadSettings') {
+            this.loadAndSendSettings();
+            return;
+        }
+        if (message.command === 'saveSettings') {
+            this.saveSettings(message.payload);
+            return;
+        }
+
+        let userText = '';
+        if (message.command === 'analyzeActiveFile') userText = 'Analyze the active file';
+        else if (message.command === 'gitStatus') userText = 'Get Git status';
+        else userText = message.query || message.commandString;
+
+        const userMessage: ChatMessage = { author: 'user', content: [{ type: 'text', text: userText }] };
         this.addMessageToHistory(userMessage);
 
         switch (message.command) {
@@ -47,13 +62,7 @@ export class OrchestratorAgent {
                 const activeEditor = vscode.window.activeTextEditor;
                 if (activeEditor) {
                     const filePath = activeEditor.document.uri.fsPath;
-                    this.dispatch({
-                        sender: OrchestratorAgent.AGENT_ID,
-                        recipient: 'CodeAnalysisAgent',
-                        timestamp: new Date().toISOString(),
-                        type: 'request-code-analysis',
-                        payload: { filePath }
-                    });
+                    this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient: 'CodeAnalysisAgent', timestamp: new Date().toISOString(), type: 'request-code-analysis', payload: { filePath } });
                 } else {
                     this.sendErrorToUI('No active file open to analyze.');
                 }
@@ -69,26 +78,17 @@ export class OrchestratorAgent {
 
     public handleA2AMessage(message: A2AMessage<any>): void {
         console.log(`[${OrchestratorAgent.AGENT_ID}] Received A2A message:`, message);
-
         switch (message.type) {
             case 'response-code-summary':
-                this.dispatch({
-                    sender: OrchestratorAgent.AGENT_ID,
-                    recipient: 'DocumentationGenerationAgent',
-                    timestamp: new Date().toISOString(),
-                    type: 'request-documentation-generation',
-                    payload: { codeSummary: message.payload }
-                });
+                this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient: 'DocumentationGenerationAgent', timestamp: new Date().toISOString(), type: 'request-documentation-generation', payload: { codeSummary: message.payload } });
                 break;
-
             case 'response-documentation-generation':
-                const docResponse: ChatMessage = { author: 'agent', text: message.payload.documentation };
+                const docResponse: ChatMessage = { author: 'agent', content: [{ type: 'text', text: message.payload.documentation }] };
                 this.addMessageToHistory(docResponse);
                 this.postMessageToUI({ command: 'response', payload: docResponse });
                 break;
-
             default:
-                const defaultResponse: ChatMessage = { author: 'agent', text: JSON.stringify(message.payload) };
+                const defaultResponse: ChatMessage = { author: 'agent', content: [{ type: 'text', text: JSON.stringify(message.payload) }] };
                 this.addMessageToHistory(defaultResponse);
                 this.postMessageToUI({ command: 'response', payload: defaultResponse });
                 break;
@@ -96,35 +96,45 @@ export class OrchestratorAgent {
     }
 
     private async sendMCPRequest(tool: string, params: Record<string, any>): Promise<void> {
-        const request = {
-            jsonrpc: '2.0',
-            id: crypto.randomUUID(),
-            method: 'tools/call',
-            params: { name: tool, arguments: params }
-        };
-
+        const request = { jsonrpc: '2.0', id: crypto.randomUUID(), method: 'tools/call', params: { name: tool, arguments: params } };
         let response;
         try {
             response = await this.mcpServer.handleRequest(request);
         } catch (error: any) {
-            console.error(`[${OrchestratorAgent.AGENT_ID}] MCP Request failed:`, error);
             response = { error: { message: error.message || 'Failed to execute tool.' } };
         }
-
-        let agentResponseText = '';
+        let responseContent: any[];
         if (response.result && response.result.content) {
-            agentResponseText = response.result.content.map((c: any) => c.text).join('\n');
+            responseContent = response.result.content;
         } else if (response.error) {
-            agentResponseText = `Error: ${response.error.message}`;
+            responseContent = [{ type: 'text', text: `Error: ${response.error.message}` }];
+        } else {
+            responseContent = [{ type: 'text', text: 'An unknown error occurred.' }];
         }
-
-        const agentResponse: ChatMessage = { author: 'agent', text: agentResponseText };
+        const agentResponse: ChatMessage = { author: 'agent', content: responseContent };
         this.addMessageToHistory(agentResponse);
         this.postMessageToUI({ command: 'response', payload: agentResponse });
     }
 
+    private loadAndSendSettings(): void {
+        const config = vscode.workspace.getConfiguration('aiPartner');
+        this.postMessageToUI({
+            command: 'loadSettingsResponse',
+            payload: {
+                mcpServerUrl: config.get('mcpServerUrl'),
+                llmApiKey: config.get('llmApiKey')
+            }
+        });
+    }
+
+    private async saveSettings(payload: any): Promise<void> {
+        const config = vscode.workspace.getConfiguration('aiPartner');
+        await config.update('mcpServerUrl', payload.mcpServerUrl, vscode.ConfigurationTarget.Global);
+        await config.update('llmApiKey', payload.llmApiKey, vscode.ConfigurationTarget.Global);
+    }
+
     private sendErrorToUI(errorMessage: string): void {
-        const errorResponse: ChatMessage = { author: 'agent', text: `Error: ${errorMessage}` };
+        const errorResponse: ChatMessage = { author: 'agent', content: [{ type: 'text', text: `Error: ${errorMessage}` }] };
         this.addMessageToHistory(errorResponse);
         this.postMessageToUI({ command: 'response', payload: errorResponse });
     }

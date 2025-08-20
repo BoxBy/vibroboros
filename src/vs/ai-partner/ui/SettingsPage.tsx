@@ -1,28 +1,44 @@
 import * as React from 'react';
 
-/**
- * @interface SettingsPageState
- * Defines the state for the SettingsPage component.
- */
+declare const acquireVsCodeApi: any;
+const vscode = acquireVsCodeApi();
+
 interface SettingsPageState {
   mcpServerUrl: string;
   llmApiKey: string;
+  status: string;
 }
 
-/**
- * @class SettingsPage
- * A UI component for configuring the AI Partner's settings, such as the
- * MCP server connection and LLM API credentials.
- */
 export class SettingsPage extends React.Component<{}, SettingsPageState> {
   constructor(props: {}) {
     super(props);
-    // In a real implementation, these values would be loaded from VSCode's settings
     this.state = {
-      mcpServerUrl: 'http://localhost:3000',
+      mcpServerUrl: '',
       llmApiKey: '',
+      status: 'Loading settings...'
     };
   }
+
+  componentDidMount() {
+    window.addEventListener('message', this.handleExtensionMessage);
+    // Request settings from the extension host when the component loads.
+    vscode.postMessage({ command: 'loadSettings' });
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('message', this.handleExtensionMessage);
+  }
+
+  private handleExtensionMessage = (event: MessageEvent) => {
+    const message = event.data;
+    if (message.command === 'loadSettingsResponse') {
+      this.setState({
+        mcpServerUrl: message.payload.mcpServerUrl || 'http://localhost:3000',
+        llmApiKey: message.payload.llmApiKey || '',
+        status: 'Settings loaded.'
+      });
+    }
+  };
 
   private handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -30,8 +46,16 @@ export class SettingsPage extends React.Component<{}, SettingsPageState> {
   };
 
   private handleSaveSettings = () => {
-    // In a real implementation, this would save the settings to VSCode's configuration.
-    console.log('Saving settings:', this.state);
+    const { mcpServerUrl, llmApiKey } = this.state;
+    vscode.postMessage({
+      command: 'saveSettings',
+      payload: {
+        mcpServerUrl,
+        llmApiKey,
+      }
+    });
+    this.setState({ status: 'Settings saved!' });
+    setTimeout(() => this.setState({ status: '' }), 2000);
   };
 
   public render() {
@@ -60,10 +84,12 @@ export class SettingsPage extends React.Component<{}, SettingsPageState> {
             name="llmApiKey"
             value={this.state.llmApiKey}
             onChange={this.handleInputChange}
+            placeholder="Enter your API key"
           />
         </div>
 
         <button onClick={this.handleSaveSettings}>Save Settings</button>
+        {this.state.status && <p className="status-message">{this.state.status}</p>}
       </div>
     );
   }
