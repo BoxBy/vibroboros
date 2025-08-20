@@ -6,6 +6,8 @@ import { ContextManagementAgent } from './agents/ContextManagementAgent';
 import { DocumentationGenerationAgent } from './agents/DocumentationGenerationAgent';
 import { RefactoringSuggestionAgent } from './agents/RefactoringSuggestionAgent';
 import { AILedLearningAgent } from './agents/AILedLearningAgent';
+import { CodeWatcherAgent } from './agents/CodeWatcherAgent';
+import { SecurityAnalysisAgent } from './agents/SecurityAnalysisAgent';
 import { A2AMessage } from './interfaces/A2AMessage';
 import { MCPServer } from './server/MCPServer';
 import { LLMService } from './services/LLMService';
@@ -21,17 +23,26 @@ function dispatchA2AMessage(message: A2AMessage<any>) {
     }
 }
 
+let codeWatcher: CodeWatcherAgent; // To hold the instance for deactivation
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('AI Partner extension is now active.');
 
     const mcpServer = new MCPServer();
     const llmService = new LLMService();
 
+    // Initialize all agents, including the new proactive agents.
     agentRegistry.set('OrchestratorAgent', new OrchestratorAgent(dispatchA2AMessage, mcpServer, llmService, context.workspaceState));
     agentRegistry.set('CodeAnalysisAgent', new CodeAnalysisAgent(dispatchA2AMessage));
     agentRegistry.set('ContextManagementAgent', new ContextManagementAgent(dispatchA2AMessage));
     agentRegistry.set('DocumentationGenerationAgent', new DocumentationGenerationAgent(dispatchA2AMessage, mcpServer, llmService));
     agentRegistry.set('RefactoringSuggestionAgent', new RefactoringSuggestionAgent(dispatchA2AMessage, mcpServer, llmService));
+    agentRegistry.set('SecurityAnalysisAgent', new SecurityAnalysisAgent(dispatchA2AMessage, mcpServer));
+
+    codeWatcher = new CodeWatcherAgent(dispatchA2AMessage);
+    agentRegistry.set('CodeWatcherAgent', codeWatcher);
+    codeWatcher.activate(); // Start listening for file saves.
+
     agentRegistry.set('AILedLearningAgent', new AILedLearningAgent(dispatchA2AMessage));
 
     const startCommand = vscode.commands.registerCommand('ai-partner.start', () => {
@@ -69,4 +80,8 @@ function getNonce() {
     return text;
 }
 
-export function deactivate() {}
+export function deactivate() {
+    if (codeWatcher) {
+        codeWatcher.deactivate();
+    }
+}

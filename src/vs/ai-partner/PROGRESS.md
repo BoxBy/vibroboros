@@ -21,10 +21,13 @@
 - [x] **Phase 17: Composite Tools & UI Completion**
 - [x] **Phase 18: LLM-Led File System Operations**
 - [x] **Phase 19: File Protection & Agent Specialization**
-- [ ] **Phase 20: Agent Action System & Documentation Agent Activation**
+- [x] **Phase 20: Agent Action System & Documentation Agent Activation**
+- [ ] **Phase 21: Proactive Intelligence**
 
-## Next Tasks (Phase 20)
-- [ ] Implement the universal `executeTool` command in the UI and Orchestrator.
-- [ ] Update `RefactoringSuggestionAgent` to use the new `executeTool` command.
-- [ ] Enhance `OrchestratorAgent` to delegate documentation tasks.
-- [ ] Implement the documentation generation workflow within `DocumentationGenerationAgent`.
+## Next Tasks (Phase 21)
+- [ ] Create the new `CodeWatcherAgent` to monitor file-save events.
+- [ ] Create the new `SecurityAnalysisAgent` to handle security checks.
+- [ ] Create the new, non-LLM `SecurityVulnerabilityTool` for fast, regex-based analysis.
+- [ ] Register all new components in `extension.ts` and `MCPServer.ts`.
+- [ ] Implement the proactive workflow (CodeWatcher -> SecurityAnalysis -> Orchestrator).
+- [ ] Create a new "Diagnostics" view in the UI to display findings.

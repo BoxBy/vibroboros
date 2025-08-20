@@ -4,6 +4,7 @@ import { TerminalExecutionTool } from './tools/TerminalExecutionTool';
 import { GitAutomationTool } from './tools/GitAutomationTool';
 import { FileReadTool } from './tools/FileReadTool';
 import { FileWriteTool } from './tools/FileWriteTool';
+import { SecurityVulnerabilityTool } from './tools/SecurityVulnerabilityTool';
 
 /**
  * @class MCPServer
@@ -24,6 +25,7 @@ export class MCPServer {
         this.tools.set('GitAutomationTool', new GitAutomationTool());
         this.tools.set('FileReadTool', new FileReadTool());
         this.tools.set('FileWriteTool', new FileWriteTool());
+        this.tools.set('SecurityVulnerabilityTool', new SecurityVulnerabilityTool()); // Register the new security tool
         console.log('[MCPServer] Registered tools:', Array.from(this.tools.keys()));
     }
 
