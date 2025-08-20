@@ -17,10 +17,10 @@
 - [x] **Phase 13: Dynamic UI & Settings Implementation**
 - [x] **Phase 14: Agent Intelligence Enhancement**
 - [x] **Phase 15: LLM Integration & Context-Based Responses**
-- [ ] **Phase 16: LLM-Based Tool Orchestration**
+- [x] **Phase 16: LLM-Based Tool Orchestration**
+- [ ] **Phase 17: Composite Tools & UI Completion**
 
-## Next Tasks (Phase 16)
-- [ ] Enhance `OrchestratorAgent` to provide a list of available tools to the LLM.
-- [ ] Update `LLMService` to support the tool-calling API format.
-- [ ] Implement the main tool-calling loop within `OrchestratorAgent`.
-- [ ] Simplify `MainView.tsx` to encourage natural language commands over explicit buttons.
+## Next Tasks (Phase 17)
+- [ ] Implement UI navigation to switch between Chat and Settings views.
+- [ ] Create the structure for a new composite tool: `AutomatedTestAndFixTool.ts`.
+- [ ] Register the new composite tool in the `MCPServer`.

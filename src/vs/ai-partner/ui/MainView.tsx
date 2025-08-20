@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { SettingsPage } from './SettingsPage';
 
 declare const acquireVsCodeApi: any;
 const vscode = acquireVsCodeApi();
@@ -8,6 +9,7 @@ type ChatMessage = { author: 'user' | 'agent', content: any[] };
 interface MainViewState {
   mainInput: string;
   chatHistory: ChatMessage[];
+  currentView: 'chat' | 'settings';
 }
 
 export class MainView extends React.Component<{}, MainViewState> {
@@ -16,6 +18,7 @@ export class MainView extends React.Component<{}, MainViewState> {
     this.state = {
       mainInput: '',
       chatHistory: [],
+      currentView: 'chat',
     };
   }
 
@@ -49,8 +52,6 @@ export class MainView extends React.Component<{}, MainViewState> {
     const { mainInput } = this.state;
     if (!mainInput.trim()) return;
 
-    // All user input is now sent as a general-purpose question.
-    // The orchestrator and LLM will figure out whether to use a tool.
     vscode.postMessage({ command: 'askGeneralQuestion', query: mainInput });
 
     this.setState(prevState => ({
@@ -60,7 +61,6 @@ export class MainView extends React.Component<{}, MainViewState> {
   };
 
   private handleUiActionClick = (action: { command: string, payload: any, label: string }) => {
-    // This handles buttons dynamically rendered by the agent's response.
     vscode.postMessage({ command: action.command, ...action.payload });
     this.setState(prevState => ({
       chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: `Clicked: "${action.label}"` }] }]
@@ -78,9 +78,9 @@ export class MainView extends React.Component<{}, MainViewState> {
     }
   }
 
-  public render() {
+  private renderChatView() {
     return (
-      <div className="main-view">
+      <>
         <div className="chat-history">
           {this.state.chatHistory.map((message, msgIndex) => (
             <div key={msgIndex} className={`message ${message.author}`}>
@@ -99,6 +99,19 @@ export class MainView extends React.Component<{}, MainViewState> {
           />
           <button onClick={this.handleSendMessage}>Send</button>
         </div>
+      </>
+    );
+  }
+
+  public render() {
+    const { currentView } = this.state;
+    return (
+      <div className="main-view">
+        <div className="navigation">
+          <button onClick={() => this.setState({ currentView: 'chat' })} disabled={currentView === 'chat'}>Chat</button>
+          <button onClick={() => this.setState({ currentView: 'settings' })} disabled={currentView === 'settings'}>Settings</button>
+        </div>
+        {currentView === 'chat' ? this.renderChatView() : <SettingsPage />}
       </div>
     );
   }
