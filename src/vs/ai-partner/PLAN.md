@@ -16,21 +16,23 @@ Your primary mission is to architect and implement a sophisticated, **polyglot**
 
 1.  **Polyglot & Extensible Environment:** While the core extension is built with **TypeScript**, the agent system is designed to be a **universal programming partner**, capable of understanding, analyzing, and generating code in any programming language. Its tools and agents must be built with language agnosticism in mind.
 
-2.  **Multilingual Support & Language Separation:** The AI's **conversational responses** must match the VSCode UI language, but all **code artifacts** must be **English**.
+2.  **LLM-Led Workflow:** The system favors an LLM-led workflow. Instead of creating large, complex, hard-coded "composite tools", we will provide the LLM with a rich set of simple, single-purpose tools. The LLM itself is responsible for planning and executing complex tasks by calling these simple tools in sequence. The `OrchestratorAgent` acts as the executor for the LLM's plans.
 
-3.  **Stability and Robustness:** All code must be production-quality.
+3.  **Multilingual Support & Language Separation:** The AI's **conversational responses** must match the VSCode UI language, but all **code artifacts** must be **English**.
 
-4.  **Incremental & Phased Development:** Deliver the solution in logical, incremental phases.
+4.  **Stability and Robustness:** All code must be production-quality.
 
-5.  **Rigorous Self-Correction:** Self-review code after generation.
+5.  **Incremental & Phased Development:** Deliver the solution in logical, incremental phases.
 
-6.  **Architectural Purity:** Strictly follow **MAS, MCP, and A2A** patterns. Avoid opaque frameworks.
+6.  **Rigorous Self-Correction:** Self-review code after generation.
 
-7.  **Knowledge Request & Clarification:** **Never proceed based on assumption.** Ask the user for clarification on APIs or patterns.
+7.  **Architectural Purity:** Strictly follow **MAS, MCP, and A2A** patterns. Avoid opaque frameworks.
 
-8.  **Upstream Sync Resilience:** Implement as a highly modular and isolated extension.
+8.  **Knowledge Request & Clarification:** **Never proceed based on assumption.** Ask the user for clarification on APIs or patterns.
 
-9.  **Model Flexibility & Resilience:** Use an **OpenAI-compatible API** and support key rotation.
+9.  **Upstream Sync Resilience:** Implement as a highly modular and isolated extension.
+
+10. **Model Flexibility & Resilience:** Use an **OpenAI-compatible API** and support key rotation.
 
 
 #### **System Architecture Overview**
@@ -41,7 +43,7 @@ The system is a **Multi-Agent System (MAS)** operating on an MCP-based client-se
 
 **A. Agents (within the VSCode Extension):**
 
-- `OrchestratorAgent`: The MCP Client, directs all workflows.
+- `OrchestratorAgent`: The MCP Client, directs all workflows by executing plans and tool calls formulated by the LLM.
 
 - `CodeAnalysisAgent`: Parses code, generates summaries, and builds the call graph. **It is also responsible for initializing and maintaining the `.gitignore` file by suggesting appropriate entries based on the project's technology stack.**
 
@@ -60,7 +62,7 @@ The system is a **Multi-Agent System (MAS)** operating on an MCP-based client-se
 
 - `TerminalExecutionTool`: Runs terminal commands (e.g., unit tests).
 
-- `AutomatedTestAndFixTool`: A composite tool for running tests and orchestrating fixes.
+- `TestGenerationTool`: Generates unit test code for a given file or function, leveraging the LLM.
 
 - `GitAutomationTool`: Prepares git commands for user confirmation.
 
@@ -80,10 +82,5 @@ The system is a **Multi-Agent System (MAS)** operating on an MCP-based client-se
 - **File Protection:** A toggle to protect files from AI modification.
 
 - **Settings Page:** For **Connectors** (MCP Server) and **LLM Configuration**.
-
-
-#### **Phased Development Plan & Initial Task**
-
-**Your first task is to design the detailed data schemas and interfaces.** Please provide the TypeScript `interface` definitions for the A2A message format, Code Data Structures, and the MCP message format.
 
 </details>

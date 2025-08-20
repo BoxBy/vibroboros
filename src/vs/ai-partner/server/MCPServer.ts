@@ -2,7 +2,8 @@ import { MCPMessage, MCPResponsePayload } from '../interfaces/MCPMessage';
 import { WebSearchTool } from './tools/WebSearchTool';
 import { TerminalExecutionTool } from './tools/TerminalExecutionTool';
 import { GitAutomationTool } from './tools/GitAutomationTool';
-import { AutomatedTestAndFixTool } from './tools/AutomatedTestAndFixTool';
+import { FileReadTool } from './tools/FileReadTool';
+import { FileWriteTool } from './tools/FileWriteTool';
 
 /**
  * @class MCPServer
@@ -21,7 +22,8 @@ export class MCPServer {
         this.tools.set('WebSearchTool', new WebSearchTool());
         this.tools.set('TerminalExecutionTool', new TerminalExecutionTool());
         this.tools.set('GitAutomationTool', new GitAutomationTool());
-        this.tools.set('AutomatedTestAndFixTool', new AutomatedTestAndFixTool()); // Register the new composite tool
+        this.tools.set('FileReadTool', new FileReadTool());
+        this.tools.set('FileWriteTool', new FileWriteTool());
         console.log('[MCPServer] Registered tools:', Array.from(this.tools.keys()));
     }
 
