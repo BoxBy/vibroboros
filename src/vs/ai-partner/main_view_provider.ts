@@ -32,29 +32,32 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.onDidReceiveMessage(data => {
             if (data.command === 'executeSkill') {
-                // This needs to be adapted to use the registered command IDs
                 const commandId = `vibroboros.${data.skillId}`;
                 vscode.commands.executeCommand(commandId);
+            } else if (data.command === 'cancelTask') {
+                vscode.commands.executeCommand('vibroboros.cancelTask', data.taskId);
+            } else if (data.command === 'clearCompletedTasks') {
+                vscode.commands.executeCommand('vibroboros.clearCompletedTasks');
             }
         });
     }
 
-    /**
-     * Sends a list of agent cards to the webview to be displayed.
-     */
     public updateAgentCards(agentCards: AgentCard[]) {
         if (this._view) {
-            this._view.show(true); // Make sure the view is visible
+            this._view.show(true);
             this._view.webview.postMessage({ command: 'updateAgents', cards: agentCards });
         }
     }
 
-    /**
-     * Sends a single task update to the webview.
-     */
     public updateTask(task: Task) {
         if (this._view) {
             this._view.webview.postMessage({ command: 'updateTask', task: task });
+        }
+    }
+
+    public removeTasks(taskIds: string[]) {
+        if (this._view) {
+            this._view.webview.postMessage({ command: 'removeTasks', taskIds: taskIds });
         }
     }
 
@@ -73,7 +76,10 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
                 <title>AI Partner</title>
             </head>
             <body>
-                <h2>Active Tasks</h2>
+                <div class="header-container">
+                    <h2>Active Tasks</h2>
+                    <button id="clear-tasks-button" title="Clear Completed Tasks">Clear</button>
+                </div>
                 <div id="task-list-container"></div>
 
                 <hr>

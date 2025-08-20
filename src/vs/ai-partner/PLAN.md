@@ -1,6 +1,6 @@
 <details>
 
-<summary><strong>(Click to expand)</strong></summary>
+<summary><strong>(Master Plan / Click to expand)</strong></summary>
 
 ### **Final Prompt: Architecting an Advanced, Self-Evolving AI Coding Partner in VSCode**
 
@@ -10,72 +10,80 @@ This plan requires implementation of the Model-Controller-Protocol (MCP) server 
 
 #### **Objective**
 
-Your primary mission is to architect and implement a sophisticated, multi-agent AI system that integrates deeply into a forked version of the `Microsoft/vscode` repository. This system will function as an advanced, context-aware coding partner that proactively assists developers, improves code quality, learns from interaction, and streamlines the entire development lifecycle.
+Your primary mission is to architect and implement a sophisticated, **polyglot** multi-agent AI system that integrates deeply into VSCode. This system will function as a **universal programming partner**, capable of assisting with development across a wide range of programming languages and technologies.
 
 #### **Core Principles & Constraints**
 
-1. **Technology Stack & Environment:** This project must be developed as a **VSCode Extension** using **TypeScript**. You are expected to be familiar with the VSCode Extension API.
+1.  **Polyglot & Extensible Environment:** While the core extension is built with **TypeScript**, the agent system is designed to be a **universal programming partner**, capable of understanding, analyzing, and generating code in any programming language. Its tools and agents must be built with language agnosticism in mind.
 
-2. **Multilingual Support & Language Separation:** The AI's **conversational responses** must dynamically match the VSCode UI language (retrieved from `vscode.env.language`). However, all generated **code artifacts**—including code, in-code comments, and technical documents—must **always be written in English**.
+2.  **Multilingual Support & Language Separation:** The AI's **conversational responses** must match the VSCode UI language, but all **code artifacts** must be **English**.
 
-3. **Stability and Robustness:** All generated code must be production-quality, robust, and error-free. You must consider side effects on the VSCode host environment.
+3.  **Stability and Robustness:** All code must be production-quality.
 
-4. **Incremental & Phased Development:** You will deliver the solution in logical, incremental phases. Do not provide the entire codebase at once.
+4.  **Incremental & Phased Development:** Deliver the solution in logical, incremental phases.
 
-5. **Rigorous Self-Correction:** After generating code, you must perform a self-review for correctness, efficiency, and adherence to all principles.
+5.  **Rigorous Self-Correction:** Self-review code after generation.
 
-6. **Architectural Purity:** The system must strictly follow the specified **MAS, MCP, and A2A** patterns. Avoid high-level, opaque AI frameworks (e.g., LangChain).
+6.  **Architectural Purity:** Strictly follow **MAS, MCP, and A2A** patterns. Avoid opaque frameworks.
 
-7. **Knowledge Request & Clarification:** If you are unsure about a specific architectural pattern (e.g., MCP), a VSCode Extension API, or the best practice for implementing a feature, **you must never proceed based on assumption.** Instead, you must ask the user for clarification or examples.
+7.  **Knowledge Request & Clarification:** **Never proceed based on assumption.** Ask the user for clarification on APIs or patterns.
 
-8. **Upstream Sync Resilience:** The entire system must be implemented as a highly modular and isolated extension to ensure functionality after `Sync Fork`.
+8.  **Upstream Sync Resilience:** Implement as a highly modular and isolated extension.
 
-9. **Model Flexibility & Resilience:** The system must use an **OpenAI-compatible API interface**. The user must be able to provide multiple API keys. If a `QuotaLimit` error occurs, the system must automatically rotate to the next available key.
+9.  **Model Flexibility & Resilience:** Use an **OpenAI-compatible API** and support key rotation.
 
 
 #### **System Architecture Overview**
 
-The system is a **Multi-Agent System (MAS)** operating on a client-server model based on the **Model-Controller-Protocol (MCP)**.
-
-1. **VSCode Extension (The MCP Client):** This is the main user-facing component.
-
-2. **Local Tool Server (The MCP Server):** A separate, local server application responsible for interacting with the external environment.
-
-3. **LLM Control & Optimization Service:** A critical service, likely within the VSCode extension, that all agents use to communicate with an LLM.
-
-4.  **Intelligent Auto-Fixing:** Beyond simple suggestions, the system actively identifies errors and warnings within a file by integrating with VSCode's diagnostics system (linters, compilers, etc.). It provides the capability to automatically fix these issues via the `RefactoringAgent`, helping developers easily improve code quality and reduce maintenance time.
-
+The system is a **Multi-Agent System (MAS)** operating on an MCP-based client-server model. It includes a VSCode Extension (Client), a Local Tool Server, and an LLM Control Service. The distinction between **A2A (internal)** and **MCP (external)** communication is critical.
 
 #### **Agent & Tool Roster**
 
 **A. Agents (within the VSCode Extension):**
 
-- `OrchestratorAgent`, `CodeAnalysisAgent`, `ContextManagementAgent`, `RefactoringSuggestionAgent`, `DocumentationGenerationAgent`, `AILedLearningAgent`.
+- `OrchestratorAgent`: The MCP Client, directs all workflows.
+
+- `CodeAnalysisAgent`: Parses code, generates summaries, and builds the call graph. **It is also responsible for initializing and maintaining the `.gitignore` file by suggesting appropriate entries based on the project's technology stack.**
+
+- `ContextManagementAgent`: Selects relevant context for prompts.
+
+- `RefactoringSuggestionAgent`: Suggests code improvements.
+
+- `DocumentationGenerationAgent`: Creates and updates `README.md` files.
+
+- `AILedLearningAgent`: Learns user's style and patterns.
 
 
 **B. Tools (exposed by the Local Tool Server):**
 
-- `WebSearchTool`, `TerminalExecutionTool`, `AutomatedTestAndFixTool`, `GitAutomationTool`, `SecurityVulnerabilityTool`, `PerformanceProfilingTool`, `ArchitectureGuardianTool`, `RealtimeDebuggingTool`.
+- `WebSearchTool`: Executes web searches.
+
+- `TerminalExecutionTool`: Runs terminal commands (e.g., unit tests).
+
+- `AutomatedTestAndFixTool`: A composite tool for running tests and orchestrating fixes.
+
+- `GitAutomationTool`: Prepares git commands for user confirmation.
+
+- `SecurityVulnerabilityTool`: Performs static analysis (SAST).
+
+- `PerformanceProfilingTool`: Identifies performance bottlenecks.
+
+- `ArchitectureGuardianTool`: Enforces architectural rules.
+
+- `RealtimeDebuggingTool`: Integrates with the debugger.
 
 
 #### **User Interface (UI) Components**
 
-- **Main View:** A side panel view to display context and manage interactions.
+- **Main View:** A side panel for context and interactions.
 
-- **File Protection:** A file-level toggle to protect files from AI modification.
+- **File Protection:** A toggle to protect files from AI modification.
 
-- **Settings Page:** Includes sections for **Connectors** and **LLM Configuration**.
+- **Settings Page:** For **Connectors** (MCP Server) and **LLM Configuration**.
 
 
 #### **Phased Development Plan & Initial Task**
 
-**Your first task is to design the detailed data schemas and interfaces.** Please provide the TypeScript `interface` definitions for:
-
-1. The standard **A2A message format**.
-
-2. The `CodeSummary` and `CallGraph` data structures.
-
-3. The **MCP message format** for client-server communication.
-
+**Your first task is to design the detailed data schemas and interfaces.** Please provide the TypeScript `interface` definitions for the A2A message format, Code Data Structures, and the MCP message format.
 
 </details>

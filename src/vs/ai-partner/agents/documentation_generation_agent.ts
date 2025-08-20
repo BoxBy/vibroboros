@@ -1,4 +1,4 @@
-/* import { Agent } from "../agent";
+import { Agent } from "../agent";
 import { A2AMessage } from "../core_data_structures";
 import { LlmService } from "../llm_service";
 

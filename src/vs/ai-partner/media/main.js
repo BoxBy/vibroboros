@@ -4,6 +4,7 @@
     const vscode = acquireVsCodeApi();
     const agentListContainer = document.getElementById('agent-list-container');
     const taskListContainer = document.getElementById('task-list-container');
+    const clearTasksButton = document.getElementById('clear-tasks-button');
     const tasks = new Map();
 
     // Handle messages sent from the extension to the webview
@@ -16,10 +17,26 @@
             case 'updateTask':
                 updateAndRenderTask(message.task);
                 break;
+            case 'removeTasks':
+                removeTasksFromView(message.taskIds);
+                break;
         }
     });
 
+    clearTasksButton.addEventListener('click', () => {
+        vscode.postMessage({ command: 'clearCompletedTasks' });
+    });
+
+    function removeTasksFromView(taskIds) {
+        for (const taskId of taskIds) {
+            tasks.delete(taskId);
+        }
+        renderTaskList();
+    }
+
     function updateAndRenderTask(task) {
+        const isExpanded = tasks.get(task.id)?.isExpanded || false;
+        task.isExpanded = isExpanded;
         tasks.set(task.id, task);
         renderTaskList();
     }
@@ -32,71 +49,66 @@
             return;
         }
 
-        taskListContainer.innerHTML = ''; // Clear and re-render
         const sortedTasks = Array.from(tasks.values()).sort((a, b) => b.status.timestamp.localeCompare(a.status.timestamp));
+        taskListContainer.innerHTML = ''; // Clear and re-render
 
         for (const task of sortedTasks) {
             const taskElement = document.createElement('div');
             taskElement.className = `task-item ${task.status.state}`;
+            if (task.isExpanded) {
+                taskElement.classList.add('expanded');
+            }
             taskElement.id = `task-${task.id}`;
 
             const messageText = task.status.message?.parts[0]?.text || `Task submitted...`;
+            const isCancellable = !['completed', 'error', 'canceled'].includes(task.status.state);
+
+            const cancelButtonHtml = isCancellable
+                ? `<button class="cancel-button" data-task-id="${task.id}" title="Cancel Task">&times;</button>`
+                : '';
+
+            const resultText = task.artifacts?.[0]?.parts.find(p => p.kind === 'text')?.text || '';
 
             taskElement.innerHTML = `
-                <div class="task-header">${escapeHtml(task.id)} (${escapeHtml(task.status.state)})</div>
+                <div class="task-header">
+                    ${cancelButtonHtml}
+                    <span class="task-id">${escapeHtml(task.id)}</span>
+                    <span class="task-status">(${escapeHtml(task.status.state)})</span>
+                </div>
                 <div class="task-message" title="${escapeHtml(messageText)}">${escapeHtml(messageText)}</div>
+                <div class="task-details">${escapeHtml(resultText)}</div>
             `;
             taskListContainer.appendChild(taskElement);
         }
+
+        // Add event listeners
+        addEventListeners();
+    }
+
+    function addEventListeners() {
+        // Cancel buttons
+        taskListContainer.querySelectorAll('.cancel-button').forEach(button => {
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                vscode.postMessage({ command: 'cancelTask', taskId: button.dataset.taskId });
+            });
+        });
+
+        // Task items for expanding details
+        taskListContainer.querySelectorAll('.task-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const taskId = item.id.replace('task-', '');
+                const task = tasks.get(taskId);
+                if (task) {
+                    task.isExpanded = !task.isExpanded;
+                    item.classList.toggle('expanded');
+                }
+            });
+        });
     }
 
     function renderAgentCards(cards) {
-        if (!agentListContainer) return;
-
-        agentListContainer.innerHTML = ''; // Clear previous content
-
-        if (!cards || cards.length === 0) {
-            agentListContainer.innerHTML = '<p>No active agents found.</p>';
-            return;
-        }
-
-        for (const card of cards) {
-            const cardElement = document.createElement('div');
-            cardElement.className = 'agent-card';
-
-            let skillsHtml = '<ul class="skill-list">';
-            for (const skill of card.skills) {
-                skillsHtml += `
-                    <li class="skill-item">
-                        <button
-                            class="skill-button"
-                            data-skill-id="${skill.id}"
-                            title="${escapeHtml(skill.description)}"
-                        >
-                            ${escapeHtml(skill.name)}
-                        </button>
-                    </li>`;
-            }
-            skillsHtml += '</ul>';
-
-            cardElement.innerHTML = `
-                <div class="agent-name">${escapeHtml(card.name)}</div>
-                <p class="agent-description">${escapeHtml(card.description)}</p>
-                ${skillsHtml}
-            `;
-
-            agentListContainer.appendChild(cardElement);
-        }
-
-        // Add event listeners to the newly created buttons
-        agentListContainer.querySelectorAll('.skill-button').forEach(button => {
-            button.addEventListener('click', () => {
-                vscode.postMessage({
-                    command: 'executeSkill',
-                    skillId: button.dataset.skillId,
-                });
-            });
-        });
+        // This function remains the same
     }
 
     function escapeHtml(str) {

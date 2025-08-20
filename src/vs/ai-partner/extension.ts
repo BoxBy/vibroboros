@@ -1,69 +1,104 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { spawn, ChildProcess } from 'child_process';
-import { A2AClient } from './a2a_client';
-import { AgentCard, MessageSendParams, StreamEvent, Task } from './core_data_structures';
-import { v4 as uuidv4 } from 'uuid';
-import { MainViewProvider } from './main_view_provider';
-import { TaskStore } from './task_store';
+import { OrchestratorAgent } from './agents/OrchestratorAgent';
+import { CodeAnalysisAgent } from './agents/CodeAnalysisAgent';
+import { ContextManagementAgent } from './agents/ContextManagementAgent';
+import { DocumentationGenerationAgent } from './agents/DocumentationGenerationAgent';
+import { RefactoringSuggestionAgent } from './agents/RefactoringSuggestionAgent';
+import { AILedLearningAgent } from './agents/AILedLearningAgent';
+import { A2AMessage } from './interfaces/A2AMessage';
+import { MCPServer } from './server/MCPServer';
 
-interface AgentServerConfig {
-    name: string;
-    configKey: string; // e.g., 'docGen'
-    scriptPath: string;
-    port: number;
-    commandId: string;
+const agentRegistry = new Map<string, any>();
+
+function dispatchA2AMessage(message: A2AMessage<any>) {
+    const recipient = agentRegistry.get(message.recipient);
+    if (recipient && typeof recipient.handleA2AMessage === 'function') {
+        recipient.handleA2AMessage(message);
+    } else {
+        console.error(`A2A Error: Agent "${message.recipient}" not found or has no handler.`);
+    }
 }
 
-const agentServers = new Map<string, ChildProcess>();
-const runningTaskControllers = new Map<string, AbortController>();
-let taskStore: TaskStore;
-let mainViewProvider: MainViewProvider;
+export function activate(context: vscode.ExtensionContext) {
+    console.log('AI Partner extension is now active.');
 
-export async function activate(context: vscode.ExtensionContext) {
-    // ... (activate function setup is the same)
-    console.log('Activating Vibroboros AI Partner.');
+    const mcpServer = new MCPServer();
 
-    taskStore = TaskStore.getInstance(context);
-    await vscode.workspace.fs.createDirectory(context.globalStorageUri);
+    // Pass the workspaceState to the OrchestratorAgent for persistence.
+    agentRegistry.set('OrchestratorAgent', new OrchestratorAgent(dispatchA2AMessage, mcpServer, context.workspaceState));
+    agentRegistry.set('CodeAnalysisAgent', new CodeAnalysisAgent(dispatchA2AMessage));
+    agentRegistry.set('ContextManagementAgent', new ContextManagementAgent(dispatchA2AMessage));
+    agentRegistry.set('DocumentationGenerationAgent', new DocumentationGenerationAgent(dispatchA2AMessage));
+    agentRegistry.set('RefactoringSuggestionAgent', new RefactoringSuggestionAgent(dispatchA2AMessage));
+    agentRegistry.set('AILedLearningAgent', new AILedLearningAgent(dispatchA2AMessage));
 
-    const agentConfigs: AgentServerConfig[] = [
-        { name: 'DocGenAgent', configKey: 'docGen', scriptPath: path.join(context.extensionPath, 'src', 'vs', 'ai-partner', 'agents', 'doc_gen_server.ts'), port: 41242, commandId: 'vibroboros.generate_documentation' },
-        { name: 'RefactoringAgent', configKey: 'refactoring', scriptPath: path.join(context.extensionPath, 'src', 'vs', 'ai-partner', 'agents', 'refactoring_suggestion_server.ts'), port: 41243, commandId: 'vibroboros.get_refactoring_suggestions' },
-        { name: 'CodeAnalysisAgent', configKey: 'codeAnalysis', scriptPath: path.join(context.extensionPath, 'src', 'vs', 'ai-partner', 'agents', 'code_analysis_server.ts'), port: 41244, commandId: 'vibroboros.summarize_code' },
-    ];
+    const startCommand = vscode.commands.registerCommand('ai-partner.start', () => {
+        const panel = vscode.window.createWebviewPanel(
+            'aiPartnerMainView',
+            'AI Partner',
+            vscode.ViewColumn.One,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist')]
+            }
+        );
 
-    agentConfigs.forEach(config => launchAgentServer(config, context));
+        panel.webview.html = getWebviewContent(panel.webview, context.extensionUri);
 
-    mainViewProvider = new MainViewProvider(context.extensionUri);
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(MainViewProvider.viewType, mainViewProvider)
-    );
-    // ... (rest of activate is the same)
-}
+        const orchestrator = agentRegistry.get('OrchestratorAgent');
+        orchestrator.registerWebviewPanel(panel);
 
-function launchAgentServer(config: AgentServerConfig, context: vscode.ExtensionContext) {
-    const agentConfig = vscode.workspace.getConfiguration('vibroboros.agent').get(config.configKey);
-    const apiKeys = vscode.workspace.getConfiguration('vibroboros.llm').get('apiKeys');
+        panel.webview.onDidReceiveMessage(
+            message => {
+                orchestrator.handleUIMessage(message);
+            },
+            undefined,
+            context.subscriptions
+        );
 
-    // Combine agent-specific config with global config (like API keys)
-    const fullConfig = {
-        ...agentConfig,
-        apiKeys: apiKeys
-    };
-
-    const configJsonString = JSON.stringify(fullConfig);
-    const configArg = Buffer.from(configJsonString).toString('base64');
-
-    const serverProcess = spawn('npx', ['ts-node', config.scriptPath, configArg], { shell: true, cwd: context.extensionPath });
-
-    agentServers.set(config.name, serverProcess);
-    serverProcess.stdout.on('data', (data) => console.log(`[${config.name}-stdout]: ${data}`));
-    serverProcess.stderr.on('data', (data) => console.error(`[${config.name}-stderr]: ${data}`));
-    serverProcess.on('close', (code) => {
-        console.log(`[${config.name}] server process exited with code ${code}`);
-        agentServers.delete(config.name);
+        panel.onDidDispose(
+            () => {
+                orchestrator.registerWebviewPanel(undefined);
+            },
+            null,
+            context.subscriptions
+        );
     });
+
+    context.subscriptions.push(startCommand);
 }
 
-// ... (rest of the file remains the same)
+function getNonce() {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 32; i++) {
+        text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
+}
+
+function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
+    const scriptPath = vscode.Uri.joinPath(extensionUri, 'dist', 'main.js');
+    const scriptUri = webview.asWebviewUri(scriptPath);
+    const nonce = getNonce();
+
+    return `<!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+        <title>AI Partner</title>
+    </head>
+    <body>
+        <div id="root"></div>
+        <script nonce="${nonce}" src="${scriptUri}"></script>
+    </body>
+    </html>`;
+}
+
+export function deactivate() {
+    console.log('AI Partner extension is now deactivated.');
+}
