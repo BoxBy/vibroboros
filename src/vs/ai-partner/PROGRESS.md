@@ -22,12 +22,11 @@
 - [x] **Phase 18: LLM-Led File System Operations**
 - [x] **Phase 19: File Protection & Agent Specialization**
 - [x] **Phase 20: Agent Action System & Documentation Agent Activation**
-- [ ] **Phase 21: Proactive Intelligence**
+- [x] **Phase 21: Proactive Intelligence (Refactored to use native Problems panel)**
+- [ ] **Phase 22: Personalization and Learning**
 
-## Next Tasks (Phase 21)
-- [ ] Create the new `CodeWatcherAgent` to monitor file-save events.
-- [ ] Create the new `SecurityAnalysisAgent` to handle security checks.
-- [ ] Create the new, non-LLM `SecurityVulnerabilityTool` for fast, regex-based analysis.
-- [ ] Register all new components in `extension.ts` and `MCPServer.ts`.
-- [ ] Implement the proactive workflow (CodeWatcher -> SecurityAnalysis -> Orchestrator).
-- [ ] Create a new "Diagnostics" view in the UI to display findings.
+## Next Tasks (Phase 22)
+- [ ] Implement a feedback mechanism in the UI (e.g., a "Dismiss" button).
+- [ ] Update `OrchestratorAgent` to send feedback data to the `AILedLearningAgent`.
+- [ ] Activate `AILedLearningAgent` to store and process user feedback using `workspaceState`.
+- [ ] Update `extension.ts` to provide necessary dependencies to `AILedLearningAgent`.

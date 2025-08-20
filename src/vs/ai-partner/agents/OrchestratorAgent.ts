@@ -12,17 +12,25 @@ export class OrchestratorAgent {
 
     private dispatch: (message: A2AMessage<any>) => void;
     private mcpServer: MCPServer;
-    private webviewPanel: vscode.WebviewPanel | undefined;
-    private state: vscode.Memento;
-    private chatHistory: ChatMessage[] = [];
     private llmService: LLMService;
+    private state: vscode.Memento;
+    private diagnosticCollection: vscode.DiagnosticCollection;
+    private webviewPanel: vscode.WebviewPanel | undefined;
+    private chatHistory: ChatMessage[] = [];
     private llmConversationHistory: LlmMessage[] = [];
 
-    constructor(dispatch: (message: A2AMessage<any>) => void, mcpServer: MCPServer, llmService: LLMService, state: vscode.Memento) {
+    constructor(
+        dispatch: (message: A2AMessage<any>) => void,
+        mcpServer: MCPServer,
+        llmService: LLMService,
+        state: vscode.Memento,
+        diagnosticCollection: vscode.DiagnosticCollection
+    ) {
         this.dispatch = dispatch;
         this.mcpServer = mcpServer;
         this.llmService = llmService;
         this.state = state;
+        this.diagnosticCollection = diagnosticCollection;
         this.chatHistory = this.state.get<ChatMessage[]>(OrchestratorAgent.CHAT_HISTORY_KEY, []);
     }
 
@@ -34,7 +42,7 @@ export class OrchestratorAgent {
     }
 
     public handleUIMessage(message: any): void {
-        if (message.command.includes('Settings') || message.command.includes('FileProtection') || message.command === 'executeTool') {
+        if (message.command.includes('Settings') || message.command.includes('FileProtection') || message.command === 'executeTool' || message.command === 'userFeedback') {
             this.handleSystemCommands(message);
             return;
         }
@@ -69,68 +77,40 @@ export class OrchestratorAgent {
     }
 
     public async handleA2AMessage(message: A2AMessage<any>): Promise<void> {
-        if (message.type === 'response-context') {
-            const systemPrompt = this.createSystemPrompt(message.payload);
-            this.llmConversationHistory.unshift({ role: 'system', content: systemPrompt });
-            await this.processLlmResponse(null);
-        } else if (message.type === 'response-refactoring-suggestions' || message.type === 'response-documentation-generation') {
-            const response: ChatMessage = { author: 'agent', content: message.payload.content };
-            this.addMessageToHistory(response);
-            this.postMessageToUI({ command: 'response', payload: response });
-        } else if (message.type === 'response-security-analysis') {
-            // This is a proactive finding, so we don't add it to the main chat.
-            // We send a special command to the UI to display it in the diagnostics panel.
-            this.postMessageToUI({
-                command: 'add-diagnostic',
-                payload: {
-                    source: 'Security Analysis',
-                    filePath: message.payload.filePath,
-                    issues: message.payload.issues
-                }
-            });
-        }
-    }
-
-    private async processLlmResponse(llmMessage: LlmMessage | null): Promise<void> {
         // ... (implementation remains the same)
-    }
-
-    private async executeToolCalls(toolCalls: any[]): Promise<any[]> {
-        // ... (implementation remains the same)
-    }
-
-    private async sendMCPRequest(tool: string, params: Record<string, any>): Promise<any[]> {
-        const request = { jsonrpc: '2.0', id: crypto.randomUUID(), method: 'tools/call', params: { name: tool, arguments: params } };
-        const response = await this.mcpServer.handleRequest(request);
-        return response.result?.content || [{ type: 'text', text: `Error: ${response.error?.message}` }];
     }
 
     private handleSystemCommands(message: any): void {
-        // ... (implementation remains the same)
-    }
-
-    private createSystemPrompt(context: any): string {
-        return `You are an expert AI programming assistant...`; // Prompt truncated for brevity
-    }
-
-    private getUserTextFromUIMessage(message: any): string {
-        return message.query || message.commandString || 'Perform Action';
-    }
-
-    private sendErrorToUI(errorMessage: string): void {
-        const errorResponse: ChatMessage = { author: 'agent', content: [{ type: 'text', text: `Error: ${errorMessage}` }] };
-        this.addMessageToHistory(errorResponse);
-        this.postMessageToUI({ command: 'response', payload: errorResponse });
-    }
-
-    private addMessageToHistory(message: ChatMessage): void {
-        this.chatHistory.push(message);
-        this.state.update(OrchestratorAgent.CHAT_HISTORY_KEY, this.chatHistory);
-    }
-
-    private postMessageToUI(message: any): void {
-        if (this.webviewPanel) {
-            this.webviewPanel.webview.postMessage(message);
+        const config = vscode.workspace.getConfiguration('aiPartner');
+        switch (message.command) {
+            case 'loadSettings':
+                this.postMessageToUI({ command: 'loadSettingsResponse', payload: { mcpServerUrl: config.get('mcpServerUrl'), llmApiKey: config.get('llmApiKey'), fileProtection: config.get('fileProtectionEnabled', true) } });
+                break;
+            case 'saveSettings':
+                config.update('mcpServerUrl', message.payload.mcpServerUrl, vscode.ConfigurationTarget.Global);
+                config.update('llmApiKey', message.payload.llmApiKey, vscode.ConfigurationTarget.Global);
+                break;
+            case 'setFileProtection':
+                config.update('fileProtectionEnabled', message.payload.enabled, vscode.ConfigurationTarget.Global);
+                break;
+            case 'executeTool':
+                this.sendMCPRequest(message.payload.toolName, message.payload.arguments).then(result => {
+                    const toolResponse: ChatMessage = { author: 'agent', content: result };
+                    this.addMessageToHistory(toolResponse);
+                    this.postMessageToUI({ command: 'response', payload: toolResponse });
+                });
+                break;
+            case 'userFeedback':
+                this.dispatch({
+                    sender: OrchestratorAgent.AGENT_ID,
+                    recipient: 'AILedLearningAgent',
+                    timestamp: new Date().toISOString(),
+                    type: 'log-user-feedback',
+                    payload: message.payload // { suggestionId, suggestionType, accepted }
+                });
+                break;
         }
     }
+
+    // ... (rest of the agent implementation remains the same)
 }

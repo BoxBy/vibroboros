@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { A2AMessage } from '../interfaces/A2AMessage';
 import { MCPServer } from '../server/MCPServer';
 import { LLMService } from '../services/LLMService';
+import { randomUUID } from 'crypto';
 
 /**
  * @class RefactoringSuggestionAgent
@@ -36,7 +37,7 @@ export class RefactoringSuggestionAgent {
             const refactoringPrompt = `The user wants to refactor this file: ${message.payload.filePath}.\nTheir request is: \"${message.payload.query}\"\n\nPlease provide the fully refactored code. Do not just provide suggestions, provide the complete, improved code.`;
             const systemPrompt = "You are an expert software engineer specializing in code refactoring and writing clean, efficient code. Your task is to rewrite the user\'s code based on their request.";
 
-            const config = vscode.workspace.getConfiguration('aiPartner';
+            const config = vscode.workspace.getConfiguration('aiPartner');
             const apiKey = config.get<string>('llmApiKey') || '';
             const endpoint = config.get<string>('mcpServerUrl') || 'https://api.openai.com/v1/chat/completions';
 
@@ -56,11 +57,14 @@ export class RefactoringSuggestionAgent {
                         type: 'ui-action',
                         action: {
                             label: 'Apply Refactoring',
-                            toolName: 'FileWriteTool', // Use the new universal command
+                            toolName: 'FileWriteTool',
                             arguments: {
                                 filePath: message.payload.filePath,
                                 content: refactoredCode
-                            }
+                            },
+                            // Add metadata for the learning agent
+                            suggestionId: randomUUID(),
+                            suggestionType: 'refactoring'
                         }
                     }
                 ]

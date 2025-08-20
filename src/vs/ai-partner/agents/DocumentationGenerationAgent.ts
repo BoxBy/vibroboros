@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { A2AMessage } from '../interfaces/A2AMessage';
 import { MCPServer } from '../server/MCPServer';
 import { LLMService } from '../services/LLMService';
+import { randomUUID } from 'crypto';
 
 /**
  * @class DocumentationGenerationAgent
@@ -19,10 +20,6 @@ export class DocumentationGenerationAgent {
         this.llmService = llmService;
     }
 
-    /**
-     * Handles the request to generate documentation for a given file.
-     * @param message The A2A message containing the file path and user query.
-     */
     public async handleA2AMessage(message: A2AMessage<{ filePath: string, query: string }>): Promise<void> {
         if (message.type !== 'request-documentation-generation') {
             return;
@@ -31,14 +28,12 @@ export class DocumentationGenerationAgent {
         console.log(`[${DocumentationGenerationAgent.AGENT_ID}] Received documentation request for:`, message.payload.filePath);
 
         try {
-            // Step 1: Read the content of the file to be documented.
             const fileContentResponse = await this.mcpServer.handleRequest({
                 jsonrpc: '2.0', id: '1', method: 'tools/call',
                 params: { name: 'FileReadTool', arguments: { filePath: message.payload.filePath } }
             });
             const fileContent = fileContentResponse.result.content[0].text;
 
-            // Step 2: Create a specialized prompt and ask the LLM to generate documentation.
             const docPrompt = `The user wants to document this file: ${message.payload.filePath}.\nTheir request is: \"${message.payload.query}\"\n\nPlease provide clear and concise documentation for the code in Markdown format.`;
             const systemPrompt = "You are an expert technical writer, skilled at creating easy-to-understand documentation for complex code.";
 
@@ -55,7 +50,6 @@ export class DocumentationGenerationAgent {
 
             const generatedDocs = llmResponse.content;
 
-            // Step 3: Send the generated documentation back with an action to save it.
             const responsePayload = {
                 content: [
                     { type: 'text', text: `Here is the suggested documentation for ${message.payload.filePath}:\n\n---\n${generatedDocs}` },
@@ -67,7 +61,10 @@ export class DocumentationGenerationAgent {
                             arguments: {
                                 filePath: 'DOCS.md',
                                 content: generatedDocs
-                            }
+                            },
+                            // Add metadata for the learning agent
+                            suggestionId: randomUUID(),
+                            suggestionType: 'documentation'
                         }
                     }
                 ]
