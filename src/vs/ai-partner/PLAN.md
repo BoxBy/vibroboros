@@ -12,21 +12,21 @@ Your primary mission is to architect and implement a sophisticated, **polyglot**
 
 1.  **Living Architecture Document:** This `PLAN.md` is the single source of truth.
 
-2.  **Project-Wide Context:** The agent must understand the entire codebase, not just the active file. It achieves this by building and maintaining a symbol index of the project, enabling semantic search and a deep understanding of code relationships.
+2.  **High-Quality Prompt Engineering:** The performance of the system is critically dependent on the quality of its prompts. Each agent must use a clear, detailed, and structured system prompt, tailored to its specific task, to maximize the reasoning capabilities of the LLM.
 
-3.  **Learning and Personalization:** The agent must learn from user feedback to adapt its behavior.
+3.  **Project-Wide Context:** The agent must understand the entire codebase, not just the active file, by leveraging a symbol index.
 
-4.  **Resource Efficiency:** Costly operations like LLM calls are used judiciously.
+4.  **Learning and Personalization:** The agent must learn from user feedback to adapt its behavior.
 
-5.  **LLM-Led Workflow:** The LLM plans and executes complex tasks by calling simple tools in sequence.
+5.  **Resource Efficiency:** Costly operations like LLM calls are used judiciously.
 
-6.  **Agent Action System:** Agents can propose `ui-action`s for direct user-approved execution.
+6.  **LLM-Led Workflow:** The LLM plans and executes complex tasks by calling simple tools in sequence.
 
-7.  **Polyglot & Extensible Environment:** The system is a universal programming partner.
+7.  **Agent Action System:** Agents can propose `ui-action`s for direct user-approved execution.
 
 8.  **Architectural Purity:** Strictly follow **MAS, MCP, and A2A** patterns.
 
-(Other principles like Stability, Incremental Development, etc., remain)
+(Other principles like Stability, Polyglot Environment, etc., remain)
 
 
 #### **System Architecture Overview**
@@ -37,10 +37,10 @@ The system is a **Multi-Agent System (MAS)**. A `CodeWatcherAgent` monitors file
 
 **A. Agents (within the VSCode Extension):**
 
-- `OrchestratorAgent`: Directs all user-facing workflows.
+- `OrchestratorAgent`: Directs all user-facing workflows and is responsible for constructing high-quality, structured system prompts that synthesize all available context (active file, codebase search results, etc.) for the LLM.
 - `CodeWatcherAgent`: A background agent that observes file-save events and triggers re-indexing and analysis.
-- `CodeAnalysisAgent`: **The project indexing engine.** Builds and maintains a project-wide symbol index (functions, classes, etc.) to enable semantic search capabilities.
-- `ContextManagementAgent`: Uses the `CodebaseSearchTool` to find relevant code snippets from across the entire project to provide rich context to the LLM.
+- `CodeAnalysisAgent`: The project indexing and search engine.
+- `ContextManagementAgent`: Uses the `CodeAnalysisAgent` to find relevant code snippets from across the entire project.
 - `RefactoringSuggestionAgent`: A specialized agent for refactoring.
 - `DocumentationGenerationAgent`: A specialized agent for generating documentation.
 - `SecurityAnalysisAgent`: A specialized agent that performs security checks.
@@ -49,7 +49,7 @@ The system is a **Multi-Agent System (MAS)**. A `CodeWatcherAgent` monitors file
 
 **B. Tools (exposed by the Local Tool Server):**
 
-- `CodebaseSearchTool`: A new tool that searches the symbol index for definitions or usages of a given symbol (function, class, etc.).
+- `CodebaseSearchTool`: (Functionality now integrated into `CodeAnalysisAgent`)
 - `WebSearchTool`, `TerminalExecutionTool`, `FileReadTool`, `FileWriteTool`, `GitAutomationTool`, `SecurityVulnerabilityTool`, etc.
 
 

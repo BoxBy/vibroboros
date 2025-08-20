@@ -13,11 +13,10 @@
 ## Season 2: Advanced Features & Intelligence
 
 - [x] **Phase 11-22** (Completed)
-- [ ] **Phase 23: Codebase Indexing & Semantic Search**
+- [x] **Phase 23: Codebase Indexing & Semantic Search**
+- [ ] **Phase 24: LLM Codebase Understanding Activation**
 
-## Next Tasks (Phase 23)
-- [x] Activate `CodeAnalysisAgent` to build and maintain a project-wide symbol index.
-- [x] Implement search functionality directly within `CodeAnalysisAgent`.
-- [x] Enhance `CodeWatcherAgent` to trigger re-indexing on file saves.
-- [x] Activate the indexing process in `extension.ts`.
-- [ ] Enhance `ContextManagementAgent` to use the `CodeAnalysisAgent`'s search capabilities to provide project-wide context.
+## Next Tasks (Phase 24)
+- [ ] Enhance the `OrchestratorAgent`'s system prompt to be highly detailed and structured.
+- [ ] The new prompt must effectively synthesize all available context, especially the `codebaseSearchResults`, for the LLM.
+- [ ] Review and improve the specialized prompts in other agents (`RefactoringSuggestionAgent`, `DocumentationGenerationAgent`).

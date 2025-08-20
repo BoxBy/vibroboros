@@ -25,8 +25,6 @@ export class DocumentationGenerationAgent {
             return;
         }
 
-        console.log(`[${DocumentationGenerationAgent.AGENT_ID}] Received documentation request for:`, message.payload.filePath);
-
         try {
             const fileContentResponse = await this.mcpServer.handleRequest({
                 jsonrpc: '2.0', id: '1', method: 'tools/call',
@@ -34,15 +32,21 @@ export class DocumentationGenerationAgent {
             });
             const fileContent = fileContentResponse.result.content[0].text;
 
-            const docPrompt = `The user wants to document this file: ${message.payload.filePath}.\nTheir request is: \"${message.payload.query}\"\n\nPlease provide clear and concise documentation for the code in Markdown format.`;
-            const systemPrompt = "You are an expert technical writer, skilled at creating easy-to-understand documentation for complex code.";
+            const systemPrompt = `You are an expert technical writer, skilled at creating easy-to-understand documentation for complex code.\n\n` +
+                                 `**INSTRUCTIONS:**\n` +
+                                 `1. Analyze the user's request and the provided code.\n` +
+                                 `2. Generate clear and concise documentation for the code.\n` +
+                                 `3. The documentation should be in Markdown format.\n` +
+                                 `4. Explain the code's overall purpose, its main functions or classes, and any important parameters or return values.`;
+
+            const userPrompt = `The user wants to document this file: ${message.payload.filePath}.\nTheir request is: \"${message.payload.query}\"\n\nHere is the code to document:\n\`\`\`\n${fileContent}\n\`\`\``;
 
             const config = vscode.workspace.getConfiguration('aiPartner');
             const apiKey = config.get<string>('llmApiKey') || '';
             const endpoint = config.get<string>('mcpServerUrl') || 'https://api.openai.com/v1/chat/completions';
 
             const llmResponse = await this.llmService.requestLLMCompletion(
-                [{ role: 'system', content: systemPrompt }, { role: 'user', content: `${docPrompt}\n\n${fileContent}` }],
+                [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
                 apiKey,
                 endpoint,
                 []
@@ -62,7 +66,6 @@ export class DocumentationGenerationAgent {
                                 filePath: 'DOCS.md',
                                 content: generatedDocs
                             },
-                            // Add metadata for the learning agent
                             suggestionId: randomUUID(),
                             suggestionType: 'documentation'
                         }

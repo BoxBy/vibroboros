@@ -25,8 +25,6 @@ export class RefactoringSuggestionAgent {
             return;
         }
 
-        console.log(`[${RefactoringSuggestionAgent.AGENT_ID}] Received refactoring request for:`, message.payload.filePath);
-
         try {
             const fileContentResponse = await this.mcpServer.handleRequest({
                 jsonrpc: '2.0', id: '1', method: 'tools/call',
@@ -34,15 +32,20 @@ export class RefactoringSuggestionAgent {
             });
             const fileContent = fileContentResponse.result.content[0].text;
 
-            const refactoringPrompt = `The user wants to refactor this file: ${message.payload.filePath}.\nTheir request is: \"${message.payload.query}\"\n\nPlease provide the fully refactored code. Do not just provide suggestions, provide the complete, improved code.`;
-            const systemPrompt = "You are an expert software engineer specializing in code refactoring and writing clean, efficient code. Your task is to rewrite the user\'s code based on their request.";
+            const systemPrompt = `You are an expert software engineer specializing in code refactoring and writing clean, efficient code.\n\n` +
+                                 `**INSTRUCTIONS:**\n` +
+                                 `1. Analyze the user's request and the provided code.\n` +
+                                 `2. Rewrite the entire code for the file, incorporating the requested improvements.\n` +
+                                 `3. **IMPORTANT:** Your response must contain ONLY the raw, refactored code. Do not include any explanations, markdown formatting (like \`\`\`typescript), or any other text outside of the code itself. The output will be directly written back to the file.`;
+
+            const userPrompt = `The user wants to refactor this file: ${message.payload.filePath}.\nTheir request is: \"${message.payload.query}\"\n\nHere is the original code:\n\`\`\`\n${fileContent}\n\`\`\``;
 
             const config = vscode.workspace.getConfiguration('aiPartner');
             const apiKey = config.get<string>('llmApiKey') || '';
             const endpoint = config.get<string>('mcpServerUrl') || 'https://api.openai.com/v1/chat/completions';
 
             const llmResponse = await this.llmService.requestLLMCompletion(
-                [{ role: 'system', content: systemPrompt }, { role: 'user', content: `${refactoringPrompt}\n\n${fileContent}` }],
+                [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
                 apiKey,
                 endpoint,
                 []
@@ -62,7 +65,6 @@ export class RefactoringSuggestionAgent {
                                 filePath: message.payload.filePath,
                                 content: refactoredCode
                             },
-                            // Add metadata for the learning agent
                             suggestionId: randomUUID(),
                             suggestionType: 'refactoring'
                         }
