@@ -6,16 +6,7 @@
 ---
 
 ## Season 1: Foundational Architecture (Completed)
-- [x] **Phase 1: Foundational Design**
-- [x] **Phase 2: Core Agent Implementation**
-- [x] **Phase 3: Local Tool Server & Tools**
-- [x] **Phase 4: UI & Settings**
-- [x] **Phase 5: Integration & Testing**
-- [x] **Phase 6: MCP Connection & UI Activation**
-- [x] **Phase 7: Bidirectional UI Communication**
-- [x] **Phase 8: UI Build System & Real Rendering**
-- [x] **Phase 9: Advanced Agent Workflow Implementation**
-- [x] **Phase 10: Finalization and Documentation**
+- [x] **Phase 1-10**
 
 ---
 
@@ -24,9 +15,10 @@
 - [x] **Phase 11: State Management & Resilience**
 - [x] **Phase 12: Advanced Tool Integration**
 - [x] **Phase 13: Dynamic UI & Settings Implementation**
-- [ ] **Phase 14: Agent Intelligence Enhancement**
+- [x] **Phase 14: Agent Intelligence Enhancement**
+- [ ] **Phase 15: LLM Integration & Context-Based Responses**
 
-## Next Tasks (Phase 14)
-- [ ] Enhance `ContextManagementAgent` to gather real context from the VSCode environment.
-- [ ] Update `OrchestratorAgent` to utilize the `ContextManagementAgent` before processing user queries.
-- [ ] Update `MainView.tsx` to support more general-purpose, context-aware questions.
+## Next Tasks (Phase 15)
+- [ ] Create a new `LLMService.ts` to handle communication with an OpenAI-compatible API.
+- [ ] Update `OrchestratorAgent` to use `LLMService` to generate responses based on context.
+- [ ] Ensure the `llmApiKey` from settings is used for the API call.

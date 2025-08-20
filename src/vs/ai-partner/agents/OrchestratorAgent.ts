@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { A2AMessage } from '../interfaces/A2AMessage';
 import { MCPServer } from '../server/MCPServer';
+import { LLMService } from '../services/LLMService';
 
 type ChatMessage = { author: 'user' | 'agent', content: any[] };
 
@@ -17,11 +18,14 @@ export class OrchestratorAgent {
     private webviewPanel: vscode.WebviewPanel | undefined;
     private state: vscode.Memento;
     private chatHistory: ChatMessage[] = [];
+    private llmService: LLMService;
+    private lastUserQuery: string = '';
 
     constructor(dispatch: (message: A2AMessage<any>) => void, mcpServer: MCPServer, state: vscode.Memento) {
         this.dispatch = dispatch;
         this.mcpServer = mcpServer;
         this.state = state;
+        this.llmService = new LLMService();
         this.chatHistory = this.state.get<ChatMessage[]>(OrchestratorAgent.CHAT_HISTORY_KEY, []);
     }
 
@@ -45,23 +49,26 @@ export class OrchestratorAgent {
         const userMessage: ChatMessage = { author: 'user', content: [{ type: 'text', text: userText }] };
         this.addMessageToHistory(userMessage);
 
-        // For general queries, first get context, then decide the next step.
         if (message.command === 'askGeneralQuestion') {
+            this.lastUserQuery = message.query;
             this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient: 'ContextManagementAgent', timestamp: new Date().toISOString(), type: 'request-context', payload: { query: message.query } });
         } else {
             this.routeCommand(message);
         }
     }
 
-    public handleA2AMessage(message: A2AMessage<any>): void {
+    public async handleA2AMessage(message: A2AMessage<any>): Promise<void> {
         console.log(`[${OrchestratorAgent.AGENT_ID}] Received A2A message:`, message);
         switch (message.type) {
             case 'response-context':
-                // For now, just display the context. In the future, this would be sent to an LLM.
-                const contextText = `Context Found:\n- Active File: ${message.payload.activeFilePath}\n- Language: ${message.payload.language}\n- Open Files: ${message.payload.openFiles.length}`;
-                const contextResponse: ChatMessage = { author: 'agent', content: [{ type: 'text', text: contextText }] };
-                this.addMessageToHistory(contextResponse);
-                this.postMessageToUI({ command: 'response', payload: contextResponse });
+                const config = vscode.workspace.getConfiguration('aiPartner');
+                const apiKey = config.get<string>('llmApiKey') || '';
+                const endpoint = config.get<string>('mcpServerUrl') || 'https://api.openai.com/v1/chat/completions'; // Defaulting to OpenAI for now
+
+                const llmResponseText = await this.llmService.generateCompletion(this.lastUserQuery, message.payload, apiKey, endpoint);
+                const llmResponse: ChatMessage = { author: 'agent', content: [{ type: 'text', text: llmResponseText }] };
+                this.addMessageToHistory(llmResponse);
+                this.postMessageToUI({ command: 'response', payload: llmResponse });
                 break;
             case 'response-code-summary':
                 this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient: 'DocumentationGenerationAgent', timestamp: new Date().toISOString(), type: 'request-documentation-generation', payload: { codeSummary: message.payload } });
@@ -80,20 +87,12 @@ export class OrchestratorAgent {
     }
 
     private routeCommand(message: any): void {
+        // This method is now simplified as most logic flows through the context agent first.
         switch (message.command) {
             case 'analyzeActiveFile':
-                const activeEditor = vscode.window.activeTextEditor;
-                if (activeEditor) {
-                    this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient: 'CodeAnalysisAgent', timestamp: new Date().toISOString(), type: 'request-code-analysis', payload: { filePath: activeEditor.document.uri.fsPath } });
-                } else {
-                    this.sendErrorToUI('No active file open to analyze.');
-                }
-                break;
             case 'gitStatus':
-                this.sendMCPRequest('GitAutomationTool', { args: ['status'] });
-                break;
             case 'runTerminalCommand':
-                this.sendMCPRequest('TerminalExecutionTool', { command: message.commandString });
+                 this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient: 'ContextManagementAgent', timestamp: new Date().toISOString(), type: 'request-context', payload: { query: this.getUserTextFromUIMessage(message), originalCommand: message } });
                 break;
         }
     }
