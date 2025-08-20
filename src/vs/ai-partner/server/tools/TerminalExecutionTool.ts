@@ -16,6 +16,33 @@ interface TerminalExecutionParams {
  */
 export class TerminalExecutionTool {
   /**
+   * Returns the JSON schema for the tool's input parameters.
+   */
+  public getSchema() {
+    return {
+      type: "function",
+      function: {
+        name: "TerminalExecutionTool",
+        description: "Executes a shell command in the terminal. Use this for general commands like `ls`, `npm install`, etc. The command runs in the root of the current workspace unless `cwd` is specified.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: "The shell command to execute.",
+            },
+            cwd: {
+              type: "string",
+              description: "Optional. The working directory to run the command in. Defaults to the workspace root.",
+            },
+          },
+          required: ["command"],
+        },
+      },
+    };
+  }
+
+  /**
    * Executes the given shell command.
    * @param params The command and optional working directory.
    * @returns A promise that resolves with the content array for the MCP result.
@@ -27,7 +54,6 @@ export class TerminalExecutionTool {
       throw new Error('Command parameter is required for TerminalExecutionTool.');
     }
 
-    // Determine the working directory. Default to the first workspace folder if available.
     const defaultCwd = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined;
     const options: ExecOptions = {
       cwd: params.cwd || defaultCwd,
@@ -39,8 +65,6 @@ export class TerminalExecutionTool {
 
     return new Promise((resolve, reject) => {
       exec(params.command, options, (error, stdout, stderr) => {
-        // Even if there's an error, we often want to see stdout/stderr.
-        // We will format the output to clearly show the result.
         let output = `> Executed in: ${options.cwd}\n> Command: ${params.command}\n\n`;
 
         if (stdout) {
@@ -52,7 +76,6 @@ export class TerminalExecutionTool {
 
         if (error) {
           output += `--- ERROR ---\nCommand failed with exit code ${error.code}.\n`;
-          // We resolve with the output instead of rejecting, so the user can see what happened.
           resolve([
             {
               type: 'text',

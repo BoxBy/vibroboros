@@ -24,6 +24,14 @@ export class MCPServer {
     }
 
     /**
+     * Returns the JSON schemas for all registered tools.
+     * This is used to inform the LLM about available capabilities.
+     */
+    public getToolSchemas(): any[] {
+        return Array.from(this.tools.values()).map(tool => tool.getSchema());
+    }
+
+    /**
      * Handles an incoming JSON-RPC request from the client.
      * @param request The MCP message (JSON-RPC request) to process.
      */
@@ -42,11 +50,9 @@ export class MCPServer {
         }
 
         try {
-            // The `execute` method in tools should return the `content` part of the result.
             const content = await tool.execute(request.params.arguments);
             return this.createSuccessResponse(request.id, { content });
         } catch (error: any) {
-            // Assuming tool errors are for invalid parameters.
             return this.createErrorResponse(request.id, -32602, error.message || 'Invalid parameters.');
         }
     }

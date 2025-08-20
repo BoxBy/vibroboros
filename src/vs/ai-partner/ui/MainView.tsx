@@ -49,7 +49,8 @@ export class MainView extends React.Component<{}, MainViewState> {
     const { mainInput } = this.state;
     if (!mainInput.trim()) return;
 
-    // Send a general-purpose question to the agent.
+    // All user input is now sent as a general-purpose question.
+    // The orchestrator and LLM will figure out whether to use a tool.
     vscode.postMessage({ command: 'askGeneralQuestion', query: mainInput });
 
     this.setState(prevState => ({
@@ -59,6 +60,7 @@ export class MainView extends React.Component<{}, MainViewState> {
   };
 
   private handleUiActionClick = (action: { command: string, payload: any, label: string }) => {
+    // This handles buttons dynamically rendered by the agent's response.
     vscode.postMessage({ command: action.command, ...action.payload });
     this.setState(prevState => ({
       chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: `Clicked: "${action.label}"` }] }]
@@ -79,10 +81,6 @@ export class MainView extends React.Component<{}, MainViewState> {
   public render() {
     return (
       <div className="main-view">
-        <div className="action-buttons">
-          <button onClick={() => this.handleUiActionClick({ command: 'analyzeActiveFile', payload: {}, label: 'Analyze Active File' })}>Analyze Active File</button>
-          <button onClick={() => this.handleUiActionClick({ command: 'gitStatus', payload: {}, label: 'Git Status' })}>Git Status</button>
-        </div>
         <div className="chat-history">
           {this.state.chatHistory.map((message, msgIndex) => (
             <div key={msgIndex} className={`message ${message.author}`}>

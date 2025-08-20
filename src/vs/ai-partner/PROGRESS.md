@@ -16,9 +16,11 @@
 - [x] **Phase 12: Advanced Tool Integration**
 - [x] **Phase 13: Dynamic UI & Settings Implementation**
 - [x] **Phase 14: Agent Intelligence Enhancement**
-- [ ] **Phase 15: LLM Integration & Context-Based Responses**
+- [x] **Phase 15: LLM Integration & Context-Based Responses**
+- [ ] **Phase 16: LLM-Based Tool Orchestration**
 
-## Next Tasks (Phase 15)
-- [ ] Create a new `LLMService.ts` to handle communication with an OpenAI-compatible API.
-- [ ] Update `OrchestratorAgent` to use `LLMService` to generate responses based on context.
-- [ ] Ensure the `llmApiKey` from settings is used for the API call.
+## Next Tasks (Phase 16)
+- [ ] Enhance `OrchestratorAgent` to provide a list of available tools to the LLM.
+- [ ] Update `LLMService` to support the tool-calling API format.
+- [ ] Implement the main tool-calling loop within `OrchestratorAgent`.
+- [ ] Simplify `MainView.tsx` to encourage natural language commands over explicit buttons.
