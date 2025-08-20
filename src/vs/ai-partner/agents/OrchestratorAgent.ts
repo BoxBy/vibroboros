@@ -36,49 +36,33 @@ export class OrchestratorAgent {
     public handleUIMessage(message: any): void {
         console.log(`[${OrchestratorAgent.AGENT_ID}] Received UI message:`, message);
 
-        // Handle non-chat commands first
-        if (message.command === 'loadSettings') {
-            this.loadAndSendSettings();
-            return;
-        }
-        if (message.command === 'saveSettings') {
-            this.saveSettings(message.payload);
+        if (message.command === 'loadSettings' || message.command === 'saveSettings') {
+            this.handleSettingsCommands(message);
             return;
         }
 
-        let userText = '';
-        if (message.command === 'analyzeActiveFile') userText = 'Analyze the active file';
-        else if (message.command === 'gitStatus') userText = 'Get Git status';
-        else userText = message.query || message.commandString;
-
+        const userText = this.getUserTextFromUIMessage(message);
         const userMessage: ChatMessage = { author: 'user', content: [{ type: 'text', text: userText }] };
         this.addMessageToHistory(userMessage);
 
-        switch (message.command) {
-            case 'searchWeb':
-                this.sendMCPRequest('WebSearchTool', { query: message.query });
-                break;
-            case 'analyzeActiveFile':
-                const activeEditor = vscode.window.activeTextEditor;
-                if (activeEditor) {
-                    const filePath = activeEditor.document.uri.fsPath;
-                    this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient: 'CodeAnalysisAgent', timestamp: new Date().toISOString(), type: 'request-code-analysis', payload: { filePath } });
-                } else {
-                    this.sendErrorToUI('No active file open to analyze.');
-                }
-                break;
-            case 'gitStatus':
-                this.sendMCPRequest('GitAutomationTool', { args: ['status'] });
-                break;
-            case 'runTerminalCommand':
-                this.sendMCPRequest('TerminalExecutionTool', { command: message.commandString });
-                break;
+        // For general queries, first get context, then decide the next step.
+        if (message.command === 'askGeneralQuestion') {
+            this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient: 'ContextManagementAgent', timestamp: new Date().toISOString(), type: 'request-context', payload: { query: message.query } });
+        } else {
+            this.routeCommand(message);
         }
     }
 
     public handleA2AMessage(message: A2AMessage<any>): void {
         console.log(`[${OrchestratorAgent.AGENT_ID}] Received A2A message:`, message);
         switch (message.type) {
+            case 'response-context':
+                // For now, just display the context. In the future, this would be sent to an LLM.
+                const contextText = `Context Found:\n- Active File: ${message.payload.activeFilePath}\n- Language: ${message.payload.language}\n- Open Files: ${message.payload.openFiles.length}`;
+                const contextResponse: ChatMessage = { author: 'agent', content: [{ type: 'text', text: contextText }] };
+                this.addMessageToHistory(contextResponse);
+                this.postMessageToUI({ command: 'response', payload: contextResponse });
+                break;
             case 'response-code-summary':
                 this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient: 'DocumentationGenerationAgent', timestamp: new Date().toISOString(), type: 'request-documentation-generation', payload: { codeSummary: message.payload } });
                 break;
@@ -95,6 +79,25 @@ export class OrchestratorAgent {
         }
     }
 
+    private routeCommand(message: any): void {
+        switch (message.command) {
+            case 'analyzeActiveFile':
+                const activeEditor = vscode.window.activeTextEditor;
+                if (activeEditor) {
+                    this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient: 'CodeAnalysisAgent', timestamp: new Date().toISOString(), type: 'request-code-analysis', payload: { filePath: activeEditor.document.uri.fsPath } });
+                } else {
+                    this.sendErrorToUI('No active file open to analyze.');
+                }
+                break;
+            case 'gitStatus':
+                this.sendMCPRequest('GitAutomationTool', { args: ['status'] });
+                break;
+            case 'runTerminalCommand':
+                this.sendMCPRequest('TerminalExecutionTool', { command: message.commandString });
+                break;
+        }
+    }
+
     private async sendMCPRequest(tool: string, params: Record<string, any>): Promise<void> {
         const request = { jsonrpc: '2.0', id: crypto.randomUUID(), method: 'tools/call', params: { name: tool, arguments: params } };
         let response;
@@ -103,34 +106,26 @@ export class OrchestratorAgent {
         } catch (error: any) {
             response = { error: { message: error.message || 'Failed to execute tool.' } };
         }
-        let responseContent: any[];
-        if (response.result && response.result.content) {
-            responseContent = response.result.content;
-        } else if (response.error) {
-            responseContent = [{ type: 'text', text: `Error: ${response.error.message}` }];
-        } else {
-            responseContent = [{ type: 'text', text: 'An unknown error occurred.' }];
-        }
-        const agentResponse: ChatMessage = { author: 'agent', content: responseContent };
+        const agentResponse: ChatMessage = { author: 'agent', content: response.result?.content || [{ type: 'text', text: `Error: ${response.error?.message}` }] };
         this.addMessageToHistory(agentResponse);
         this.postMessageToUI({ command: 'response', payload: agentResponse });
     }
 
-    private loadAndSendSettings(): void {
-        const config = vscode.workspace.getConfiguration('aiPartner');
-        this.postMessageToUI({
-            command: 'loadSettingsResponse',
-            payload: {
-                mcpServerUrl: config.get('mcpServerUrl'),
-                llmApiKey: config.get('llmApiKey')
-            }
-        });
+    private handleSettingsCommands(message: any): void {
+        if (message.command === 'loadSettings') {
+            const config = vscode.workspace.getConfiguration('aiPartner');
+            this.postMessageToUI({ command: 'loadSettingsResponse', payload: { mcpServerUrl: config.get('mcpServerUrl'), llmApiKey: config.get('llmApiKey') } });
+        } else if (message.command === 'saveSettings') {
+            const config = vscode.workspace.getConfiguration('aiPartner');
+            config.update('mcpServerUrl', message.payload.mcpServerUrl, vscode.ConfigurationTarget.Global);
+            config.update('llmApiKey', message.payload.llmApiKey, vscode.ConfigurationTarget.Global);
+        }
     }
 
-    private async saveSettings(payload: any): Promise<void> {
-        const config = vscode.workspace.getConfiguration('aiPartner');
-        await config.update('mcpServerUrl', payload.mcpServerUrl, vscode.ConfigurationTarget.Global);
-        await config.update('llmApiKey', payload.llmApiKey, vscode.ConfigurationTarget.Global);
+    private getUserTextFromUIMessage(message: any): string {
+        if (message.command === 'analyzeActiveFile') return 'Analyze the active file';
+        if (message.command === 'gitStatus') return 'Get Git status';
+        return message.query || message.commandString;
     }
 
     private sendErrorToUI(errorMessage: string): void {

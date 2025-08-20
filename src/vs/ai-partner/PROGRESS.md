@@ -23,12 +23,10 @@
 
 - [x] **Phase 11: State Management & Resilience**
 - [x] **Phase 12: Advanced Tool Integration**
-- [ ] **Phase 13: Dynamic UI & Settings Implementation**
+- [x] **Phase 13: Dynamic UI & Settings Implementation**
 - [ ] **Phase 14: Agent Intelligence Enhancement**
 
-## Next Tasks (Phase 13)
-- [ ] Enhance tools to return structured, actionable responses for dynamic UI rendering.
-- [ ] Update `OrchestratorAgent` to pass structured responses to the UI.
-- [ ] Update `MainView.tsx` to render dynamic UI elements based on agent responses.
-- [ ] Implement the `SettingsPage.tsx` component with logic to save settings.
-- [ ] Update `extension.ts` to manage and persist configuration from the settings page.
+## Next Tasks (Phase 14)
+- [ ] Enhance `ContextManagementAgent` to gather real context from the VSCode environment.
+- [ ] Update `OrchestratorAgent` to utilize the `ContextManagementAgent` before processing user queries.
+- [ ] Update `MainView.tsx` to support more general-purpose, context-aware questions.

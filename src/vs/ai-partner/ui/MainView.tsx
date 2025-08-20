@@ -6,8 +6,7 @@ const vscode = acquireVsCodeApi();
 type ChatMessage = { author: 'user' | 'agent', content: any[] };
 
 interface MainViewState {
-  webSearchInput: string;
-  terminalCommandInput: string;
+  mainInput: string;
   chatHistory: ChatMessage[];
 }
 
@@ -15,8 +14,7 @@ export class MainView extends React.Component<{}, MainViewState> {
   constructor(props: {}) {
     super(props);
     this.state = {
-      webSearchInput: '',
-      terminalCommandInput: '',
+      mainInput: '',
       chatHistory: [],
     };
   }
@@ -44,41 +42,19 @@ export class MainView extends React.Component<{}, MainViewState> {
   };
 
   private handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = event.target;
-    this.setState({ [name]: value } as any);
+    this.setState({ mainInput: event.target.value });
   };
 
   private handleSendMessage = () => {
-    const { webSearchInput } = this.state;
-    if (!webSearchInput.trim()) return;
-    vscode.postMessage({ command: 'searchWeb', query: webSearchInput });
-    this.setState(prevState => ({
-      chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: `Search for: ${webSearchInput}` }] }],
-      webSearchInput: '',
-    }));
-  };
+    const { mainInput } = this.state;
+    if (!mainInput.trim()) return;
 
-  private handleAnalyzeFile = () => {
-    vscode.postMessage({ command: 'analyzeActiveFile' });
-    this.setState(prevState => ({
-      chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: 'Analyze the active file' }] }]
-    }));
-  };
+    // Send a general-purpose question to the agent.
+    vscode.postMessage({ command: 'askGeneralQuestion', query: mainInput });
 
-  private handleGitStatus = () => {
-    vscode.postMessage({ command: 'gitStatus' });
     this.setState(prevState => ({
-      chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: 'Get Git status' }] }]
-    }));
-  };
-
-  private handleRunTerminalCommand = () => {
-    const { terminalCommandInput } = this.state;
-    if (!terminalCommandInput.trim()) return;
-    vscode.postMessage({ command: 'runTerminalCommand', commandString: terminalCommandInput });
-    this.setState(prevState => ({
-      chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: `Run: ${terminalCommandInput}` }] }],
-      terminalCommandInput: '',
+      chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: mainInput }] }],
+      mainInput: '',
     }));
   };
 
@@ -104,8 +80,8 @@ export class MainView extends React.Component<{}, MainViewState> {
     return (
       <div className="main-view">
         <div className="action-buttons">
-          <button onClick={this.handleAnalyzeFile}>Analyze Active File</button>
-          <button onClick={this.handleGitStatus}>Git Status</button>
+          <button onClick={() => this.handleUiActionClick({ command: 'analyzeActiveFile', payload: {}, label: 'Analyze Active File' })}>Analyze Active File</button>
+          <button onClick={() => this.handleUiActionClick({ command: 'gitStatus', payload: {}, label: 'Git Status' })}>Git Status</button>
         </div>
         <div className="chat-history">
           {this.state.chatHistory.map((message, msgIndex) => (
@@ -117,24 +93,13 @@ export class MainView extends React.Component<{}, MainViewState> {
         </div>
         <div className="input-group">
           <input
-            name="webSearchInput"
             type="text"
-            value={this.state.webSearchInput}
+            value={this.state.mainInput}
             onChange={this.handleInputChange}
-            placeholder="Ask the AI to search the web..."
+            onKeyPress={(event) => event.key === 'Enter' && this.handleSendMessage()}
+            placeholder="Ask a question or give an instruction..."
           />
-          <button onClick={this.handleSendMessage}>Search</button>
-        </div>
-        <div className="input-group">
-          <input
-            name="terminalCommandInput"
-            type="text"
-            value={this.state.terminalCommandInput}
-            onChange={this.handleInputChange}
-            onKeyPress={(event) => event.key === 'Enter' && this.handleRunTerminalCommand()}
-            placeholder="Enter a terminal command..."
-          />
-          <button onClick={this.handleRunTerminalCommand}>Run Command</button>
+          <button onClick={this.handleSendMessage}>Send</button>
         </div>
       </div>
     );
