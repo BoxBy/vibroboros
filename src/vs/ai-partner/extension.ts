@@ -8,6 +8,7 @@ import { RefactoringSuggestionAgent } from './agents/RefactoringSuggestionAgent'
 import { AILedLearningAgent } from './agents/AILedLearningAgent';
 import { A2AMessage } from './interfaces/A2AMessage';
 import { MCPServer } from './server/MCPServer';
+import { LLMService } from './services/LLMService';
 
 const agentRegistry = new Map<string, any>();
 
@@ -24,25 +25,19 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('AI Partner extension is now active.');
 
     const mcpServer = new MCPServer();
+    const llmService = new LLMService();
 
-    // Pass the workspaceState to the OrchestratorAgent for persistence.
-    agentRegistry.set('OrchestratorAgent', new OrchestratorAgent(dispatchA2AMessage, mcpServer, context.workspaceState));
+    agentRegistry.set('OrchestratorAgent', new OrchestratorAgent(dispatchA2AMessage, mcpServer, llmService, context.workspaceState));
     agentRegistry.set('CodeAnalysisAgent', new CodeAnalysisAgent(dispatchA2AMessage));
     agentRegistry.set('ContextManagementAgent', new ContextManagementAgent(dispatchA2AMessage));
-    agentRegistry.set('DocumentationGenerationAgent', new DocumentationGenerationAgent(dispatchA2AMessage));
-    agentRegistry.set('RefactoringSuggestionAgent', new RefactoringSuggestionAgent(dispatchA2AMessage));
+    agentRegistry.set('DocumentationGenerationAgent', new DocumentationGenerationAgent(dispatchA2AMessage, mcpServer, llmService));
+    agentRegistry.set('RefactoringSuggestionAgent', new RefactoringSuggestionAgent(dispatchA2AMessage, mcpServer, llmService));
     agentRegistry.set('AILedLearningAgent', new AILedLearningAgent(dispatchA2AMessage));
 
     const startCommand = vscode.commands.registerCommand('ai-partner.start', () => {
         const panel = vscode.window.createWebviewPanel(
-            'aiPartnerMainView',
-            'AI Partner',
-            vscode.ViewColumn.One,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist')]
-            }
+            'aiPartnerMainView', 'AI Partner', vscode.ViewColumn.One,
+            { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist')] }
         );
 
         panel.webview.html = getWebviewContent(panel.webview, context.extensionUri);
@@ -50,24 +45,19 @@ export function activate(context: vscode.ExtensionContext) {
         const orchestrator = agentRegistry.get('OrchestratorAgent');
         orchestrator.registerWebviewPanel(panel);
 
-        panel.webview.onDidReceiveMessage(
-            message => {
-                orchestrator.handleUIMessage(message);
-            },
-            undefined,
-            context.subscriptions
-        );
-
-        panel.onDidDispose(
-            () => {
-                orchestrator.registerWebviewPanel(undefined);
-            },
-            null,
-            context.subscriptions
-        );
+        panel.webview.onDidReceiveMessage(message => { orchestrator.handleUIMessage(message); }, undefined, context.subscriptions);
+        panel.onDidDispose(() => { orchestrator.registerWebviewPanel(undefined); }, null, context.subscriptions);
     });
 
     context.subscriptions.push(startCommand);
+}
+
+function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
+    const scriptPath = vscode.Uri.joinPath(extensionUri, 'dist', 'main.js');
+    const scriptUri = webview.asWebviewUri(scriptPath);
+    const nonce = getNonce();
+
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';"><title>AI Partner</title></head><body><div id="root"></div><script nonce="${nonce}" src="${scriptUri}"></script></body></html>`;
 }
 
 function getNonce() {
@@ -79,26 +69,4 @@ function getNonce() {
     return text;
 }
 
-function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
-    const scriptPath = vscode.Uri.joinPath(extensionUri, 'dist', 'main.js');
-    const scriptUri = webview.asWebviewUri(scriptPath);
-    const nonce = getNonce();
-
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-        <title>AI Partner</title>
-    </head>
-    <body>
-        <div id="root"></div>
-        <script nonce="${nonce}" src="${scriptUri}"></script>
-    </body>
-    </html>`;
-}
-
-export function deactivate() {
-    console.log('AI Partner extension is now deactivated.');
-}
+export function deactivate() {}

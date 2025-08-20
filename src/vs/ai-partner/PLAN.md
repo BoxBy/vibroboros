@@ -14,25 +14,29 @@ Your primary mission is to architect and implement a sophisticated, **polyglot**
 
 #### **Core Principles & Constraints**
 
-1.  **Polyglot & Extensible Environment:** While the core extension is built with **TypeScript**, the agent system is designed to be a **universal programming partner**, capable of understanding, analyzing, and generating code in any programming language. Its tools and agents must be built with language agnosticism in mind.
+1.  **Living Architecture Document:** This `PLAN.md` is the single source of truth for the project's architecture and goals. Any new features, tools, or significant architectural changes proposed by the AI and approved by the user **must be reflected in this document before implementation begins.**
 
-2.  **LLM-Led Workflow:** The system favors an LLM-led workflow. Instead of creating large, complex, hard-coded "composite tools", we will provide the LLM with a rich set of simple, single-purpose tools. The LLM itself is responsible for planning and executing complex tasks by calling these simple tools in sequence. The `OrchestratorAgent` acts as the executor for the LLM's plans.
+2.  **LLM-Led Workflow:** The system favors an LLM-led workflow. The LLM itself is responsible for planning and executing complex tasks by calling simple, single-purpose tools in sequence. The `OrchestratorAgent` acts as the executor for the LLM's plans.
 
-3.  **Multilingual Support & Language Separation:** The AI's **conversational responses** must match the VSCode UI language, but all **code artifacts** must be **English**.
+3.  **Agent Action System:** Specialized agents can propose `ui-action`s to the user (e.g., buttons). When the user clicks an action button, the UI sends a dedicated `executeTool` command to the `OrchestratorAgent`, which then executes the specified tool with its arguments, bypassing the main LLM loop for direct, user-approved actions.
 
-4.  **Stability and Robustness:** All code must be production-quality.
+4.  **Polyglot & Extensible Environment:** The core extension is built with **TypeScript**, but the agent system is designed to be a **universal programming partner**.
 
-5.  **Incremental & Phased Development:** Deliver the solution in logical, incremental phases.
+5.  **Multilingual Support & Language Separation:** Conversational responses match the UI language, but code artifacts are in English.
 
-6.  **Rigorous Self-Correction:** Self-review code after generation.
+6.  **Stability and Robustness:** All code must be production-quality.
 
-7.  **Architectural Purity:** Strictly follow **MAS, MCP, and A2A** patterns. Avoid opaque frameworks.
+7.  **Incremental & Phased Development:** Deliver the solution in logical, incremental phases.
 
-8.  **Knowledge Request & Clarification:** **Never proceed based on assumption.** Ask the user for clarification on APIs or patterns.
+8.  **Rigorous Self-Correction:** Self-review code after generation.
 
-9.  **Upstream Sync Resilience:** Implement as a highly modular and isolated extension.
+9.  **Architectural Purity:** Strictly follow **MAS, MCP, and A2A** patterns.
 
-10. **Model Flexibility & Resilience:** Use an **OpenAI-compatible API** and support key rotation.
+10. **Knowledge Request & Clarification:** **Never proceed based on assumption.**
+
+11. **Upstream Sync Resilience:** Implement as a highly modular and isolated extension.
+
+12. **Model Flexibility & Resilience:** Use an **OpenAI-compatible API** and support key rotation.
 
 
 #### **System Architecture Overview**
@@ -45,13 +49,13 @@ The system is a **Multi-Agent System (MAS)** operating on an MCP-based client-se
 
 - `OrchestratorAgent`: The MCP Client, directs all workflows by executing plans and tool calls formulated by the LLM.
 
-- `CodeAnalysisAgent`: Parses code, generates summaries, and builds the call graph. **It is also responsible for initializing and maintaining the `.gitignore` file by suggesting appropriate entries based on the project's technology stack.**
+- `CodeAnalysisAgent`: Parses code, generates summaries, and builds the call graph.
 
 - `ContextManagementAgent`: Selects relevant context for prompts.
 
-- `RefactoringSuggestionAgent`: Suggests code improvements.
+- `RefactoringSuggestionAgent`: A specialized agent that handles refactoring workflows.
 
-- `DocumentationGenerationAgent`: Creates and updates `README.md` files.
+- `DocumentationGenerationAgent`: A specialized agent that reads a file, uses the LLM to generate documentation, and proposes an action to write the result to a file (e.g., `README.md`).
 
 - `AILedLearningAgent`: Learns user's style and patterns.
 
@@ -59,27 +63,23 @@ The system is a **Multi-Agent System (MAS)** operating on an MCP-based client-se
 **B. Tools (exposed by the Local Tool Server):**
 
 - `WebSearchTool`: Executes web searches.
-
-- `TerminalExecutionTool`: Runs terminal commands (e.g., unit tests).
-
-- `TestGenerationTool`: Generates unit test code for a given file or function, leveraging the LLM.
-
+- `TerminalExecutionTool`: Runs terminal commands.
+- `FileReadTool`: Reads the content of a specified file.
+- `FileWriteTool`: Writes content to a specified file.
 - `GitAutomationTool`: Prepares git commands for user confirmation.
-
 - `SecurityVulnerabilityTool`: Performs static analysis (SAST).
-
 - `PerformanceProfilingTool`: Identifies performance bottlenecks.
-
 - `ArchitectureGuardianTool`: Enforces architectural rules.
-
 - `RealtimeDebuggingTool`: Integrates with the debugger.
 
 
 #### **User Interface (UI) Components**
 
-- **Main View:** A side panel for context and interactions.
+- **Main View:** A side panel for context and interactions, with navigation between different views.
 
-- **File Protection:** A toggle to protect files from AI modification.
+- **File Protection Toggle:** A UI switch that allows the user to enable or disable the AI's ability to write to files.
+
+- **Action Buttons:** Dynamically rendered buttons proposed by agents. Clicking them sends a structured `executeTool` command to the `OrchestratorAgent`.
 
 - **Settings Page:** For **Connectors** (MCP Server) and **LLM Configuration**.
 

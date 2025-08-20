@@ -10,6 +10,7 @@ interface MainViewState {
   mainInput: string;
   chatHistory: ChatMessage[];
   currentView: 'chat' | 'settings';
+  isFileProtectionEnabled: boolean;
 }
 
 export class MainView extends React.Component<{}, MainViewState> {
@@ -19,11 +20,13 @@ export class MainView extends React.Component<{}, MainViewState> {
       mainInput: '',
       chatHistory: [],
       currentView: 'chat',
+      isFileProtectionEnabled: true,
     };
   }
 
   componentDidMount() {
     window.addEventListener('message', this.handleExtensionMessage);
+    vscode.postMessage({ command: 'loadSettings' });
   }
 
   componentWillUnmount() {
@@ -41,6 +44,9 @@ export class MainView extends React.Component<{}, MainViewState> {
           chatHistory: [...prevState.chatHistory, message.payload]
         }));
         break;
+      case 'loadSettingsResponse':
+        this.setState({ isFileProtectionEnabled: message.payload.fileProtection === true });
+        break;
     }
   };
 
@@ -51,27 +57,39 @@ export class MainView extends React.Component<{}, MainViewState> {
   private handleSendMessage = () => {
     const { mainInput } = this.state;
     if (!mainInput.trim()) return;
-
     vscode.postMessage({ command: 'askGeneralQuestion', query: mainInput });
-
     this.setState(prevState => ({
       chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: mainInput }] }],
       mainInput: '',
     }));
   };
 
-  private handleUiActionClick = (action: { command: string, payload: any, label: string }) => {
-    vscode.postMessage({ command: action.command, ...action.payload });
+  private handleUiActionClick = (action: { toolName: string, arguments: any, label: string }) => {
+    // Send a universal command to execute a tool with specific parameters.
+    vscode.postMessage({
+      command: 'executeTool',
+      payload: {
+        toolName: action.toolName,
+        arguments: action.arguments
+      }
+    });
     this.setState(prevState => ({
       chatHistory: [...prevState.chatHistory, { author: 'user', content: [{ type: 'text', text: `Clicked: "${action.label}"` }] }]
     }));
   };
+
+  private handleFileProtectionToggle = () => {
+    const newState = !this.state.isFileProtectionEnabled;
+    this.setState({ isFileProtectionEnabled: newState });
+    vscode.postMessage({ command: 'setFileProtection', payload: { enabled: newState } });
+  }
 
   private renderContent = (contentItem: any, index: number) => {
     switch (contentItem.type) {
       case 'text':
         return <pre key={index}>{contentItem.text}</pre>;
       case 'ui-action':
+        // The action object now contains toolName and arguments directly.
         return <button key={index} onClick={() => this.handleUiActionClick(contentItem.action)}>{contentItem.action.label}</button>;
       default:
         return <pre key={index}>{JSON.stringify(contentItem, null, 2)}</pre>;
@@ -104,12 +122,16 @@ export class MainView extends React.Component<{}, MainViewState> {
   }
 
   public render() {
-    const { currentView } = this.state;
+    const { currentView, isFileProtectionEnabled } = this.state;
     return (
       <div className="main-view">
         <div className="navigation">
           <button onClick={() => this.setState({ currentView: 'chat' })} disabled={currentView === 'chat'}>Chat</button>
           <button onClick={() => this.setState({ currentView: 'settings' })} disabled={currentView === 'settings'}>Settings</button>
+          <div className="file-protection-toggle">
+            <label htmlFor="file-protection">File Protection</label>
+            <input type="checkbox" id="file-protection" checked={isFileProtectionEnabled} onChange={this.handleFileProtectionToggle} />
+          </div>
         </div>
         {currentView === 'chat' ? this.renderChatView() : <SettingsPage />}
       </div>

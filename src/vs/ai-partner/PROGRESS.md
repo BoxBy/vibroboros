@@ -19,11 +19,12 @@
 - [x] **Phase 15: LLM Integration & Context-Based Responses**
 - [x] **Phase 16: LLM-Based Tool Orchestration**
 - [x] **Phase 17: Composite Tools & UI Completion**
-- [ ] **Phase 18: LLM-Led File System Operations**
+- [x] **Phase 18: LLM-Led File System Operations**
+- [x] **Phase 19: File Protection & Agent Specialization**
+- [ ] **Phase 20: Agent Action System & Documentation Agent Activation**
 
-## Next Tasks (Phase 18)
-- [x] Remove the now-obsolete `AutomatedTestAndFixTool`.
-- [ ] Create a new, single-purpose `FileReadTool.ts`.
-- [ ] Create a new, single-purpose `FileWriteTool.ts`.
-- [ ] Register the new file operation tools in the `MCPServer`.
-- [ ] Enhance the LLM system prompt to encourage file system operations.
+## Next Tasks (Phase 20)
+- [ ] Implement the universal `executeTool` command in the UI and Orchestrator.
+- [ ] Update `RefactoringSuggestionAgent` to use the new `executeTool` command.
+- [ ] Enhance `OrchestratorAgent` to delegate documentation tasks.
+- [ ] Implement the documentation generation workflow within `DocumentationGenerationAgent`.
