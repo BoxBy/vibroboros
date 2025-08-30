@@ -1,17 +1,9 @@
 import * as express from 'express';
 import { Request, Response } from 'express';
-import { AgentCard, MessageSendParams, Task } from '../core_data_structures';
+import { AgentCard, MessageSendParams, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '../core_data_structures';
 import { InMemoryTaskStore, A2ARequestHandler, RequestContext } from '../a2a_server';
 import { DocGenExecutor } from './doc_gen_executor';
 import { v4 as uuid } from 'uuid';
-
-// --- Agent Configuration ---
-const configArg = process.argv[2];
-if (!configArg) {
-    console.error("Agent configuration not provided!");
-    process.exit(1);
-}
-const config = JSON.parse(Buffer.from(configArg, 'base64').toString('utf8'));
 
 // --- Agent Card Definition ---
 const docGenAgentCard: AgentCard = {
@@ -38,7 +30,7 @@ const docGenAgentCard: AgentCard = {
 
 // --- Server Setup ---
 const taskStore = new InMemoryTaskStore();
-const agentExecutor = new DocGenExecutor(config);
+const agentExecutor = new DocGenExecutor();
 const requestHandler = new A2ARequestHandler(docGenAgentCard, taskStore, agentExecutor);
 
 const app = express();
@@ -50,8 +42,6 @@ app.post('/', async (req: Request, res: Response) => {
     if (method === 'getAgentCard') {
         res.json({ jsonrpc: '2.0', id, result: requestHandler.agentCard });
     } else if (method === 'sendMessageStream') {
-        // In a real implementation, the handler would manage the stream.
-        // For now, we simulate the old sendMessage behavior for simplicity.
         const sendParams = params as MessageSendParams;
         const requestContext: RequestContext = {
             taskId: uuid(),
@@ -61,7 +51,7 @@ app.post('/', async (req: Request, res: Response) => {
         };
         res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
         agentExecutor.execute(requestContext, {
-            publish: (event) => res.write(JSON.stringify(event) + '\n'),
+            publish: (event: Task | TaskStatusUpdateEvent | TaskArtifactUpdateEvent) => res.write(JSON.stringify(event) + '\n'),
             finished: () => res.end(),
         });
     } else {
@@ -71,5 +61,5 @@ app.post('/', async (req: Request, res: Response) => {
 
 const PORT = 41242;
 app.listen(PORT, () => {
-    console.log(`[DocGenServer] A2A Server started at http://localhost:${PORT} with model ${config.model}`);
+    console.log(`[DocGenServer] A2A Server started at http://localhost:${PORT}`);
 });

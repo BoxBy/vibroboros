@@ -12,11 +12,12 @@
 
 ## Season 2: Advanced Features & Intelligence
 
-- [x] **Phase 11-22** (Completed)
-- [x] **Phase 23: Codebase Indexing & Semantic Search**
-- [ ] **Phase 24: LLM Codebase Understanding Activation**
+- [x] **Phase 11-23** (Completed)
+- [x] **Phase 24: LLM Codebase Understanding Activation**
+- [ ] **Phase 25: Final Stabilization & Polish**
 
-## Next Tasks (Phase 24)
-- [ ] Enhance the `OrchestratorAgent`'s system prompt to be highly detailed and structured.
-- [ ] The new prompt must effectively synthesize all available context, especially the `codebaseSearchResults`, for the LLM.
-- [ ] Review and improve the specialized prompts in other agents (`RefactoringSuggestionAgent`, `DocumentationGenerationAgent`).
+## Next Tasks (Phase 25)
+- [ ] Implement a loading indicator in the UI to show when the AI is working.
+- [ ] Improve user-facing error messages for common issues (e.g., invalid API key).
+- [ ] Conduct a final review of the codebase for cleanup and documentation.
+- [ ] Perform end-to-end testing of all major workflows.

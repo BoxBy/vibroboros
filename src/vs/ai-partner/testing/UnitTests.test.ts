@@ -1,33 +1,57 @@
 import * as assert from 'assert';
+import * as vscode from 'vscode';
 import { CodeAnalysisAgent } from '../agents/CodeAnalysisAgent';
 import { GitAutomationTool } from '../server/tools/GitAutomationTool';
 import { A2AMessage } from '../interfaces/A2AMessage';
 
+// Helper to create a functional Memento mock for testing
+const createMockMemento = (): vscode.Memento => {
+    let storage: { [key: string]: any } = {};
+    return {
+        get: <T>(key: string, defaultValue?: T): T | undefined => {
+            if (key in storage) {
+                return storage[key];
+            }
+            return defaultValue;
+        },
+        update: (key: string, value: any): Promise<void> => {
+            storage[key] = value;
+            return Promise.resolve();
+        },
+        keys: (): readonly string[] => Object.keys(storage)
+    };
+};
+
 suite('Unit Tests', () => {
 
   suite('CodeAnalysisAgent', () => {
-    test('Should generate and dispatch a code summary message', (done) => {
-      // Mock the dispatch function to test if it gets called correctly.
-      const mockDispatch = (message: A2AMessage<any>) => {
-        assert.strictEqual(message.recipient, 'OrchestratorAgent');
-        assert.strictEqual(message.type, 'response-code-summary');
-        assert.strictEqual(message.payload.filePath, 'test.ts');
-        assert.ok(message.payload.description.includes('summary for test.ts'));
-        done(); // Signal that the async test is complete.
-      };
+    // This test is now async to handle the async nature of the message handler.
+    test('Should handle a search request and dispatch a response', async () => {
+      // We wrap the asynchronous part in a Promise to await its completion.
+      await new Promise<void>(resolve => {
+        const mockDispatch = (message: A2AMessage<any>) => {
+          assert.strictEqual(message.recipient, 'OrchestratorAgent');
+          assert.strictEqual(message.type, 'response-codebase-search');
+          assert.deepStrictEqual(message.payload, { results: [] });
+          resolve(); // Resolve the promise when the callback is executed.
+        };
 
-      const agent = new CodeAnalysisAgent(mockDispatch);
+        const mockMemento = createMockMemento();
+        mockMemento.update('aiPartnerCodebaseIndex', {});
 
-      // Create a sample message to trigger the agent's logic.
-      const triggerMessage: A2AMessage<{ filePath: string }> = {
-        sender: 'OrchestratorAgent',
-        recipient: 'CodeAnalysisAgent',
-        timestamp: new Date().toISOString(),
-        type: 'request-code-analysis',
-        payload: { filePath: 'test.ts' },
-      };
+        const agent = new CodeAnalysisAgent(mockDispatch, mockMemento);
 
-      agent.handleA2AMessage(triggerMessage);
+        const triggerMessage: A2AMessage<{ symbolName: string }> = {
+          sender: 'OrchestratorAgent',
+          recipient: 'CodeAnalysisAgent',
+          timestamp: new Date().toISOString(),
+          type: 'request-codebase-search',
+          payload: { symbolName: 'testSymbol' },
+        };
+
+        // Call the corrected and async method.
+        agent.handleA2AMessage(triggerMessage);
+      });
     });
   });
 

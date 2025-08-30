@@ -1,5 +1,5 @@
 import { Agent, IAgent } from "../agent";
-import { A2AMessage } from "../core_data_structures";
+import { A2AMessage } from "../interfaces/A2AMessage";
 
 /**
  * The OrchestratorAgent is the central hub for communication between all other agents.
@@ -41,7 +41,7 @@ export class OrchestratorAgent extends Agent {
      * This is the core logic of the orchestrator.
      * @param message The message to route.
      */
-    public async handleMessage(message: A2AMessage): Promise<void> {
+    public async handleMessage(message: A2AMessage<any>): Promise<void> {
         const recipient = this.agents.get(message.recipient);
 
         if (!recipient) {
@@ -53,7 +53,7 @@ export class OrchestratorAgent extends Agent {
                     recipient: message.sender,
                     type: 'error',
                     payload: { error: `Agent "${message.recipient}" not found.` },
-                    timestamp: Date.now(),
+                    timestamp: new Date().toISOString(),
                     correlationId: message.correlationId
                 });
             }

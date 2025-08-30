@@ -1,17 +1,9 @@
 import * as express from 'express';
 import { Request, Response } from 'express';
-import { AgentCard, MessageSendParams, Task } from '../core_data_structures';
+import { AgentCard, MessageSendParams, Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '../core_data_structures';
 import { InMemoryTaskStore, A2ARequestHandler, RequestContext } from '../a2a_server';
 import { CodeAnalysisExecutor } from './code_analysis_executor';
 import { v4 as uuid } from 'uuid';
-
-// --- Agent Configuration ---
-const configArg = process.argv[2];
-if (!configArg) {
-    console.error("Agent configuration not provided!");
-    process.exit(1);
-}
-const config = JSON.parse(Buffer.from(configArg, 'base64').toString('utf8'));
 
 // --- Agent Card Definition ---
 const codeAnalysisAgentCard: AgentCard = {
@@ -38,7 +30,7 @@ const codeAnalysisAgentCard: AgentCard = {
 
 // --- Server Setup ---
 const taskStore = new InMemoryTaskStore();
-const agentExecutor = new CodeAnalysisExecutor(config);
+const agentExecutor = new CodeAnalysisExecutor();
 const requestHandler = new A2ARequestHandler(codeAnalysisAgentCard, taskStore, agentExecutor);
 
 const app = express();
@@ -59,7 +51,7 @@ app.post('/', async (req: Request, res: Response) => {
         };
         res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
         agentExecutor.execute(requestContext, {
-            publish: (event) => res.write(JSON.stringify(event) + '\n'),
+            publish: (event: Task | TaskStatusUpdateEvent | TaskArtifactUpdateEvent) => res.write(JSON.stringify(event) + '\n'),
             finished: () => res.end(),
         });
     } else {
@@ -69,5 +61,5 @@ app.post('/', async (req: Request, res: Response) => {
 
 const PORT = 41244;
 app.listen(PORT, () => {
-    console.log(`[CodeAnalysisServer] A2A Server started at http://localhost:${PORT} with model ${config.model}`);
+    console.log(`[CodeAnalysisServer] A2A Server started at http://localhost:${PORT}`);
 });

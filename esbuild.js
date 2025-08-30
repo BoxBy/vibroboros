@@ -1,56 +1,55 @@
 const esbuild = require("esbuild");
+const fs = require('fs-extra'); // fs-extra를 사용하기 위해 추가
 
 const production = process.argv.includes('--production');
-const watch = process.argv.includes('--watch');
-
-/**
- * @type {import('esbuild').Plugin}
- */
-const esbuildProblemMatcherPlugin = {
-	name: 'esbuild-problem-matcher',
-
-	setup(build) {
-		build.onStart(() => {
-			console.log('[watch] build started');
-		});
-		build.onEnd((result) => {
-			result.errors.forEach(({ text, location }) => {
-				console.error(`✘ [ERROR] ${text}`);
-				console.error(`    ${location.file}:${location.line}:${location.column}:`);
-			});
-			console.log('[watch] build finished');
-		});
-	},
-};
 
 async function main() {
-	const ctx = await esbuild.context({
-		entryPoints: [
-			'src/extension.ts'
-		],
+	const sharedConfig = {
 		bundle: true,
-		format: 'cjs',
 		minify: production,
 		sourcemap: !production,
-		sourcesContent: false,
-		platform: 'node',
-		outfile: 'dist/extension.js',
-		external: ['vscode'],
-		logLevel: 'silent',
-		plugins: [
-			/* add to the end of plugins array */
-			esbuildProblemMatcherPlugin,
-		],
-	});
-	if (watch) {
-		await ctx.watch();
-	} else {
-		await ctx.rebuild();
-		await ctx.dispose();
+		logLevel: 'info',
+	};
+
+	try {
+		// Backend build
+		await esbuild.build({
+			...sharedConfig,
+			entryPoints: ['src/extension.ts'],
+			format: 'cjs',
+			platform: 'node',
+			outfile: 'dist/extension.js',
+			external: ['vscode'],
+		});
+
+		// Frontend build
+		await esbuild.build({
+			...sharedConfig,
+			entryPoints: {
+				main: 'src/vs/ai-partner/ui/index.tsx'
+			},
+			format: 'esm',
+			platform: 'browser',
+			outdir: 'dist',
+		});
+
+		// --- 추가된 부분 시작 ---
+		// media 폴더를 dist 폴더로 복사합니다.
+		fs.copySync('media', 'dist/media', { overwrite: true });
+		console.log('Media assets copied successfully!');
+		// --- 추가된 부분 끝 ---
+
+		fs.copySync('node_modules/@vscode/codicons/dist/codicon.css', 'dist/codicon.css', { overwrite: true });
+		fs.copySync('node_modules/@vscode/codicons/dist/codicon.ttf', 'dist/codicon.ttf', { overwrite: true });
+		console.log('Codicon assets copied successfully!');
+
+
+		console.log('Build successful!');
+
+	} catch (err) {
+		console.error("Build failed:", err);
+		process.exit(1);
 	}
 }
 
-main().catch(e => {
-	console.error(e);
-	process.exit(1);
-});
+main();

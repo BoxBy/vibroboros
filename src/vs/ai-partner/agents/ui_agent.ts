@@ -1,5 +1,5 @@
 import { Agent } from "../agent";
-import { A2AMessage } from "../core_data_structures";
+import { A2AMessage } from "../interfaces/A2AMessage";
 
 interface PendingRequest {
     resolve: (value: any) => void;
@@ -13,21 +13,22 @@ interface PendingRequest {
 export class UIAgent extends Agent {
     private pendingRequests = new Map<string, PendingRequest>();
 
-    constructor(messageSender: (message: A2AMessage) => Promise<void>) {
+    constructor(messageSender: (message: A2AMessage<any>) => Promise<void>) {
         super('UIAgent', messageSender);
     }
 
-    public async handleMessage(message: A2AMessage): Promise<void> {
+    public async handleMessage(message: A2AMessage<any>): Promise<void> {
         console.log(`[${this.name}] received message of type "${message.type}" from [${message.sender}].`);
 
         if (message.correlationId && this.pendingRequests.has(message.correlationId)) {
-            const { resolve, reject } = this.pendingRequests.get(message.correlationId)!;
-            this.pendingRequests.delete(message.correlationId);
-
-            if (message.type === 'error') {
-                reject(message.payload.error);
-            } else {
-                resolve(message.payload);
+            const pendingRequest = this.pendingRequests.get(message.correlationId);
+            if (pendingRequest) {
+                this.pendingRequests.delete(message.correlationId);
+                if (message.type === 'error') {
+                    pendingRequest.reject(message.payload.error);
+                } else {
+                    pendingRequest.resolve(message.payload);
+                }
             }
         } else {
             console.warn(`[${this.name}] Received unhandled message:`, message);
@@ -44,7 +45,7 @@ export class UIAgent extends Agent {
      */
     public sendRequestAndWaitForResponse(recipient: string, type: string, payload: any): Promise<any> {
         return new Promise(async (resolve, reject) => {
-            const correlationId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            const correlationId = `${new Date().toISOString()}-${Math.random().toString(36).substring(2, 9)}`;
             this.pendingRequests.set(correlationId, { resolve, reject });
 
             try {
@@ -53,7 +54,7 @@ export class UIAgent extends Agent {
                     recipient: recipient,
                     type: type,
                     payload: payload,
-                    timestamp: Date.now(),
+                    timestamp: new Date().toISOString(),
                     correlationId: correlationId
                 });
             } catch (error) {

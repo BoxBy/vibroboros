@@ -1,4 +1,4 @@
-import { MCPMessage, MCPResponsePayload } from '../interfaces/MCPMessage';
+import { MCPMessage } from '../interfaces/MCPMessage';
 import { WebSearchTool } from './tools/WebSearchTool';
 import { TerminalExecutionTool } from './tools/TerminalExecutionTool';
 import { GitAutomationTool } from './tools/GitAutomationTool';
@@ -44,8 +44,12 @@ export class MCPServer {
     public async handleRequest(request: MCPMessage<any>): Promise<any> {
         console.log('[MCPServer] Received request:', request);
 
-        if (request.method !== 'tools/call') {
+        if (!request.method || request.method !== 'tools/call') {
             return this.createErrorResponse(request.id, -32601, `Method '${request.method}' not found.`);
+        }
+
+        if (!request.params) {
+            return this.createErrorResponse(request.id, -32602, 'Invalid params: The params object is missing.');
         }
 
         const toolName = request.params.name;
@@ -63,7 +67,7 @@ export class MCPServer {
         }
     }
 
-    private createSuccessResponse(id: string | number, result: any): any {
+    private createSuccessResponse(id: string | number | null, result: any): any {
         return {
             jsonrpc: '2.0',
             id,
@@ -71,7 +75,7 @@ export class MCPServer {
         };
     }
 
-    private createErrorResponse(id: string | number, code: number, message: string): any {
+    private createErrorResponse(id: string | number | null, code: number, message: string): any {
         return {
             jsonrpc: '2.0',
             id,

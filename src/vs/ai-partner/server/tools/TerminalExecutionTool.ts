@@ -63,7 +63,7 @@ export class TerminalExecutionTool {
         throw new Error('Could not determine a working directory. Please open a folder or specify a `cwd`.');
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       exec(params.command, options, (error, stdout, stderr) => {
         let output = `> Executed in: ${options.cwd}\n> Command: ${params.command}\n\n`;
 

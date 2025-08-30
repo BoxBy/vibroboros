@@ -1,51 +1,43 @@
 /**
- * @class LLMService
+ * @file LLMService.ts
  * A service dedicated to handling communication with an OpenAI-compatible LLM,
- * including support for tool-calling.
+ * including robust error handling.
  */
+
+// Define and export the message type for clarity and reuse across the extension.
+export type LlmMessage = {
+    role: 'system' | 'user' | 'assistant' | 'tool';
+    content: string | null;
+    tool_calls?: any[];
+    tool_call_id?: string;
+    name?: string;
+};
+
 export class LLMService {
 
+    public constructor() {}
+
     /**
-     * Requests a completion from the LLM, providing context and a list of available tools.
-     * @param prompt The user's original query.
-     * @param context The context gathered by the ContextManagementAgent.
-     * @param apiKey The API key for the LLM service.
-     * @param endpoint The API endpoint for the LLM service.
-     * @param tools An array of tool schemas available for the LLM to use.
+     * Requests a completion from the LLM.
      * @returns A promise that resolves to the full message object from the LLM response.
      */
     public async requestLLMCompletion(
-        prompt: string,
-        context: any,
+        conversationHistory: LlmMessage[], // Use the specific type
         apiKey: string,
         endpoint: string,
-        tools: any[]
-    ): Promise<any> { // Returns the entire message object
+        tools: any[],
+        model: string
+    ): Promise<LlmMessage> { // The return type could be refined to LlmMessage in the future
 
         if (!apiKey) {
-            return { content: "Error: LLM API key is not configured. Please set it in the settings." };
+            return { role: 'assistant', content: "**Error:** LLM API key is not configured. Please go to Settings to add your API key." };
         }
 
-        const systemPrompt = `You are a helpful AI programming assistant integrated into VSCode.
-        The user is asking a question about their project.
-        Here is the context of their current workspace:
-        - Active File: ${context.activeFilePath}
-        - Language: ${context.language}
-        - Open Files: ${context.openFiles.join(', ')}
-        - Code Preview of Active File:
-        ---
-        ${context.contentPreview}
-        ---
-        Based on this context, please answer the user's question or use one of the available tools to assist them.`;
-
         const requestBody = {
-            model: "gpt-4", // This could also be a setting
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: prompt }
-            ],
-            tools: tools, // Provide the list of tools to the LLM
-            tool_choice: "auto", // Let the LLM decide when to use tools
+            model: model,
+            messages: conversationHistory,
+            tools: tools,
+            tool_choice: "auto",
         };
 
         try {
@@ -59,17 +51,29 @@ export class LLMService {
             });
 
             if (!response.ok) {
-                const errorBody = await response.text();
-                console.error('[LLMService] API Error:', errorBody);
-                return { content: `Error: The LLM API returned a ${response.status} status.` };
+                let errorMessage = `API Error: The server responded with a status of ${response.status}.`;
+                if (response.status === 401) {
+                    errorMessage = "**Authentication Error:** The provided API key is invalid or has expired. Please check your settings.";
+                } else if (response.status === 404) {
+                    errorMessage = "**Endpoint Not Found:** The API endpoint URL is incorrect. Please check your settings.";
+                } else {
+                    const errorBody = await response.text();
+                    errorMessage += `\n\nDetails: ${errorBody}`;
+                }
+                console.error('[LLMService] API Error:', errorMessage);
+                return { role: 'assistant', content: errorMessage };
             }
 
             const data = await response.json();
-            return data.choices[0]?.message || { content: "No response from LLM." };
+            return data.choices[0]?.message || { role: 'assistant', content: "**Error:** Received an empty response from the LLM." };
 
         } catch (error: any) {
             console.error('[LLMService] Failed to fetch LLM completion:', error);
-            return { content: `Error: Could not connect to the LLM service at ${endpoint}.` };
+            let connectErrorMessage = `**Connection Error:** Could not connect to the LLM service at \`${endpoint}\`.`;
+            if (error.cause?.code === 'ENOTFOUND') {
+                connectErrorMessage += "\n\nPlease check the server address and your network connection.";
+            }
+            return { role: 'assistant', content: connectErrorMessage };
         }
     }
 }

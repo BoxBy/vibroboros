@@ -1,59 +1,56 @@
+import * as vscode from 'vscode';
+
 /**
- * Manages interactions with the Language Model, including API key rotation.
+ * NOTE: This is the legacy service. The primary service is now LLMService.ts in the services directory.
+ * This service manages API keys and facilitates communication with the LLM.
  */
 export class LlmService {
+    private static instance: LlmService;
     private apiKeys: string[];
-    private currentApiKeyIndex = 0;
+    private currentApiKeyIndex: number;
 
-    constructor(apiKeys: string[]) {
-        this.apiKeys = apiKeys;
-        if (this.apiKeys.length === 0) {
-            console.warn("LLM Service: No API keys provided.");
-        }
+    private constructor() {
+        this.apiKeys = vscode.workspace.getConfiguration('vibroboros.llm').get<string[]>('apiKeys', []);
+        this.currentApiKeyIndex = 0;
     }
 
-    /**
-     * Rotates to the next available API key.
-     */
-    private rotateApiKey(): void {
-        if (this.apiKeys.length > 1) {
-            this.currentApiKeyIndex = (this.currentApiKeyIndex + 1) % this.apiKeys.length;
-            console.log("Rotated to next API key.");
+    public static getInstance(): LlmService {
+        if (!LlmService.instance) {
+            LlmService.instance = new LlmService();
         }
+        return LlmService.instance;
     }
 
-    /**
-     * Gets the current API key.
-     */
-    public getCurrentApiKey(): string | undefined {
-        if (this.apiKeys.length === 0) {
-            return undefined;
-        }
-        return this.apiKeys[this.currentApiKeyIndex];
-    }
-
-    /**
-     * Simulates sending a completion request to the LLM.
-     * @param prompt The prompt to send to the LLM.
-     * @param model The name of the model to use for this request.
-     * @returns A simulated response from the LLM.
-     */
     public async getCompletion(prompt: string, model: string): Promise<string> {
-        const apiKey = this.getCurrentApiKey();
-        if (!apiKey) {
-            return Promise.reject("No API key configured.");
+        if (this.apiKeys.length === 0) {
+            throw new Error('No API keys configured. Please check your settings.');
         }
 
-        console.log(`Sending completion request to model: ${model} with prompt: "${prompt.substring(0, 50)}..."`);
+        const apiKey = this.apiKeys[this.currentApiKeyIndex];
+        const endpoint = vscode.workspace.getConfiguration('vibroboros.llm').get<string>('endpoint');
 
-        // This is a placeholder for a real API call.
-        // It simulates a quota error to test key rotation.
-        if (prompt.includes("quota_error_test")) {
-            console.error("Simulating QuotaLimit error.");
-            this.rotateApiKey();
-            return Promise.reject("Simulated QuotaLimit error. Please try again.");
+        try {
+            const response = await fetch(endpoint || 'https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model,
+                    messages: [{ role: 'user', content: prompt }]
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.choices[0].message.content;
+        } catch (error) {
+            console.error('LLM request failed:', error);
+            throw error;
         }
-
-        return `This is a simulated response for the prompt: "${prompt.substring(0, 50)}..." using model ${model}`;
     }
 }

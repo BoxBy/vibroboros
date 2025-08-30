@@ -1,4 +1,4 @@
-import * as React from 'react';
+import React from 'react';
 
 /**
  * @interface FileProtectionToggleProps
@@ -11,28 +11,26 @@ interface FileProtectionToggleProps {
 }
 
 /**
- * @class FileProtectionToggle
+ * @function FileProtectionToggle
  * A reusable UI component that provides a toggle switch to protect a file
  * from being modified by the AI.
  */
-export class FileProtectionToggle extends React.Component<FileProtectionToggleProps> {
-  private handleToggle = () => {
-    this.props.onToggle(this.props.filePath, !this.props.isProtected);
+export const FileProtectionToggle: React.FC<FileProtectionToggleProps> = ({ filePath, isProtected, onToggle }) => {
+  const handleToggle = () => {
+    onToggle(filePath, !isProtected);
   };
 
-  public render() {
-    return (
-      <div className="file-protection-toggle">
-        <label htmlFor={`toggle-${this.props.filePath}`}>
-          Protect file from AI modification
-        </label>
-        <input
-          type="checkbox"
-          id={`toggle-${this.props.filePath}`}
-          checked={this.props.isProtected}
-          onChange={this.handleToggle}
-        />
-      </div>
-    );
-  }
-}
+  return (
+    <div className="file-protection-toggle">
+      <label htmlFor={`toggle-${filePath}`}>
+        Protect file from AI modification
+      </label>
+      <input
+        type="checkbox"
+        id={`toggle-${filePath}`}
+        checked={isProtected}
+        onChange={handleToggle}
+      />
+    </div>
+  );
+};

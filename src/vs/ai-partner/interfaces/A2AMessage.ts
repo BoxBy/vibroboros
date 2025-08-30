@@ -16,6 +16,11 @@ export interface A2AMessage<T> {
   recipient: string;
 
   /**
+   * Optional correlation ID to match requests with responses.
+   */
+  correlationId?: string;
+
+  /**
    * The timestamp of when the message was created, in ISO 8601 format.
    */
   timestamp: string;

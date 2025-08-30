@@ -4,7 +4,7 @@ import { A2AMessage } from '../interfaces/A2AMessage';
 interface PendingContext {
     originalQuery: string;
     activeFilePath: string;
-    language: string;
+    uiLanguage: string; // File language와 구분하기 위해 이름 변경
     contentPreview: string;
     openFiles: string[];
 }
@@ -43,7 +43,7 @@ export class ContextManagementAgent {
         this.pendingContext = {
             originalQuery: query,
             activeFilePath: activeEditor ? activeEditor.document.uri.fsPath : 'N/A',
-            language: activeEditor ? activeEditor.document.languageId : 'N/A',
+            uiLanguage: vscode.env.language, // VSCode UI 언어 정보 수집
             contentPreview: activeEditor ? activeEditor.document.getText().substring(0, 1000) : 'N/A',
             openFiles,
         };

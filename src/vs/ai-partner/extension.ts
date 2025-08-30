@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { OrchestratorAgent } from './agents/OrchestratorAgent';
 import { CodeAnalysisAgent } from './agents/CodeAnalysisAgent';
 import { ContextManagementAgent } from './agents/ContextManagementAgent';
@@ -10,76 +9,92 @@ import { CodeWatcherAgent } from './agents/CodeWatcherAgent';
 import { SecurityAnalysisAgent } from './agents/SecurityAnalysisAgent';
 import { A2AMessage } from './interfaces/A2AMessage';
 import { MCPServer } from './server/MCPServer';
+import { AIPartnerViewProvider } from './AIPartnerViewProvider';
 import { LLMService } from './services/LLMService';
+import { AuthService } from './auth_service';
+import { ConfigService } from './config_service';
+import { DeveloperLogService } from './services/DeveloperLogService';
 
 const agentRegistry = new Map<string, any>();
 
-function dispatchA2AMessage(message: A2AMessage<any>) {
+async function dispatchA2AMessage(message: A2AMessage<any>) {
     const recipient = agentRegistry.get(message.recipient);
     if (recipient && typeof recipient.handleA2AMessage === 'function') {
-        recipient.handleA2AMessage(message);
+        try {
+            await recipient.handleA2AMessage(message);
+        } catch (error: any) {
+            console.error(`A2A Error during message dispatch to "${message.recipient}":`, error);
+            vscode.window.showErrorMessage(`An internal error occurred in the AI Partner: ${error.message}`);
+        }
     } else {
         console.error(`A2A Error: Agent "${message.recipient}" not found or has no handler.`);
     }
 }
 
 let codeWatcher: CodeWatcherAgent;
+let developerLogService: DeveloperLogService;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('AI Partner extension is now active.');
 
-    const mcpServer = new MCPServer();
-    const llmService = new LLMService();
-    const diagnosticCollection = vscode.languages.createDiagnosticCollection("aiPartner");
-    context.subscriptions.push(diagnosticCollection);
+    try {
+        // 1. Initialize core services in the correct order.
+        const configService = ConfigService.getInstance();
+        developerLogService = DeveloperLogService.getInstance();
+        const authService = AuthService.getInstance(configService);
+        const mcpServer = new MCPServer();
+        const llmService = new LLMService();
+        const diagnosticCollection = vscode.languages.createDiagnosticCollection("aiPartner");
+        context.subscriptions.push(diagnosticCollection);
 
-    // Pass dependencies to all agents that need them.
-    agentRegistry.set('OrchestratorAgent', new OrchestratorAgent(dispatchA2AMessage, mcpServer, llmService, context.workspaceState, diagnosticCollection));
-    agentRegistry.set('CodeAnalysisAgent', new CodeAnalysisAgent(dispatchA2AMessage, context.workspaceState)); // Provide workspaceState for indexing
-    agentRegistry.set('ContextManagementAgent', new ContextManagementAgent(dispatchA2AMessage));
-    agentRegistry.set('DocumentationGenerationAgent', new DocumentationGenerationAgent(dispatchA2AMessage, mcpServer, llmService));
-    agentRegistry.set('RefactoringSuggestionAgent', new RefactoringSuggestionAgent(dispatchA2AMessage, mcpServer, llmService));
-    agentRegistry.set('SecurityAnalysisAgent', new SecurityAnalysisAgent(dispatchA2AMessage, mcpServer));
-
-    codeWatcher = new CodeWatcherAgent(dispatchA2AMessage);
-    agentRegistry.set('CodeWatcherAgent', codeWatcher);
-    codeWatcher.activate();
-
-    agentRegistry.set('AILedLearningAgent', new AILedLearningAgent(dispatchA2AMessage, context.workspaceState));
-
-    const startCommand = vscode.commands.registerCommand('ai-partner.start', () => {
-        const panel = vscode.window.createWebviewPanel(
-            'aiPartnerMainView', 'AI Partner', vscode.ViewColumn.One,
-            { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist')] }
+        // 2. Register all agents, injecting their required dependencies.
+        const orchestrator = new OrchestratorAgent(
+            dispatchA2AMessage,
+            mcpServer,
+            llmService,
+            authService,
+            configService,
+            context.workspaceState,
+            diagnosticCollection,
+            developerLogService // Inject the logger
         );
+        agentRegistry.set('OrchestratorAgent', orchestrator);
 
-        panel.webview.html = getWebviewContent(panel.webview, context.extensionUri);
+        const learningAgent = new AILedLearningAgent(context.workspaceState);
+        agentRegistry.set('AILedLearningAgent', learningAgent);
 
-        const orchestrator = agentRegistry.get('OrchestratorAgent');
-        orchestrator.registerWebviewPanel(panel);
+        agentRegistry.set('CodeAnalysisAgent', new CodeAnalysisAgent(dispatchA2AMessage, context.workspaceState));
+        agentRegistry.set('ContextManagementAgent', new ContextManagementAgent(dispatchA2AMessage));
+        agentRegistry.set('DocumentationGenerationAgent', new DocumentationGenerationAgent(dispatchA2AMessage, mcpServer, llmService));
+        agentRegistry.set('RefactoringSuggestionAgent', new RefactoringSuggestionAgent(dispatchA2AMessage, mcpServer, llmService, learningAgent));
+        agentRegistry.set('SecurityAnalysisAgent', new SecurityAnalysisAgent(dispatchA2AMessage, mcpServer));
 
-        panel.webview.onDidReceiveMessage(message => { orchestrator.handleUIMessage(message); }, undefined, context.subscriptions);
-        panel.onDidDispose(() => { orchestrator.registerWebviewPanel(undefined); }, null, context.subscriptions);
+        // 3. Activate background agents.
+        codeWatcher = new CodeWatcherAgent(dispatchA2AMessage);
+        agentRegistry.set('CodeWatcherAgent', codeWatcher);
+        codeWatcher.activate();
 
-        // Trigger the initial indexing process shortly after activation.
+        // 4. Register the View Provider, passing only the orchestrator.
+        const provider = new AIPartnerViewProvider(context.extensionUri, orchestrator);
+        context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider(AIPartnerViewProvider.viewType, provider));
+
+        // 5. Trigger the initial codebase indexing.
         setTimeout(() => {
             dispatchA2AMessage({ sender: 'extension', recipient: 'CodeAnalysisAgent', type: 'request-initial-index', payload: {}, timestamp: new Date().toISOString() });
-        }, 2000); // Delay to ensure everything is loaded
-    });
+        }, 2000);
 
-    context.subscriptions.push(startCommand);
-}
-
-function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
-    // ... (implementation remains the same)
-}
-
-function getNonce() {
-    // ... (implementation remains the same)
+    } catch (e: any) {
+        vscode.window.showErrorMessage(`Failed to activate AI Partner: ${e.message}`);
+        console.error("Error during activation:", e);
+    }
 }
 
 export function deactivate() {
     if (codeWatcher) {
         codeWatcher.deactivate();
+    }
+    if (developerLogService) {
+        developerLogService.dispose();
     }
 }

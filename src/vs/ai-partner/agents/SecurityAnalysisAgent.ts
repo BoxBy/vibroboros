@@ -1,4 +1,5 @@
 import { A2AMessage } from '../interfaces/A2AMessage';
+import { MCPMessage } from '../interfaces/MCPMessage';
 import { MCPServer } from '../server/MCPServer';
 
 /**
@@ -29,10 +30,13 @@ export class SecurityAnalysisAgent {
 
         try {
             // Use the non-LLM, regex-based tool for a fast scan.
-            const analysisResult = await this.mcpServer.handleRequest({
-                jsonrpc: '2.0', id: '1', method: 'tools/call',
+            const analysisRequest: MCPMessage<any> = {
+                jsonrpc: '2.0',
+                id: '1',
+                method: 'tools/call',
                 params: { name: 'SecurityVulnerabilityTool', arguments: { filePath } }
-            });
+            };
+            const analysisResult = await this.mcpServer.handleRequest(analysisRequest);
 
             const vulnerabilities = analysisResult.result.content;
 

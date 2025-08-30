@@ -5,14 +5,6 @@ import { InMemoryTaskStore, A2ARequestHandler, RequestContext } from '../a2a_ser
 import { RefactoringSuggestionExecutor } from './refactoring_suggestion_executor';
 import { v4 as uuid } from 'uuid';
 
-// --- Agent Configuration ---
-const configArg = process.argv[2];
-if (!configArg) {
-    console.error("Agent configuration not provided!");
-    process.exit(1);
-}
-const config = JSON.parse(Buffer.from(configArg, 'base64').toString('utf8'));
-
 // --- Agent Card Definition ---
 const refactoringAgentCard: AgentCard = {
     name: "Refactoring Suggestion Agent",
@@ -38,7 +30,7 @@ const refactoringAgentCard: AgentCard = {
 
 // --- Server Setup ---
 const taskStore = new InMemoryTaskStore();
-const agentExecutor = new RefactoringSuggestionExecutor(config);
+const agentExecutor = new RefactoringSuggestionExecutor();
 const requestHandler = new A2ARequestHandler(refactoringAgentCard, taskStore, agentExecutor);
 
 const app = express();
@@ -69,5 +61,5 @@ app.post('/', async (req: Request, res: Response) => {
 
 const PORT = 41243;
 app.listen(PORT, () => {
-    console.log(`[RefactoringServer] A2A Server started at http://localhost:${PORT} with model ${config.model}`);
+    console.log(`[RefactoringServer] A2A Server started at http://localhost:${PORT}`);
 });

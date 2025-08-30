@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs/promises';
 import { A2AMessage } from '../interfaces/A2AMessage';
 
 interface SymbolInfo {
@@ -41,16 +40,30 @@ export class CodeAnalysisAgent {
             case 'request-codebase-search':
                 console.log(`[${CodeAnalysisAgent.AGENT_ID}] Received search request for symbol:`, message.payload.symbolName);
                 const searchResults = this.searchIndex(message.payload.symbolName);
-                // Dispatch results back to the original sender
                 this.dispatch({
                     sender: CodeAnalysisAgent.AGENT_ID,
-                    recipient: message.sender, // Send back to whoever asked
+                    recipient: message.sender,
                     timestamp: new Date().toISOString(),
                     type: 'response-codebase-search',
                     payload: { results: searchResults }
                 });
                 break;
+            case 'get-indexed-files':
+                const indexedFiles = this.getIndexedFiles();
+                this.dispatch({
+                    sender: CodeAnalysisAgent.AGENT_ID,
+                    recipient: message.sender,
+                    timestamp: new Date().toISOString(),
+                    type: 'response-indexed-files',
+                    payload: { files: indexedFiles }
+                });
+                break;
         }
+    }
+
+    private getIndexedFiles(): string[] {
+        const fullIndex = this.state.get<Record<string, FileIndex>>(CodeAnalysisAgent.INDEX_KEY, {});
+        return Object.keys(fullIndex);
     }
 
     private searchIndex(symbolName: string): any[] {
@@ -68,14 +81,10 @@ export class CodeAnalysisAgent {
     }
 
     private async buildInitialIndex(): Promise<void> {
-        // ... (implementation remains the same)
+        console.log('Initial indexing is not implemented yet.');
     }
 
     private async updateIndexForFile(filePath: string): Promise<void> {
-        // ... (implementation remains the same)
-    }
-
-    private async parseFileForSymbols(filePath: string): Promise<FileIndex | null> {
-        // ... (implementation remains the same)
+        console.log(`File re-indexing is not implemented yet for: ${filePath}`);
     }
 }

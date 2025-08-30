@@ -1,64 +1,25 @@
 /**
- * @interface MCPMessage
- * Defines the structure for messages exchanged between the VSCode Extension (Client)
- * and the Local Tool Server (Server) using the Model-Controller-Protocol (MCP).
+ * @file MCPMessage.ts
+ * Defines the interface for Model-Controller-Protocol (MCP) messages,
+ * adhering to the JSON-RPC 2.0 specification for client-server communication.
+ */
+
+/**
+ * Defines the structure for a JSON-RPC 2.0 request or response object.
+ * @template T The type of the params or result.
  */
 export interface MCPMessage<T> {
-  /**
-   * A unique identifier for the message, used for tracking requests and responses.
-   */
-  id: string;
-
-  /**
-   * The version of the protocol. e.g., '1.0'.
-   */
-  version: string;
-
-  /**
-   * The type of the message, typically indicating the requested tool or action.
-   * e.g., 'tool-request:WebSearch', 'tool-response:WebSearch'.
-   */
-  type: string;
-
-  /**
-   * The content of the message.
-   */
-  payload: T;
+  jsonrpc: '2.0';
+  id: string | number | null;
+  method?: string; // The name of the method to be invoked.
+  params?: T;      // The parameters to be used during the invocation of the method.
+  result?: any;
+  error?: { code: number; message: string; data?: any; };
 }
 
 /**
- * @interface MCPRequestPayload
- * Defines a standard payload for a tool request from the client.
- */
-export interface MCPRequestPayload {
-  /**
-   * The name of the tool to be executed.
-   */
-  tool: string;
-
-  /**
-   * The parameters required by the tool.
-   */
-  params: Record<string, any>;
-}
-
-/**
- * @interface MCPResponsePayload
- * Defines a standard payload for a tool response from the server.
+ * Defines the structure for the payload within an MCP response.
  */
 export interface MCPResponsePayload {
-  /**
-   * The status of the tool execution.
-   */
-  status: 'success' | 'error';
-
-  /**
-   * The data returned by the tool on success.
-   */
-  data?: any;
-
-  /**
-   * An error message if the tool execution failed.
-   */
-  error?: string;
+  content: any[];
 }

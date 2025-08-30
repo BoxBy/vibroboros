@@ -49,8 +49,8 @@ export interface AgentExecutor {
 export class A2ARequestHandler {
     constructor(
         public readonly agentCard: AgentCard,
-        private readonly taskStore: InMemoryTaskStore,
-        private readonly agentExecutor: AgentExecutor
+        public readonly taskStore: InMemoryTaskStore,
+        public readonly agentExecutor: AgentExecutor
     ) { }
 
     // In a real implementation, this class would have methods to handle
