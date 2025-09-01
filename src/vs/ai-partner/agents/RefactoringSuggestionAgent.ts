@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import { A2AMessage } from '../interfaces/A2AMessage';
 import { MCPMessage } from '../interfaces/MCPMessage';
 import { MCPServer } from '../server/MCPServer';
-import { LLMService } from '../services/LLMService';
 import { randomUUID } from 'crypto';
+import { LLMService, LlmMessage } from '../services/LLMService';
 import { AILedLearningAgent } from './AILedLearningAgent';
 
 /**
@@ -52,32 +52,44 @@ export class RefactoringSuggestionAgent {
             }
 
             const systemPrompt = `You are an expert software engineer specializing in code refactoring and writing clean, efficient code.` +
-                                 `\\n\\n**INSTRUCTIONS:**\\n` +
-                                 `1. Analyze the user\\'s request and the provided code.\\n` +
-                                 `2. Rewrite the entire code for the file, incorporating the requested improvements.\\n` +
-                                 `3. **IMPORTANT:** Your response must contain ONLY the raw, refactored code. Do not include any explanations, markdown formatting (like \\\`\\\`\\\`typescript), or any other text outside of the code itself. The output will be directly written back to the file.\\n\\n` +
+                                 `\n\n**INSTRUCTIONS:**\n` +
+                                 `1. Analyze the user's request and the provided code.\n` +
+                                 `2. Rewrite the entire code for the file, incorporating the requested improvements.\n` +
+                                 `3. **IMPORTANT:** Your response must contain ONLY the raw, refactored code. Do not include any explanations, markdown formatting (like \`\`\`typescript), or any other text outside of the code itself. The output will be directly written back to the file.\n\n` +
                                  `${personalizationInstruction}`;
 
-            const userPrompt = `The user wants to refactor this file: ${message.payload.filePath}.\\nTheir request is: \\\"${message.payload.query}\\\"\\n\\nHere is the original code:\\n\\\`\\\`\\\`\\n${fileContent}\\n\\\`\\\`\\\``;
+            const userPrompt = `The user wants to refactor this file: ${message.payload.filePath}.\nTheir request is: \"${message.payload.query}\"\n\nHere is the original code:\n\`\`\`\n${fileContent}\n\`\`\``;
 
             const config = vscode.workspace.getConfiguration('vibroboros');
-            const apiKey = config.get<string>('llm.apiKeys')?.[0] || '';
+            const apiKey = config.get<string[]>('llm.apiKeys')?.[0] || '';
             const endpoint = config.get<string>('llm.endpoint') || 'https://api.openai.com/v1/chat/completions';
             const model = config.get<string>('agent.refactoring.model') || 'gpt-4';
 
+            const conversationForThisTask: LlmMessage[] = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ];
+
             const llmResponse = await this.llmService.requestLLMCompletion(
-                [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+                conversationForThisTask,
                 apiKey,
                 endpoint,
                 [],
                 model
             );
 
-            const refactoredCode = llmResponse.content;
+            const refactoredCode = llmResponse.choices[0]?.message?.content;
 
             // Do not bother the user if the AI decided not to make a change.
             if (!refactoredCode || refactoredCode.trim() === fileContent.trim()) {
                 console.log(`[${RefactoringSuggestionAgent.AGENT_ID}] No significant refactoring suggested based on user preference and code analysis.`);
+                this.dispatch({
+                    sender: RefactoringSuggestionAgent.AGENT_ID,
+                    recipient: 'OrchestratorAgent',
+                    timestamp: new Date().toISOString(),
+                    type: 'response-refactoring-suggestions',
+                    payload: { content: [{ type: 'text', text: `No significant refactoring was necessary for ${message.payload.filePath}.` }] }
+                });
                 return;
             }
 

@@ -1,18 +1,43 @@
 import React from 'react';
 import { DisplayMessage } from './MainView';
-import { MessageItem } from './MessageItem'; // 새로 만든 컴포넌트를 import 합니다.
+import { MessageItem } from './MessageItem';
 
+// ADDED: MainView로부터 받을 props 타입을 확장합니다.
 interface MessageListProps {
 	messages: DisplayMessage[];
+	isThinking: boolean;
+	showProgress: boolean;
+	progressMessages: string[];
+	onToggleProgress: () => void;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
+// MODIFIED: 새로운 props를 받도록 수정합니다.
+export const MessageList: React.FC<MessageListProps> = ({
+															messages,
+															isThinking,
+															showProgress,
+															progressMessages,
+															onToggleProgress,
+														}) => {
 	return (
 		<div className="message-list">
-			{/* 메시지 배열을 순회하며 각 메시지에 대해 MessageItem을 렌더링합니다. */}
-			{messages.map((msg, index) => (
-				<MessageItem key={index} message={msg} />
-			))}
+			{messages.map((msg, index) => {
+				// MODIFIED: 현재 렌더링하는 메시지가 마지막 메시지인지 확인합니다.
+				const isLastMessage = index === messages.length - 1;
+
+				return (
+					<MessageItem
+						key={index}
+						message={msg}
+						// ADDED: 마지막 메시지일 경우에만 Progress 관련 props를 전달합니다.
+						isLastMessage={isLastMessage}
+						isThinking={isLastMessage ? isThinking : false}
+						showProgress={isLastMessage ? showProgress : false}
+						progressMessages={isLastMessage ? progressMessages : []}
+						onToggleProgress={isLastMessage ? onToggleProgress : ()=> {}}
+					/>
+				);
+			})}
 		</div>
 	);
 };

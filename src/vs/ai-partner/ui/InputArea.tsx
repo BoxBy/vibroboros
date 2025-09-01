@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface InputAreaProps {
 	onSendMessage: (message: string) => void;
@@ -6,6 +6,7 @@ interface InputAreaProps {
 
 export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage }) => {
 	const [message, setMessage] = useState('');
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 	const handleSend = () => {
 		if (message.trim()) {
@@ -21,23 +22,26 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage }) => {
 		}
 	};
 
-	// 텍스트 내용에 따라 textarea 높이를 동적으로 조절합니다.
-	const handleInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-		setMessage(event.target.value);
-		const textarea = event.target;
-		textarea.style.height = 'auto'; // 높이를 초기화
-		textarea.style.height = `${textarea.scrollHeight}px`; // 스크롤 높이에 맞춰 설정
-	};
+	// [수정] useEffect를 사용하여 메시지(값)가 변경될 때마다 높이를 재계산합니다.
+	useEffect(() => {
+		const textarea = textareaRef.current;
+		if (textarea) {
+			textarea.style.height = 'auto'; // 높이를 초기화하여 줄어들 수 있게 합니다.
+			textarea.style.height = `${textarea.scrollHeight}px`; // 내용에 맞게 높이를 다시 설정합니다.
+		}
+	}, [message]);
+
 
 	return (
 		<div className="input-area">
-      <textarea
-		  value={message}
-		  onInput={handleInput}
-		  onKeyPress={handleKeyPress}
-		  placeholder="메시지를 입력하세요..."
-		  rows={1}
-	  />
+            <textarea
+				ref={textareaRef} // ref를 textarea에 연결합니다.
+				value={message}
+				onChange={(e) => setMessage(e.target.value)} // onChange로 상태만 업데이트합니다.
+				onKeyPress={handleKeyPress}
+				placeholder="메시지를 입력하세요..."
+				rows={1}
+			/>
 			<button onClick={handleSend} title="Send">
 				<span>&#10148;</span>
 			</button>

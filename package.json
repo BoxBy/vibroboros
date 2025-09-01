@@ -53,8 +53,7 @@
         "vibroboros.auth.mode": {
           "type": "string",
           "enum": [
-            "apiKey",
-            "google"
+            "apiKey"
           ],
           "default": "apiKey",
           "description": "The authentication method to use for the LLM service.",
@@ -110,6 +109,12 @@
           "default": 45000,
           "description": "Timeout in milliseconds for requests to the Code Analysis Agent.",
           "scope": "resource"
+        },
+        "vibroboros.agent.orchestrator.contextTokenThreshold": {
+          "type": "number",
+          "default": 8000,
+          "description": "The number of tokens in the conversation history that will trigger automatic summarization. Set to 0 to disable.",
+          "scope": "application"
         }
       }
     }

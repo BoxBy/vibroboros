@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './Header';
 import { SettingsPage } from './SettingsPage';
 import { WelcomeScreen } from './WelcomeScreen';
 import { MessageList } from './MessageList';
 import { InputArea } from './InputArea';
 import { ErrorDisplay } from './ErrorDisplay';
+import { PlanView, PlanStep } from './PlanView';
 import { vscodeService } from './services/vscode';
-import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 
-// DisplayMessage와 ChatSession 타입 정의는 그대로 둡니다.
 export interface DisplayMessage {
 	sender: 'user' | 'ai';
 	text: string;
@@ -29,8 +28,25 @@ export const MainView: React.FC = () => {
 	const [sessions, setSessions] = useState<ChatSessionMeta[]>([]);
 	const [activeSessionId, setActiveSessionId] = useState<string>('');
 	const [messages, setMessages] = useState<DisplayMessage[]>([]);
+	const [plan, setPlan] = useState<PlanStep[]>([]);
 	const [error, setError] = useState<{ title: string, message: string } | null>(null);
 	const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+	const [isAutonomousMode, setAutonomousMode] = useState(false);
+	const [statusText, setStatusText] = useState<string | null>(null);
+	const [progressMessages, setProgressMessages] = useState<string[]>([]);
+	const [showProgress, setShowProgress] = useState(false);
+	const [isThinking, setIsThinking] = useState(false);
+
+	const mainViewRef = useRef<HTMLDivElement>(null);
+
+	// handleExtensionMessage, useEffect, mapHistoryToDisplayMessages 등 다른 함수들은 모두 동일하게 유지합니다.
+	// ... (이전 답변에 있던 함수들 그대로) ...
+	useEffect(() => {
+		const container = mainViewRef.current;
+		if (container) {
+			container.scrollTop = container.scrollHeight;
+		}
+	}, [messages, plan, progressMessages]);
 
 	const mapHistoryToDisplayMessages = (history: any[]): DisplayMessage[] => {
 		if (!Array.isArray(history)) return [];
@@ -53,7 +69,63 @@ export const MainView: React.FC = () => {
 		console.log('Received message from extension:', message);
 
 		switch (message.command) {
+			case 'analysis':
+				setIsThinking(true);
+				setProgressMessages(prev => [...prev, message.payload.text]);
+				break;
+			case 'displayPlan':
+				setIsThinking(true);
+				setPlan(message.payload.plan || []);
+				break;
+			case 'updatePlanStep':
+				setPlan(prevPlan => {
+					const newPlan = [...prevPlan];
+					const { index, status } = message.payload;
+					if (newPlan[index]) {
+						newPlan[index].status = status;
+					}
+					return newPlan;
+				});
+				break;
+			case 'statusUpdate':
+				setStatusText(message.payload.text);
+				break;
+			case 'responseStart':
+				setStatusText(null);
+				setPlan([]);
+				setMessages(prev => [...prev, { sender: 'ai', text: '' }]);
+				setIsThinking(true);
+				break;
+			case 'responseChunk':
+				setMessages(prev => {
+					if (prev.length === 0 || prev[prev.length - 1].sender !== 'ai') {
+						return [...prev, { sender: 'ai', text: message.payload.text }];
+					}
+					const newMessages = [...prev];
+					const lastMessage = { ...newMessages[newMessages.length - 1] };
+					lastMessage.text += message.payload.text;
+					newMessages[newMessages.length - 1] = lastMessage;
+					return newMessages;
+				});
+				break;
+			case 'responseEnd':
+				setStatusText(null);
+				setIsThinking(false);
+				setMessages(prev => {
+					if (prev.length === 0 || prev[prev.length - 1].sender !== 'ai') return prev;
+					const newMessages = [...prev];
+					const lastMessage = { ...newMessages[newMessages.length - 1] };
+					if (message.payload.thought) {
+						lastMessage.thought = message.payload.thought;
+					}
+					newMessages[newMessages.length - 1] = lastMessage;
+					return newMessages;
+				});
+				break;
 			case 'response':
+				setStatusText(null);
+				setPlan([]);
+				setIsThinking(false);
 				if (message.payload) {
 					setMessages(prev => [...prev, {
 						sender: 'ai',
@@ -66,6 +138,8 @@ export const MainView: React.FC = () => {
 				if (message.payload) {
 					const restored = mapHistoryToDisplayMessages(message.payload);
 					setMessages(restored);
+					setPlan([]);
+					setProgressMessages([]);
 					setError(null);
 					setView('chat');
 				}
@@ -77,7 +151,20 @@ export const MainView: React.FC = () => {
 				}
 				break;
 			case 'displayError':
+				setStatusText(null);
+				setPlan([]);
+				setIsThinking(false);
 				setError({ title: 'Error', message: message.payload.message });
+				break;
+			case 'fullSettingsResponse':
+				if (typeof message.payload.isLoopModeActive === 'boolean') {
+					setAutonomousMode(message.payload.isLoopModeActive);
+				}
+				break;
+			case 'loopModeChanged':
+				if (typeof message.payload === 'boolean') {
+					setAutonomousMode(message.payload);
+				}
 				break;
 		}
 	}, []);
@@ -85,7 +172,7 @@ export const MainView: React.FC = () => {
 	useEffect(() => {
 		window.addEventListener('message', handleExtensionMessage);
 		vscodeService.postMessage({ command: 'loadInitialData' });
-		vscodeService.postMessage({ command: 'requestHistory' }); // 세션 목록 요청
+		vscodeService.postMessage({ command: 'requestHistory' });
 
 		return () => window.removeEventListener('message', handleExtensionMessage);
 	}, [handleExtensionMessage]);
@@ -93,15 +180,25 @@ export const MainView: React.FC = () => {
 	const handleSendMessage = (messageText: string) => {
 		if (view !== 'chat') setView('chat');
 		setError(null);
+		setPlan([]);
+		setProgressMessages([]);
+		setIsThinking(true);
 		setMessages(prev => [...prev, { sender: 'user', text: messageText }]);
 		vscodeService.postMessage({ command: 'userQuery', query: messageText });
+	};
+
+	const handleToggleProgress = () => {
+		setShowProgress(prev => !prev);
 	};
 
 	const handleNewChat = () => {
 		setView('chat');
 		setError(null);
 		setShowHistoryPanel(false);
-		setMessages([]); // UI 즉시 클리어
+		setMessages([]);
+		setPlan([]);
+		setProgressMessages([]);
+		setIsThinking(false);
 		vscodeService.postMessage({ command: 'newChat' });
 	};
 
@@ -112,6 +209,11 @@ export const MainView: React.FC = () => {
 		}
 	};
 
+	const handleToggleAutonomousMode = (checked: boolean) => {
+		setAutonomousMode(checked);
+		vscodeService.postMessage({ command: 'setAutonomousMode', enabled: checked });
+	};
+
 	const handleSelectSession = (sessionId: string) => {
 		if (sessionId === activeSessionId) {
 			setShowHistoryPanel(false);
@@ -120,12 +222,13 @@ export const MainView: React.FC = () => {
 		setShowHistoryPanel(false);
 		setView('chat');
 		setError(null);
-		setMessages([]); // UI 즉시 클리어
+		setMessages([]);
+		setPlan([]);
+		setProgressMessages([]);
+		setIsThinking(false);
 		vscodeService.postMessage({ command: 'selectChat', sessionId });
 	};
 
-	// 삭제 로직은 UI에서 상태를 직접 조작하지 않고 백엔드로 요청만 보냅니다.
-	// 백엔드는 세션을 삭제한 후, 갱신된 세션 목록을 'historyList'로 다시 보내줍니다.
 	const handleDeleteSession = (sessionId: string) => {
 		vscodeService.postMessage({ command: 'deleteChat', sessionId });
 	};
@@ -160,8 +263,6 @@ export const MainView: React.FC = () => {
 								>
 									{s.title} {s.messageCount ? `(${s.messageCount})` : ''}
 								</button>
-
-								{/* [수정] VSCodeButton을 유니코드 문자를 사용하는 일반 button으로 교체합니다. */}
 								<button
 									onClick={() => handleDeleteSession(s.id)}
 									title="Delete chat"
@@ -179,11 +280,12 @@ export const MainView: React.FC = () => {
 										alignItems: 'center',
 										justifyContent: 'center',
 										padding: '6px',
-										fontSize: '1.2em', // 아이콘 크기 조절
+										fontSize: '16px',
+										lineHeight: 1,
 										borderRadius: 4
 									}}
 								>
-									&#x1F5D1; {/* 휴지통 아이콘 유니코드 */}
+									&#x1F5D1;
 								</button>
 							</li>
 						))}
@@ -193,23 +295,48 @@ export const MainView: React.FC = () => {
 		);
 	};
 
+
 	const renderCentralContent = () => {
 		if (view === 'settings') return <SettingsPage />;
 		if (error) return <ErrorDisplay error={error} />;
-		if (messages.length === 0) return <WelcomeScreen onSendMessage={handleSendMessage} />;
-		return <MessageList messages={messages} />;
+		if (messages.length === 0 && plan.length === 0 && !isThinking) return <WelcomeScreen onSendMessage={handleSendMessage} />;
+
+		return (
+			<>
+				<PlanView plan={plan} />
+				<MessageList
+					messages={messages}
+					isThinking={isThinking}
+					showProgress={showProgress}
+					progressMessages={progressMessages}
+					onToggleProgress={handleToggleProgress}
+				/>
+			</>
+		);
 	};
 
 	return (
 		<div className="app-container">
-			<Header onNewChat={handleNewChat} onShowHistory={handleShowHistory} onShowSettings={() => setView(v => (v === 'settings' ? 'chat' : 'settings'))} />
+			<Header
+				onNewChat={handleNewChat}
+				onShowHistory={handleShowHistory}
+				onShowSettings={() => setView(v => (v === 'settings' ? 'chat' : 'settings'))}
+				isAutonomousMode={isAutonomousMode}
+				onToggleAutonomousMode={handleToggleAutonomousMode}
+			/>
 			{renderHistoryPanel()}
-			<div className="main-view">
+			<div className="main-view" ref={mainViewRef}>
 				{renderCentralContent()}
 			</div>
 			{view !== 'settings' && (
 				<div className="input-area-container">
-					<InputArea onSendMessage={handleSendMessage} />
+					{/* 이 영역에 있던 Progress UI는 삭제되었습니다. */}
+					{statusText && !isThinking && (
+						<div className="status-update">
+							{statusText}
+						</div>
+					)}
+					<InputArea onSendMessage={handleSendMessage} disabled={isThinking} />
 				</div>
 			)}
 		</div>

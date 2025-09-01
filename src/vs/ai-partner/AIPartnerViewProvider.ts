@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { OrchestratorAgent } from './agents/OrchestratorAgent';
 
 function getNonce() {
     let text = '';
@@ -44,7 +43,7 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
                 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
                 <meta http-equiv=\"Content-Security-Policy\" content=\"${csp}\">
                 <link href=\"${styleUri}\" rel=\"stylesheet\">
-                <link href=\\"${codiconsUri}\\" rel=\\"stylesheet\\" />
+                <link href=\"${codiconsUri}\" rel=\"stylesheet\" />
                 <title>AI Partner</title>
                 <style nonce=\"${nonce}\">
                     body, html {
@@ -55,11 +54,9 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
                         color: var(--vscode-foreground);
                         font-family: var(--vscode-font-family);
                     }
-                    /* [수정 1] #root는 앱 전체를 담는 컨테이너이므로, 높이만 100%로 설정합니다. */
                     #root {
                         height: 100%;
                     }
-                    /* [수정 2] 초기 로딩 화면만을 위한 중앙 정렬 클래스를 새로 만듭니다. */
                     .loader-container {
                         display: flex;
                         flex-direction: column;
@@ -88,7 +85,6 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
             </head>
             <body>
                 <div id=\"root\">
-                    {/* [수정 3] 초기 로딩 화면을 loader-container로 감싸줍니다. */}
                     <div class=\"loader-container\">
                         <div class=\"loader\"></div>
                         <div class=\"loading-text\">Initializing AI Partner...</div>
@@ -103,9 +99,13 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
 
     public static readonly viewType = 'vibroboros.mainView';
 
+    private _view?: vscode.WebviewView;
+
+    private readonly _onDidReceiveMessage = new vscode.EventEmitter<any>();
+    public readonly onDidReceiveMessage = this._onDidReceiveMessage.event;
+
     constructor(
         private readonly _extensionUri: vscode.Uri,
-        private readonly orchestrator: OrchestratorAgent
     ) { }
 
     public resolveWebviewView(
@@ -113,50 +113,39 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ) {
+        this._view = webviewView;
+
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [
 				vscode.Uri.joinPath(this._extensionUri, 'dist'),
-                // 필요한 경로만 허용
             ],
-            // retainContextWhenHidden은 코드 옵션에 없음 (package.json에서만 설정)
         };
 
         webviewView.webview.html = getWebviewContent(webviewView.webview, this._extensionUri);
 
-        this.orchestrator.registerWebview(webviewView);
-
         const messageDisposable = webviewView.webview.onDidReceiveMessage(async (message) => {
             console.log('[AIPartnerViewProvider] Received message from UI:', message);
-            try {
-                await this.orchestrator.handleUIMessage(message);
-            } catch (err) {
-                console.error('[AIPartnerViewProvider] handleUIMessage failed:', err);
-            }
+            this._onDidReceiveMessage.fire(message);
         });
 
-        // 가시성 변화 시(특히 다시 보일 때) UI 동기화 보강
         const visibilityDisposable = webviewView.onDidChangeVisibility(() => {
             if (webviewView.visible) {
-                this.orchestrator.handleSessionChange().catch(err => {
-                    console.error('[AIPartnerViewProvider] handleSessionChange failed:', err);
-                });
-            }
-        });
-
-        const sessionChangeListener = vscode.authentication.onDidChangeSessions((e) => {
-            if (e.provider.id === 'google') {
-                this.orchestrator.handleSessionChange().catch(err => {
-                    console.error('[AIPartnerViewProvider] handleSessionChange failed:', err);
-                });
+                this._onDidReceiveMessage.fire({ command: 'viewVisible' });
             }
         });
 
         webviewView.onDidDispose(() => {
-            this.orchestrator.registerWebview(undefined);
             messageDisposable.dispose();
             visibilityDisposable.dispose();
-            sessionChangeListener.dispose();
         }, null);
+    }
+
+    public postMessage(message: any) {
+        if (this._view) {
+            this._view.webview.postMessage(message);
+        } else {
+            console.error('[AIPartnerViewProvider] Webview not available to post message.');
+        }
     }
 }

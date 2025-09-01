@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-export type AuthMode = 'google' | 'apiKey';
+export type AuthMode = 'apiKey';
 
 /**
  * A singleton service for managing the extension's configuration.
@@ -23,17 +23,9 @@ export class ConfigService {
 
     /**
      * Retrieves the current authentication mode.
-     * This is hardened to prevent race conditions at startup.
-     * @returns The current auth mode, safely defaulting to 'apiKey'.
+     * @returns The current auth mode, which is always 'apiKey'.
      */
     public getAuthMode(): AuthMode {
-        const mode = this.getConfiguration('auth').get<AuthMode>('mode');
-        // If the value is explicitly 'google', return that. Otherwise, default to 'apiKey'.
-        // This handles cases where the configuration is not yet loaded (undefined)
-        // and ensures we don't accidentally trigger Google auth.
-        if (mode === 'google') {
-            return 'google';
-        }
         return 'apiKey';
     }
 
@@ -42,7 +34,8 @@ export class ConfigService {
      * @param mode The authentication mode to save.
      */
     public async setAuthMode(mode: AuthMode): Promise<void> {
-        await this.getConfiguration('auth').update('mode', mode, vscode.ConfigurationTarget.Global);
+        // This method now only ensures the mode is set to apiKey.
+        await this.getConfiguration('auth').update('mode', 'apiKey', vscode.ConfigurationTarget.Global);
     }
 
     /**
@@ -83,4 +76,8 @@ export class ConfigService {
     public getRequestTimeout(agentName: string): number {
         return this.getConfiguration(`agent.${agentName}`).get<number>('requestTimeout') || 60000;
     }
+
+	public getContextTokenThreshold(): number {
+		return this.getConfiguration('agent.orchestrator').get<number>('contextTokenThreshold') || 100000;
+	}
 }
