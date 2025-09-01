@@ -7,7 +7,7 @@ This project implements a sophisticated, multi-agent AI system that integrates d
 The system is built upon two primary communication protocols:
 
 1.  **Agent-to-Agent (A2A) Protocol:** Used for internal communication between the various specialized agents within the VSCode extension. This allows for complex workflows where agents can delegate tasks and share information seamlessly.
-2.  **Model-Controller-Protocol (MCP):** Used for external communication between the extension (acting as an MCP client) and various tool servers. This allows the AI to perform actions like web searches, terminal commands, and more.
+2.  **Model-Context-Protocol (MCP):** Used for external communication between the extension (acting as an MCP client) and various tool servers. This allows the AI to perform actions like web searches, terminal commands, and more.
 
 ### System Components
 
