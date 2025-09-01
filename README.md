@@ -90,7 +90,7 @@ graph TD
             Analysis[🔍 CodeAnalysisAgent]
             Memory[💾 ContextArchiveAgent]
             Learning[🧑‍🏫 AILedLearningAgent]
-            Readme[✍️ ReadmeGenerationAgent]  // Added
+            Readme[✍️ ReadmeGenerationAgent]
         end
 
         subgraph "Tools"
@@ -105,7 +105,7 @@ graph TD
 
     Orchestrator -- Creates Plan & Delegates --> A2ADispatch
     Orchestrator -- On Plan Completion --> A2ADispatch
-    A2ADispatch -- Task --> Readme // New Flow
+    A2ADispatch -- Task --> Readme
 
     A2ADispatch -- Task --> Refactor
     A2ADispatch -- Task --> Docs
@@ -122,7 +122,7 @@ graph TD
     Docs -- Uses Tool --> MCP
     Test -- Uses Tool --> MCP
     Security -- Uses Tool --> MCP
-    Readme -- Uses Tool --> MCP // New Flow
+    Readme -- Uses Tool --> MCP
 
     MCP -- Executes --> FS
     MCP -- Executes --> Term
@@ -136,7 +136,7 @@ graph TD
     Refactor -- API Calls --> LLM
     Docs -- API Calls --> LLM
     Test -- API Calls --> LLM
-    Readme -- API Calls --> LLM // New Flow
+    Readme -- API Calls --> LLM
 ```
 
 ## 🤖 Meet the Agents
