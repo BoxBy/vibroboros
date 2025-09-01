@@ -17,13 +17,13 @@ interface MessageItemProps {
 
 // MODIFIED: 새로운 props를 받도록 수정합니다.
 export const MessageItem: React.FC<MessageItemProps> = ({
-															message,
-															isLastMessage,
-															isThinking,
-															showProgress,
-															progressMessages,
-															onToggleProgress,
-														}) => {
+	message,
+	isLastMessage,
+	isThinking,
+	showProgress,
+	progressMessages,
+	onToggleProgress,
+}) => {
 	const [showThought, setShowThought] = useState(false);
 	const isModel = message.sender === 'ai';
 
