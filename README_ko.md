@@ -90,7 +90,7 @@ graph TD
             Analysis[🔍 코드 분석 에이전트]
             Memory[💾 컨텍스트 아카이브 에이전트]
             Learning[🧑‍🏫 AI 학습 에이전트]
-            Readme[✍️ README 생성 에이전트]  // 추가됨
+            Readme[✍️ README 생성 에이전트]
         end
 
         subgraph "도구"
@@ -105,7 +105,7 @@ graph TD
 
     Orchestrator -- 계획 생성 및 위임 --> A2ADispatch
     Orchestrator -- 계획 완료 시 --> A2ADispatch
-    A2ADispatch -- 작업 --> Readme // 새로운 흐름
+    A2ADispatch -- 작업 --> Readme
 
     A2ADispatch -- 작업 --> Refactor
     A2ADispatch -- 작업 --> Docs
@@ -122,7 +122,7 @@ graph TD
     Docs -- 도구 사용 --> MCP
     Test -- 도구 사용 --> MCP
     Security -- 도구 사용 --> MCP
-    Readme -- 도구 사용 --> MCP // 새로운 흐름
+    Readme -- 도구 사용 --> MCP
 
     MCP -- 실행 --> FS
     MCP -- 실행 --> Term
@@ -136,7 +136,7 @@ graph TD
     Refactor -- API 호출 --> LLM
     Docs -- API 호출 --> LLM
     Test -- API 호출 --> LLM
-    Readme -- API 호출 --> LLM // 새로운 흐름
+    Readme -- API 호출 --> LLM
 ```
 
 ## 🤖 에이전트 소개
