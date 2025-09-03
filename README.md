@@ -161,7 +161,7 @@ The power of Vibroboros comes from its team of specialized agents. We've assembl
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/your-repo/vibroboros.git
+    git clone https://github.com/BoxBy/vibroboros.git
     cd vibroboros
     ```
 2.  **Install dependencies**:
