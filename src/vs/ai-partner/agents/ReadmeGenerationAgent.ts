@@ -33,7 +33,7 @@ export class ReadmeGenerationAgent {
             const progressContent = await this._readFileWithTool('PROGRESS.md');
             const taskContent = await this._readFileWithTool('TASK.md');
 
-            const systemPrompt = `You are a senior software engineer tasked with writing a high-quality, professional README.md file for a new open-source project. Your audience is other developers. You must create a README that is welcoming, informative, and encourages contributions. Use the provided project context to generate the file. The README should be in Markdown format. Include sections like "Core Features", "Architecture", "Getting Started", and "Contributing".`;
+            const systemPrompt = `You are a senior software engineer tasked with writing a high-quality, professional README.md file for a new open-source project. Your audience is other developers. You must create a README that is welcoming, informative, and encourages contributions. Use the provided project context to generate the file. The README should be in Markdown format. Include sections like "Core Features", "Architecture", "Getting Started", "Documentation", and "Contributing". For the "Documentation" section, ensure it links to detailed philosophy and architecture documents located in a 'docs' folder (e.g., './docs/philosophy.md', './docs/architecture.md').`;
 
             const userPrompt = `Here is the context for the project:\n\n` +
                                `--- PROJECT PLAN (PLAN.md) ---\n${planContent}\n\n` +
