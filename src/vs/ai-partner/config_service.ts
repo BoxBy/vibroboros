@@ -33,7 +33,7 @@ export class ConfigService {
      * Saves the chosen authentication mode to the user's settings.
      * @param mode The authentication mode to save.
      */
-    public async setAuthMode(mode: AuthMode): Promise<void> {
+    public async setAuthMode(): Promise<void> {
         // This method now only ensures the mode is set to apiKey.
         await this.getConfiguration('auth').update('mode', 'apiKey', vscode.ConfigurationTarget.Global);
     }

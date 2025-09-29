@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { A2AMessage } from '../interfaces/A2AMessage';
 
 interface PendingContext {
@@ -7,6 +8,7 @@ interface PendingContext {
     uiLanguage: string; // File language와 구분하기 위해 이름 변경
     contentPreview: string;
     openFiles: string[];
+    folderOverview: string;
 }
 
 /**
@@ -39,13 +41,29 @@ export class ContextManagementAgent {
 
         const activeEditor = vscode.window.activeTextEditor;
         const openFiles = vscode.workspace.textDocuments.map(doc => doc.uri.fsPath);
+        const activeFilePath = activeEditor ? activeEditor.document.uri.fsPath : 'N/A';
+        let folderOverviewContent = 'N/A';
+
+        if (activeEditor) {
+            const dirPath = path.dirname(activeEditor.document.uri.fsPath);
+            const overviewPath = path.join(dirPath, '_folder_overview.md');
+            try {
+                const overviewUri = vscode.Uri.file(overviewPath);
+                const overviewContentBytes = await vscode.workspace.fs.readFile(overviewUri);
+                folderOverviewContent = Buffer.from(overviewContentBytes).toString('utf-8');
+            } catch (error) {
+                console.log(`[ContextManagementAgent] Could not find or read _folder_overview.md at ${overviewPath}`);
+                folderOverviewContent = 'No folder overview file found for the current directory.';
+            }
+        }
 
         this.pendingContext = {
             originalQuery: query,
-            activeFilePath: activeEditor ? activeEditor.document.uri.fsPath : 'N/A',
+            activeFilePath,
             uiLanguage: vscode.env.language, // VSCode UI 언어 정보 수집
             contentPreview: activeEditor ? activeEditor.document.getText().substring(0, 1000) : 'N/A',
             openFiles,
+            folderOverview: folderOverviewContent,
         };
 
         // Simple regex to find potential function/class names in a query.

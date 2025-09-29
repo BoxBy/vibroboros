@@ -34,7 +34,7 @@ export const MainView: React.FC = () => {
 	const [isAutonomousMode, setAutonomousMode] = useState(false);
 	const [statusText, setStatusText] = useState<string | null>(null);
 	const [progressMessages, setProgressMessages] = useState<string[]>([]);
-	const [showProgress, setShowProgress] = useState(false);
+
 	const [isThinking, setIsThinking] = useState(false);
 
 	const mainViewRef = useRef<HTMLDivElement>(null);
@@ -187,10 +187,6 @@ export const MainView: React.FC = () => {
 		vscodeService.postMessage({ command: 'userQuery', query: messageText });
 	};
 
-	const handleToggleProgress = () => {
-		setShowProgress(prev => !prev);
-	};
-
 	const handleNewChat = () => {
 		setView('chat');
 		setError(null);
@@ -306,10 +302,6 @@ export const MainView: React.FC = () => {
 				<PlanView plan={plan} />
 				<MessageList
 					messages={messages}
-					isThinking={isThinking}
-					showProgress={showProgress}
-					progressMessages={progressMessages}
-					onToggleProgress={handleToggleProgress}
 				/>
 			</>
 		);

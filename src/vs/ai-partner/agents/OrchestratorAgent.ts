@@ -9,13 +9,26 @@ import { DeveloperLogService } from '../services/DeveloperLogService';
 // --- Type Definitions ---
 type ChatMessage = { author: 'user' | 'agent', content: any[] };
 
-// --- OrchestratorAgent Class ---
+/**
+ * @class OrchestratorAgent
+ * @description The master agent that coordinates all other agents and services.
+ * It acts as the central hub for the AI Partner, managing the chat lifecycle,
+ * session state, UI communication, and the delegation of tasks to specialized agents.
+ * This agent is the "brain" of the operation, deciding when to talk to the LLM,
+ * when to call a tool, and when to delegate to another agent.
+ */
 export class OrchestratorAgent {
 	private static readonly AGENT_ID = 'OrchestratorAgent';
 	private static readonly SESSIONS_INDEX_KEY = 'aiPartnerChatSessionsIndex';
 	private static readonly ACTIVE_SESSION_ID_KEY = 'aiPartnerActiveChatSessionId';
 
 	private readonly _onDidPostMessage = new vscode.EventEmitter<any>();
+
+	/**
+	 * An event that fires when the agent wants to send a message to the UI (ViewProvider).
+	 * The ViewProvider should listen to this event to update the webview's state.
+	 * @event
+	 */
     public readonly onDidPostMessage = this._onDidPostMessage.event;
 
 	private dispatch: (message: A2AMessage<any>) => Promise<void>;
@@ -32,6 +45,17 @@ export class OrchestratorAgent {
     private lastPromptTokenCount: number = 0;
     private currentPlan: { description: string; status: string; }[] = [];
 
+    /**
+     * Creates an instance of the OrchestratorAgent.
+     * @param dispatch Function to send messages to other agents.
+     * @param mcpServer The Master Control Program server for handling tool calls.
+     * @param llmService Service for communicating with the Large Language Model.
+     * @param authService Service for managing user authentication.
+     * @param configService Service for accessing extension configuration.
+     * @param state VS Code extension state for persistence.
+     * @param diagnosticCollection Collection for displaying code diagnostics (e.g., linting issues).
+     * @param developerLogService Service for logging internal agent activities.
+     */
 	constructor(
 		dispatch: (message: A2AMessage<any>) => Promise<void>,
 		mcpServer: MCPServer,
@@ -53,6 +77,11 @@ export class OrchestratorAgent {
 		this.loadOrInitializeSession();
 	}
 
+	/**
+	 * Loads the active chat session from the extension's state, or creates a new one if none exists.
+	 * This ensures that the chat history and context are persisted across VS Code sessions.
+	 * @private
+	 */
 	private loadOrInitializeSession(): void {
 		let activeId = this.state.get<string>(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, '');
 		let sessions = this.state.get<any[]>(OrchestratorAgent.SESSIONS_INDEX_KEY, []) || [];
@@ -74,6 +103,10 @@ export class OrchestratorAgent {
 		this.llmConversationHistory = this.state.get<LlmMessage[]>(this.getSessionLlmHistoryKey(activeId), []);
 	}
 
+	/**
+	 * Handles a change in the active chat session.
+	 * It reloads the relevant history and notifies the UI to update its display.
+	 */
     public async handleSessionChange(): Promise<void> {
         await this.sendFullSettingsToUI();
         const sessions = this.state.get<any[]>(OrchestratorAgent.SESSIONS_INDEX_KEY, []) || [];
@@ -82,6 +115,12 @@ export class OrchestratorAgent {
         this._onDidPostMessage.fire({ command: 'loadHistory', payload: this.chatHistory });
     }
 
+	/**
+	 * Handles incoming messages from the Webview UI, acting as the primary router for user interactions.
+	 * This method dispatches actions based on the command received from the UI, such as processing a user query,
+	 * changing settings, or managing chat sessions.
+	 * @param message The message object from the UI, containing a command and payload.
+	 */
     public async handleUIMessage(message: any): Promise<void> {
         console.log(`[${OrchestratorAgent.AGENT_ID}] Received message from ViewProvider:`, message);
         switch (message.command) {
@@ -139,7 +178,7 @@ export class OrchestratorAgent {
 			case 'deleteChat':
 			{
 				const sessionIdToDelete = message.sessionId as string;
-				if (!sessionIdToDelete) break;
+				if (!sessionIdToDelete) {break;}
 
 				let sessions = this.state.get<any[]>(OrchestratorAgent.SESSIONS_INDEX_KEY, []) || [];
 				let activeId = this.state.get<string>(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, '');
@@ -174,6 +213,12 @@ export class OrchestratorAgent {
         }
     }
 
+	/**
+	 * Handles incoming messages from other agents (Agent-to-Agent communication).
+	 * This method is the entry point for specialist agents to return their results to the orchestrator.
+	 * It processes the results, updates the conversation history, and determines the next step in the plan.
+	 * @param message The A2A message from the sending agent, containing the results of its task.
+	 */
     public async handleA2AMessage(message: A2AMessage<any>): Promise<void> {
         switch (message.type) {
             case 'response-context':
@@ -190,7 +235,7 @@ export class OrchestratorAgent {
                     });
                 }
 
-                const systemPrompt = this.createSystemPrompt(contextPayload.activeFilePath, contextPayload.uiLanguage) + (searchContextSummary ? `\n\n## Codebase Search Context\n${searchContextSummary}` : "");
+                const systemPrompt = this.createSystemPrompt(contextPayload.activeFilePath, contextPayload.uiLanguage, contextPayload.folderOverview) + (searchContextSummary ? `\n\n## Codebase Search Context\n${searchContextSummary}` : "");
 
                 this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Context received. Thinking...' } });
 
@@ -247,6 +292,10 @@ export class OrchestratorAgent {
         }
     }
 
+	/**
+	 * Sends the complete, current state of all relevant settings to the UI.
+	 * @private
+	 */
     private async sendFullSettingsToUI() {
         const authMode = this.configService.getAuthMode();
         const isLoggedIn = await this.authService.isLoggedIn();
@@ -256,8 +305,13 @@ export class OrchestratorAgent {
         this._onDidPostMessage.fire({ command: 'fullSettingsResponse', payload: { authMode, isLoggedIn, account, apiKey: apiKeys[0] || '', endpoint, isAutonomousMode: this.isAutonomousMode } });
     }
 
+	/**
+	 * Handles a user's text query by creating and executing a multi-step plan.
+	 * @param {string} userText The raw text from the user.
+	 * @private
+	 */
     private async handleChatAndSpecialistCommands(userText: string): Promise<void> {
-        if (!userText) return;
+        if (!userText) {return;}
 
         const userMessage: ChatMessage = { author: 'user', content: [{ type: 'text', text: userText }] };
         this.addMessageToHistory(userMessage);
@@ -266,6 +320,12 @@ export class OrchestratorAgent {
         await this.createAndExecutePlan(userText);
     }
 
+	/**
+	 * Creates a multi-step plan based on the user's request using an LLM call,
+	 * then begins execution of that plan.
+	 * @param {string} userText The user's request.
+	 * @private
+	 */
     private async createAndExecutePlan(userText: string): Promise<void> {
         this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Creating a plan...' } });
 
@@ -292,6 +352,11 @@ export class OrchestratorAgent {
         }
     }
 
+	/**
+	 * Executes the next pending step in the current plan.
+	 * If no steps are pending, it finalizes the plan.
+	 * @private
+	 */
     private async executePlan(): Promise<void> {
         const nextStepIndex = this.currentPlan.findIndex(step => step.status === 'pending');
         if (nextStepIndex === -1) {
@@ -308,6 +373,12 @@ export class OrchestratorAgent {
         await this.routeAndDelegate(step.description, this.llmConversationHistory.find(m => m.role === 'user')?.content || '');
     }
 
+	/**
+	 * Routes a task (a step in the plan) to the most appropriate specialist agent using an LLM call.
+	 * @param {string} stepDescription The description of the task to be routed.
+	 * @param {string} originalQuery The original user query for context.
+	 * @private
+	 */
     private async routeAndDelegate(stepDescription: string, originalQuery: string): Promise<void> {
         const specialistAgents = [
             {
@@ -420,13 +491,18 @@ export class OrchestratorAgent {
         this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient, timestamp: new Date().toISOString(), type, payload: { filePath, query } });
     }
 
-    private createSystemPrompt(activeFilePath?: string, uiLanguage?: string): string {
+    private createSystemPrompt(activeFilePath?: string, uiLanguage?: string, folderOverview?: string): string {
         let context = '';
         if (uiLanguage) {
             context += `\n- The user's language is '${uiLanguage}'. You should respond in this language.`;
         }
         if (activeFilePath && activeFilePath !== 'N/A') {
             context += `\n- The user currently has the file '${activeFilePath}' open.`;
+        }
+        if (folderOverview && folderOverview !== 'N/A' && !folderOverview.includes('No folder overview file found')) {
+            context += `\\n\\n## Directory Overview (_folder_overview.md)\\n**CRITICAL: You MUST consult this overview to understand the directory structure and the purpose of each file.** This is your primary source of information for navigating the project. The content is from the \`_folder_overview.md\` file in the relevant directory.\\n\\n${folderOverview}`;
+        } else {
+            context += `\\n\\n## Directory Overview\\n**WARNING: \`_folder_overview.md\` was not found in the current directory.** You have limited information about the project structure. You may need to use file system tools to explore the directory if the user's request requires it.`;
         }
 
         let autonomousInstructions = '';
@@ -454,6 +530,13 @@ export class OrchestratorAgent {
         });
 	}
 
+	/**
+	 * Summarizes the conversation history if it exceeds a token threshold.
+	 * This is a crucial mechanism for managing long-term context with the LLM.
+	 * @param {LlmMessage[]} history The conversation history to potentially summarize.
+	 * @returns {Promise<LlmMessage[]>} The new, potentially summarized, conversation history.
+	 * @private
+	 */
 	private async summarizeHistory(history: LlmMessage[]): Promise<LlmMessage[]> {
 		const tokenThreshold = this.configService.getContextTokenThreshold();
 		console.log(`[OrchestratorAgent DEBUG] summarizeHistory called. Last prompt tokens: ${this.lastPromptTokenCount}, Threshold: ${tokenThreshold}`);
@@ -516,6 +599,12 @@ export class OrchestratorAgent {
 		return history;
 	}
 
+	/**
+	 * The main processing loop for handling LLM responses.
+	 * It sends the current conversation to the LLM, handles streaming back the response,
+	 * and then decides the next action (e.g., call a tool, send a message, or continue in a loop).
+	 * @private
+	 */
 	private async processLlmResponse(): Promise<void> {
 		try {
             this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Thinking...' } });

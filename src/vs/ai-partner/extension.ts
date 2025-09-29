@@ -1,4 +1,9 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import { spawn } from 'child_process';
+import { McpService } from './mcp_service';
+import { McpClient } from './mcp_client';
 import { OrchestratorAgent } from './agents/OrchestratorAgent';
 import { CodeAnalysisAgent } from './agents/CodeAnalysisAgent';
 import { ContextManagementAgent } from './agents/ContextManagementAgent';
@@ -50,6 +55,40 @@ export function activate(context: vscode.ExtensionContext) {
         const llmService = new LLMService();
         const diagnosticCollection = vscode.languages.createDiagnosticCollection("aiPartner");
         context.subscriptions.push(diagnosticCollection);
+
+        // 1.5. Initialize and register external MCP clients.
+        const mcpService = McpService.getInstance();
+        const mcpJsonPath = path.join(context.extensionPath, '.agent', 'mcp-servers.json');
+        try {
+            const mcpConfigFile = fs.readFileSync(mcpJsonPath, 'utf-8');
+            const mcpConfig = JSON.parse(mcpConfigFile);
+
+            if (mcpConfig.mcpServers) {
+                for (const serverName in mcpConfig.mcpServers) {
+                    const serverConf = mcpConfig.mcpServers[serverName];
+                    try {
+                        console.log(`[MCP] Spawning server: ${serverName}`);
+                        const serverProcess = spawn(serverConf.command, serverConf.args, { env: { ...process.env, ...serverConf.env } });
+                        const client = new McpClient(serverProcess, serverName);
+                        
+                        // Initialize and register the client
+                        client.initialize().then(initResult => {
+                            console.log(`[MCP] Initialized ${serverName}:`, initResult);
+                            mcpService.registerClient(serverName, client);
+                        }).catch(initError => {
+                            console.error(`[MCP] Failed to initialize ${serverName}:`, initError);
+                        });
+
+                        context.subscriptions.push({ dispose: () => client.dispose() });
+
+                    } catch (spawnError) {
+                        console.error(`[MCP] Failed to spawn server process for ${serverName}:`, spawnError);
+                    }
+                }
+            }
+        } catch (fileError) {
+            console.error(`[MCP] Could not read or parse mcp-servers.json:`, fileError);
+        }
 
         // 2. Instantiate the OrchestratorAgent.
         const orchestrator = new OrchestratorAgent(

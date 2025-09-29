@@ -3,8 +3,12 @@
 import * as vscode from 'vscode';
 import { activate as activateAIPartner, deactivate as deactivateAIPartner } from './vs/ai-partner/extension';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+/**
+ * This method is called when the extension is activated.
+ * The extension is activated the very first time a command is executed
+ * or when a view is opened.
+ * @param {vscode.ExtensionContext} context - The context in which the extension is running.
+ */
 export function activate(context: vscode.ExtensionContext) {
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
@@ -31,7 +35,10 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 }
 
-// This method is called when your extension is deactivated
+/**
+ * This method is called when the extension is deactivated.
+ * It is used to clean up resources.
+ */
 export function deactivate() {
 	try {
 		deactivateAIPartner?.();

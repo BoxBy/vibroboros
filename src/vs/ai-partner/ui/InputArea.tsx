@@ -2,14 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 
 interface InputAreaProps {
 	onSendMessage: (message: string) => void;
+	disabled?: boolean;
 }
 
-export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage }) => {
+export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled }) => {
 	const [message, setMessage] = useState('');
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 	const handleSend = () => {
-		if (message.trim()) {
+		if (message.trim() && !disabled) {
 			onSendMessage(message);
 			setMessage('');
 		}
@@ -41,8 +42,9 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage }) => {
 				onKeyPress={handleKeyPress}
 				placeholder="메시지를 입력하세요..."
 				rows={1}
+				disabled={disabled}
 			/>
-			<button onClick={handleSend} title="Send">
+			<button onClick={handleSend} title="Send" disabled={disabled}>
 				<span>&#10148;</span>
 			</button>
 		</div>

@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { A2AMessage } from '../interfaces/A2AMessage';
+import { MCPMessage } from '../interfaces/MCPMessage';
 import { MCPServer } from '../server/MCPServer';
-import { LLMService, LlmMessage } from '../services/LLMService';
+import { LLMService } from '../services/LLMService';
 import { ConfigService } from '../config_service';
 import { randomUUID } from 'crypto';
 
@@ -33,12 +34,68 @@ export class ReadmeGenerationAgent {
             const progressContent = await this._readFileWithTool('PROGRESS.md');
             const taskContent = await this._readFileWithTool('TASK.md');
 
-            const systemPrompt = `You are a senior software engineer tasked with writing a high-quality, professional README.md file for a new open-source project. Your audience is other developers. You must create a README that is welcoming, informative, and encourages contributions. Use the provided project context to generate the file. The README should be in Markdown format. Include sections like "Core Features", "Architecture", "Getting Started", "Documentation", and "Contributing". For the "Documentation" section, ensure it links to detailed philosophy and architecture documents located in a 'docs' folder (e.g., './docs/philosophy.md', './docs/architecture.md').`;
+            const systemPrompt = `You are a senior software engineer tasked with writing a high-quality, professional README.md file for a new open-source project. Your audience is other developers.
 
-            const userPrompt = `Here is the context for the project:\n\n` +
-                               `--- PROJECT PLAN (PLAN.md) ---\n${planContent}\n\n` +
-                               `--- CURRENT PROGRESS (PROGRESS.md) ---\n${progressContent}\n\n` +
-                               `--- KEY TASKS (TASK.md) ---\n${taskContent}\n\n` +
+Your goal is to create a README similar in structure and quality to the example provided below. You must adapt the content to the project's context.
+
+**Key Sections to Include:**
+- A title and a brief, engaging introduction.
+- Badges for important links (like documentation, license, etc.).
+- A "News" or "Updates" section for recent changes.
+- "Performance" section if applicable (you can use placeholders if you don't have data).
+- "How to Run" or "Getting Started" with clear code examples.
+- "Deployment" instructions if applicable.
+- "Contributing" guidelines.
+- "License" information.
+- "Citation" if the project is academic.
+
+**Example README Structure:**
+
+<details>
+<summary>Click to see an example of a high-quality README</summary>
+
+# PROJECT_NAME
+<p align="center">
+<img src="path/to/logo.svg", width="400">
+</p>
+
+<div align="center">
+  <!-- Badges -->
+</div>
+
+## Introduction
+...
+
+## News
+...
+
+## Performance
+...
+
+## Getting Started
+...
+
+</details>
+
+---
+
+Now, using the provided project context (PLAN.md, PROGRESS.md, TASK.md), generate a complete README.md file in Markdown format for the current project. For the "Documentation" section, ensure it links to detailed philosophy and architecture documents located in a 'docs' folder (e.g., './docs/philosophy.md', './docs/architecture.md').`;
+
+            const userPrompt = `Here is the context for the project:
+
+` + 
+                               `--- PROJECT PLAN (PLAN.md) ---
+${planContent}
+
+` + 
+                               `--- CURRENT PROGRESS (PROGRESS.md) ---
+${progressContent}
+
+` + 
+                               `--- KEY TASKS (TASK.md) ---
+${taskContent}
+
+` + 
                                `Based on all this information, please generate a complete README.md file.`;
 
             this._sendStatusBarUpdate('Context gathered. Asking LLM to generate the README...');
@@ -90,12 +147,12 @@ export class ReadmeGenerationAgent {
 
     private async _readFileWithTool(fileName: string): Promise<string> {
         const rootPath = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri.fsPath : '';
-        if (!rootPath) return `Could not find workspace root to read ${fileName}`;
+        if (!rootPath) {return `Could not find workspace root to read ${fileName}`;}
 
         const filePath = `${rootPath}/${fileName}`;
 
         try {
-            const fileReadRequest = {
+            const fileReadRequest: MCPMessage<{ name: string; arguments: { filePath: string; }; }> = {
                 jsonrpc: '2.0',
                 id: randomUUID(),
                 method: 'tools/call',
@@ -111,7 +168,7 @@ export class ReadmeGenerationAgent {
 
     private async _writeFileWithTool(filePath: string, content: string): Promise<void> {
         try {
-            const fileWriteRequest = {
+            const fileWriteRequest: MCPMessage<{ name: string; arguments: { filePath: string; content: string; }; }> = {
                 jsonrpc: '2.0',
                 id: randomUUID(),
                 method: 'tools/call',

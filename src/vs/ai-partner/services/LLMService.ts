@@ -22,14 +22,28 @@ export interface LlmFullResponse {
     };
 }
 
+/**
+ * @class LLMService
+ * @description Manages all communication with a remote Large Language Model (LLM).
+ * This service is responsible for sending prompts, handling API keys,
+ * processing streamed responses, and managing connection and API errors.
+ */
 export class LLMService {
 
+    /**
+     * Creates an instance of LLMService.
+     */
     public constructor() {}
 
     /**
      * Requests a completion from the LLM, with optional support for streaming.
-     * @param onChunk - An optional callback to handle streaming response chunks.
-     * @returns A promise that resolves to the full response object from the LLM.
+     * @param {LlmMessage[]} conversationHistory - The sequence of messages representing the conversation so far.
+     * @param {string} apiKey - The API key for authenticating with the LLM service.
+     * @param {string} endpoint - The URL of the OpenAI-compatible API endpoint.
+     * @param {any[]} tools - A list of tool definitions that the LLM can use.
+     * @param {string} model - The identifier of the language model to use for the completion.
+     * @param {(chunk: string) => void} [onChunk] - An optional callback to handle streaming response chunks. If provided, streaming is enabled.
+     * @returns {Promise<LlmFullResponse>} A promise that resolves to the full response object from the LLM.
      */
 	public async requestLLMCompletion(
 		conversationHistory: LlmMessage[],
@@ -86,11 +100,22 @@ export class LLMService {
 
         } catch (error: any) {
             // ... (error handling as before)
-            let connectErrorMessage = `**Connection Error:** Could not connect to the LLM service at \`${endpoint}\`.`;
+            let connectErrorMessage = `**Connection Error:** Could not connect to the LLM service at 
+${endpoint}
+.`;
             return { choices: [{ message: { role: 'assistant', content: connectErrorMessage } }] };
         }
     }
 
+    /**
+     * Processes a streamed response from the LLM API.
+     * It reads the stream chunk by chunk, decodes it, and parses the server-sent events (SSE).
+     * As content and tool calls are received, they are accumulated and the onChunk callback is fired for content.
+     * @param {ReadableStream<Uint8Array>} stream - The response body stream from the fetch API.
+     * @param {(chunk: string) => void} onChunk - The callback to execute for each piece of content received.
+     * @returns {Promise<LlmFullResponse>} A promise that resolves to the fully assembled response once the stream is complete.
+     * @private
+     */
     private async handleStreamedResponse(
         stream: ReadableStream<Uint8Array>,
         onChunk: (chunk: string) => void

@@ -62,7 +62,7 @@ export class DocumentationGenerationAgent extends Agent {
                 [],
                 model
             );
-            const documentation = llmResponse.content;
+            const documentation = llmResponse.choices[0]?.message?.content;
 
             await this.sendMessage({
                 sender: this.name,

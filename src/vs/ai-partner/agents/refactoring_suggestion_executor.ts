@@ -55,7 +55,7 @@ export class RefactoringSuggestionExecutor implements AgentExecutor {
                 artifact: {
                     artifactId: uuidv4(),
                     name: 'refactoring-suggestions',
-                    parts: [{ kind: 'text', text: suggestions.content }]
+                    parts: [{ kind: 'text', text: suggestions.choices[0]?.message?.content ?? '' }]
                 },
                 append: false,
                 lastChunk: true

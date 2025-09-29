@@ -99,7 +99,7 @@ export class CodeAnalysisExecutor implements AgentExecutor {
 
         try {
             const llmResponse = await this.llmService.requestLLMCompletion(conversationHistory, apiKeys[0], endpoint, [], model);
-            return { suggestions: llmResponse.content };
+            return { suggestions: llmResponse.choices[0]?.message?.content };
         } catch (error: any) {
             console.error('[CodeAnalysisExecutor] Failed to get suggestions:', error);
             return { error: error.message };

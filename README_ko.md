@@ -161,7 +161,7 @@ Vibroboros의 힘은 전문화된 에이전트 팀에서 나옵니다. 저희는
 
 1.  **리포지토리 클론**:
     ```bash
-    git clone https://github.com/your-repo/vibroboros.git
+    git clone https://github.com/BoxBy/vibroboros.git
     cd vibroboros
     ```
 2.  **의존성 설치**:

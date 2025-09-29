@@ -62,7 +62,7 @@ export class RefactoringSuggestionAgent extends Agent {
                 [],
                 model
             );
-            const suggestions = llmResponse.content;
+            const suggestions = llmResponse.choices[0]?.message?.content;
 
             await this.sendMessage({
                 sender: this.name,

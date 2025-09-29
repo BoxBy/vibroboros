@@ -131,7 +131,6 @@ export class CodeAnalysisAgent {
     private parseFileForSymbols(content: string): CodeSymbol[] {
         const lines = content.split('\n');
         const symbols: CodeSymbol[] = [];
-        const parentStack: CodeSymbol[] = [];
 
         // Very basic regex for identifying classes, functions, and methods.
         // This is not a full AST parser and has limitations.

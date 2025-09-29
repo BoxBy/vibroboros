@@ -58,7 +58,7 @@ export class DocumentationGenerationAgent {
                 model
             );
 
-            const generatedDocs = llmResponse.content;
+            const generatedDocs = llmResponse.choices[0]?.message?.content;
 
             const responsePayload = {
                 content: [

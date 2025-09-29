@@ -88,7 +88,7 @@ export class DocGenExecutor implements AgentExecutor {
 
         try {
             const llmResponse = await this.llmService.requestLLMCompletion(conversationHistory, apiKeys[0], endpoint, [], model);
-            return { documentation: llmResponse.content };
+            return { documentation: llmResponse.choices[0]?.message?.content };
         } catch (error: any) {
             console.error('[DocGenExecutor] Failed to generate documentation:', error);
             return { error: error.message };
