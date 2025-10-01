@@ -1,0 +1,482 @@
+[
+    {
+        "path": "./agents/OrchestratorAgent.ts",
+        "card": {
+            "name": "OrchestratorAgent",
+            "description": "The main agent that orchestrates tasks and delegates to other agents.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": true,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "The user's prompt."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "response": {
+                        "type": "string",
+                        "description": "The agent's response."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/MindstormAgent.ts",
+        "card": {
+            "name": "MindstormAgent",
+            "description": "Takes a high-level user command and creates a detailed execution plan, saving it to PLAN.md. It can also ask for more information if the command is ambiguous.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The user's high-level command."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "plan": {
+                        "type": "string",
+                        "description": "The generated plan in Markdown format."
+                    },
+                    "question": {
+                        "type": "string",
+                        "description": "A clarifying question to the user."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/TaskDecompositionAgent.ts",
+        "card": {
+            "name": "TaskDecompositionAgent",
+            "description": "Breaks down the high-level plan in PLAN.md into a list of concrete, actionable tasks and saves them to TASK.md.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {}
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "tasks": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "The list of generated tasks."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/ProgressTrackingAgent.ts",
+        "card": {
+            "name": "ProgressTrackingAgent",
+            "description": "Updates TASK.md to mark tasks as completed.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "taskDescription": {
+                        "type": "string",
+                        "description": "The description of the completed task."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "path": "./agents/CodeAnalysisAgent.ts",
+        "card": {
+            "name": "CodeAnalysisAgent",
+            "description": "An agent that can index the codebase and search for symbols using an AST parser.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "description": "The operation to perform: 'index', 'reindex', or 'search'.",
+                        "enum": ["index", "reindex", "search"]
+                    },
+                    "filePath": {
+                        "type": "string",
+                        "description": "The path to the file to re-index. Only used for 'reindex' operation."
+                    },
+                    "symbolName": {
+                        "type": "string",
+                        "description": "The name of the symbol to search for. Only used for 'search' operation."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "description": "The search results. Only for 'search' operation.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "filePath": { "type": "string" },
+                                "symbol": { "type": "object" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/TestGenerationAgent.ts",
+        "card": {
+            "name": "TestGenerationAgent",
+            "description": "An agent that generates unit tests for a given code file.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "filePath": {
+                        "type": "string",
+                        "description": "The absolute path to the file to generate tests for."
+                    },
+                    "userQuery": {
+                        "type": "string",
+                        "description": "The original user query that triggered the request."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "rawContent": {
+                        "type": "string",
+                        "description": "The generated test code."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/DocumentationGenerationAgent.ts",
+        "card": {
+            "name": "DocumentationGenerationAgent",
+            "description": "An agent that generates documentation for a given code file.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "filePath": {
+                        "type": "string",
+                        "description": "The absolute path to the file to generate documentation for."
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "The user query related to documentation."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The generated documentation."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/ReadmeGenerationAgent.ts",
+        "card": {
+            "name": "ReadmeGenerationAgent",
+            "description": "An agent that generates and updates the project README.md file.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {}
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "The status of the README generation."
+                    },
+                    "filePath": {
+                        "type": "string",
+                        "description": "The path to the generated README file."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/RefactoringSuggestionAgent.ts",
+        "card": {
+            "name": "RefactoringSuggestionAgent",
+            "description": "An agent that suggests refactoring for a given code file.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "filePath": {
+                        "type": "string",
+                        "description": "The absolute path to the file to refactor."
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "The user query for refactoring."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "refactoredCode": {
+                        "type": "string",
+                        "description": "The refactored code."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/SecurityAnalysisAgent.ts",
+        "card": {
+            "name": "SecurityAnalysisAgent",
+            "description": "An agent that performs security checks on files.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "filePath": {
+                        "type": "string",
+                        "description": "The absolute path to the file to analyze."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "issues": {
+                        "type": "array",
+                        "description": "A list of security issues found.",
+                        "items": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/AILedLearningAgent.ts",
+        "card": {
+            "name": "AILedLearningAgent",
+            "description": "An agent that processes user feedback to build a preference model.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "description": "The operation to perform: 'log-feedback' or 'get-preference'.",
+                        "enum": ["log-feedback", "get-preference"]
+                    },
+                    "suggestionType": {
+                        "type": "string",
+                        "description": "The type of suggestion."
+                    },
+                    "accepted": {
+                        "type": "boolean",
+                        "description": "Whether the suggestion was accepted. Used with 'log-feedback'."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "preference": {
+                        "type": "string",
+                        "description": "The user preference. Used with 'get-preference'."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/CodeExecutionAgent.ts",
+        "card": {
+            "name": "CodeExecutionAgent",
+            "description": "An agent that executes shell commands.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The shell command to execute."
+                    },
+                    "force": {
+                        "type": "boolean",
+                        "description": "If true, bypasses the confirmation for dangerous commands."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "output": {
+                        "type": "string",
+                        "description": "The output of the command."
+                    },
+                    "confirmation_required": {
+                        "type": "boolean",
+                        "description": "If true, the command is dangerous and requires user confirmation."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "path": "./agents/CodeWatcherAgent.ts",
+        "card": {
+            "name": "CodeWatcherAgent",
+            "description": "A background agent that monitors file changes and triggers other agents.",
+            "capabilities": {
+                "sendMessage": false,
+                "sendMessageStream": false,
+                "getTask": false
+            },
+            "input": {},
+            "output": {}
+        }
+    },
+    {
+        "path": "./agents/ContextManagementAgent.ts",
+        "card": {
+            "name": "ContextManagementAgent",
+            "description": "Gathers context from the workspace to help other agents.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The user query to gather context for."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    },
+    {
+        "path": "./agents/ContextArchiveAgent.ts",
+        "card": {
+            "name": "ContextArchiveAgent",
+            "description": "Archives and retrieves context from a persistent store.",
+            "capabilities": {
+                "sendMessage": true,
+                "sendMessageStream": false,
+                "getTask": true
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "description": "The operation to perform: 'archive' or 'search'.",
+                        "enum": ["archive", "search"]
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The content to archive. Used with 'archive'."
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "The query to search for. Used with 'search'."
+                    }
+                }
+            },
+            "output": {
+                "type": "object",
+                "properties": {
+                    "retrievedInfo": {
+                        "type": "string",
+                        "description": "The retrieved information from the archive."
+                    }
+                }
+            }
+        }
+    }
+]

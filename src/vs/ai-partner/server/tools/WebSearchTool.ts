@@ -1,58 +1,29 @@
-/**
- * @interface WebSearchParams
- * Defines the parameters for the WebSearchTool.
- */
-interface WebSearchParams {
-  query: string;
-}
+import { McpServer } from '@modelcontextprotocol/sdk';
+import { z } from 'zod';
 
-/**
- * @class WebSearchTool
- * A tool for performing web searches.
- */
-export class WebSearchTool {
-  /**
-   * Returns the JSON schema for the tool's input parameters.
-   */
-  public getSchema() {
-    return {
-      type: "function",
-      function: {
-        name: "WebSearchTool",
-        description: "Performs a web search using a search engine.",
-        parameters: {
-          type: "object",
-          properties: {
-            query: {
-              type: "string",
-              description: "The search query to execute.",
-            },
-          },
-          required: ["query"],
+declare function google_web_search(args: { query: string }): Promise<any>;
+
+export function registerWebSearchTool(server: McpServer) {
+    server.registerTool(
+        'WebSearchTool',
+        {
+            title: "Web Search",
+            description: "Performs a web search using a search engine.",
+            inputSchema: z.object({
+                query: z.string().describe("The search query to execute."),
+            }),
+            outputSchema: z.object({
+                results: z.string().describe("The search results."),
+            }),
         },
-      },
-    };
-  }
-
-  /**
-   * Executes the web search.
-   * @param params The search query.
-   * @returns A promise that resolves with the content array for the MCP result.
-   */
-  public async execute(params: WebSearchParams): Promise<any[]> {
-    console.log('[WebSearchTool] Executing with params:', params);
-
-    if (!params.query) {
-      throw new Error('Query parameter is required for WebSearchTool.');
-    }
-
-    const summary = `Search results for "${params.query}" would appear here.`;
-
-    return [
-      {
-        type: 'text',
-        text: summary,
-      },
-    ];
-  }
+        async ({ query }) => {
+            try {
+                const searchResults = await google_web_search({ query });
+                const resultsText = JSON.stringify(searchResults, null, 2);
+                return { results: resultsText };
+            } catch (error: any) {
+                throw new Error(`Failed to perform web search. Error: ${error.message}`);
+            }
+        }
+    );
 }

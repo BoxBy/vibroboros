@@ -1,97 +1,52 @@
 import * as vscode from 'vscode';
 import { exec, ExecOptions } from 'child_process';
+import { McpServer } from '@modelcontextprotocol/sdk';
+import { z } from 'zod';
 
-/**
- * @interface TerminalExecutionParams
- * Defines the parameters for the TerminalExecutionTool.
- */
-interface TerminalExecutionParams {
-  command: string;
-  cwd?: string; // Optional: current working directory
-}
-
-/**
- * @class TerminalExecutionTool
- * A tool for executing shell commands within a specified working directory.
- */
-export class TerminalExecutionTool {
-  /**
-   * Returns the JSON schema for the tool's input parameters.
-   */
-  public getSchema() {
-    return {
-      type: "function",
-      function: {
-        name: "TerminalExecutionTool",
-        description: "Executes a shell command in the terminal. Use this for general commands like `ls`, `npm install`, etc. The command runs in the root of the current workspace unless `cwd` is specified.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description: "The shell command to execute.",
-            },
-            cwd: {
-              type: "string",
-              description: "Optional. The working directory to run the command in. Defaults to the workspace root.",
-            },
-          },
-          required: ["command"],
+export function registerTerminalExecutionTool(server: McpServer) {
+    server.registerTool(
+        'TerminalExecutionTool',
+        {
+            title: "Execute Terminal Command",
+            description: "Executes a shell command in the terminal. The command runs in the root of the current workspace unless `cwd` is specified.",
+            inputSchema: z.object({
+                command: z.string().describe("The shell command to execute."),
+                cwd: z.string().optional().describe("The working directory to run the command in. Defaults to the workspace root."),
+            }),
+            outputSchema: z.object({
+                output: z.string().describe("The output of the command, including stdout, stderr, and any errors."),
+            }),
         },
-      },
-    };
-  }
+        async ({ command, cwd }) => {
+            const defaultCwd = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined;
+            const options: ExecOptions = {
+                cwd: cwd || defaultCwd,
+            };
 
-  /**
-   * Executes the given shell command.
-   * @param params The command and optional working directory.
-   * @returns A promise that resolves with the content array for the MCP result.
-   */
-  public execute(params: TerminalExecutionParams): Promise<any[]> {
-    console.log('[TerminalExecutionTool] Executing with params:', params);
+            if (!options.cwd) {
+                throw new Error('Could not determine a working directory. Please open a folder or specify a `cwd`.');
+            }
 
-    if (!params.command) {
-      throw new Error('Command parameter is required for TerminalExecutionTool.');
-    }
+            return new Promise((resolve, reject) => {
+                exec(command, options, (error, stdout, stderr) => {
+                    let output = `> Executed in: ${options.cwd}\n> Command: ${command}\n\n`;
 
-    const defaultCwd = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined;
-    const options: ExecOptions = {
-      cwd: params.cwd || defaultCwd,
-    };
+                    if (stdout) {
+                        output += `--- STDOUT ---\n${stdout}\n`;
+                    }
+                    if (stderr) {
+                        output += `--- STDERR ---\n${stderr}\n`;
+                    }
 
-    if (!options.cwd) {
-        throw new Error('Could not determine a working directory. Please open a folder or specify a `cwd`.');
-    }
+                    if (error) {
+                        output += `--- ERROR ---\nCommand failed with exit code ${error.code}.\n`;
+                        resolve({ output });
+                        return;
+                    }
 
-    return new Promise((resolve) => {
-      exec(params.command, options, (error, stdout, stderr) => {
-        let output = `> Executed in: ${options.cwd}\n> Command: ${params.command}\n\n`;
-
-        if (stdout) {
-          output += `--- STDOUT ---\n${stdout}\n`;
+                    resolve({ output });
+                });
+            });
         }
-        if (stderr) {
-          output += `--- STDERR ---\n${stderr}\n`;
-        }
-
-        if (error) {
-          output += `--- ERROR ---\nCommand failed with exit code ${error.code}.\n`;
-          resolve([
-            {
-              type: 'text',
-              text: output,
-            },
-          ]);
-          return;
-        }
-
-        resolve([
-          {
-            type: 'text',
-            text: output,
-          },
-        ]);
-      });
-    });
-  }
+    );
 }

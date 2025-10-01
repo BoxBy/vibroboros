@@ -1,14 +1,14 @@
 
 import { AgentExecutor, AgentCard, Task, TaskStatus, StreamEvent, GetRequest, SendMessageRequest, TaskArtifact } from "@a2a-js/sdk";
 import { v4 as uuidv4 } from 'uuid';
-import { LLMService } from '../services/LLMService';
-import { ConfigService } from '../config_service';
+import { LLMService, LlmMessage } from '../services/LLMService';
+import { ConfigService } from "../config_service";
 import { getMcpClient } from "../mcp_client_provider";
 import { McpClient } from "@modelcontextprotocol/sdk";
 
 const taskStore = new Map<string, Task>();
 
-export class DocumentationGenerationAgent implements AgentExecutor {
+export class MindstormAgent implements AgentExecutor {
     private llmService: LLMService;
     private configService: ConfigService;
     private mcpClient: McpClient;

@@ -500,9 +500,9 @@ export class OrchestratorAgent {
             context += `\n- The user currently has the file '${activeFilePath}' open.`;
         }
         if (folderOverview && folderOverview !== 'N/A' && !folderOverview.includes('No folder overview file found')) {
-            context += `\\n\\n## Directory Overview (_folder_overview.md)\\n**CRITICAL: You MUST consult this overview to understand the directory structure and the purpose of each file.** This is your primary source of information for navigating the project. The content is from the \`_folder_overview.md\` file in the relevant directory.\\n\\n${folderOverview}`;
+            context += `\n\n## Directory Overview (_folder_overview.md)\n**CRITICAL: You MUST consult this overview to understand the directory structure and the purpose of each file.** This is your primary source of information for navigating the project. The content is from the `_folder_overview.md` file in the relevant directory.\n\n${folderOverview}`;
         } else {
-            context += `\\n\\n## Directory Overview\\n**WARNING: \`_folder_overview.md\` was not found in the current directory.** You have limited information about the project structure. You may need to use file system tools to explore the directory if the user's request requires it.`;
+            context += `\n\n## Directory Overview\n**WARNING: `_folder_overview.md` was not found in the current directory.** You have limited information about the project structure. You may need to use file system tools to explore the directory if the user's request requires it.`;
         }
 
         let autonomousInstructions = '';
@@ -512,12 +512,12 @@ export class OrchestratorAgent {
 
         const completionInstruction = `\n\n**FINAL REPORTING:** If the last message in the history is a result from "TaskCompletionTool", your ONLY job is to provide a final, comprehensive summary to the user based on the entire conversation. Do not call any more tools.`;
 
-        return `You are a helpful AI assistant inside VS Code. Your primary goal is to provide a conversational response.` +
-            (context ? `\n\n## Environment Context${context}` : '') +
-            autonomousInstructions +
-            completionInstruction +
-            `\n\nYou can use a <thought> tag to reason about the user's request. This thought process will not be shown to the user.` +
-            `\n\nWhen providing long blocks of text, such as code, logs, or file dumps, that might not be essential for the immediate next turn of the conversation, you MUST wrap that content within <prunable>...</prunable> tags. This helps manage the context efficiently.` +
+        return `You are a helpful AI assistant inside VS Code. Your primary goal is to provide a conversational response.` + 
+            (context ? `\n\n## Environment Context${context}` : '') + 
+            autonomousInstructions + 
+            completionInstruction + 
+            `\n\nYou can use a <thought> tag to reason about the user's request. This thought process will not be shown to the user.` + 
+            `\n\nWhen providing long blocks of text, such as code, logs, or file dumps, that might not be essential for the immediate next turn of the conversation, you MUST wrap that content within <prunable>...</prunable> tags. This helps manage the context efficiently.` + 
             `\n\n**CRITICAL INSTRUCTION:** After your thought process, you MUST provide a user-facing response. The final response for the user must be outside of any tags. If you have nothing to say, respond with a message indicating that. DO NOT provide an empty response.`;
     }
 
@@ -765,11 +765,11 @@ export class OrchestratorAgent {
 	private createStatusUpdateMessage(toolName: string, toolArgs: any): string | null {
 		switch (toolName) {
 			case 'FileWriteTool':
-				return `Modifying file: \`${toolArgs.filePath}\``;
+				return `Modifying file: `${toolArgs.filePath}``;
 			case 'FileReadTool':
-				return `Reading file: \`${toolArgs.filePath}\``;
+				return `Reading file: `${toolArgs.filePath}``;
 			case 'TerminalExecutionTool':
-				return `Running terminal command: \`$ ${toolArgs.command}\``;
+				return `Running terminal command: `$ ${toolArgs.command}``;
 			case 'WebSearchTool':
 				return `Searching the web for: "${toolArgs.query}"`;
 			default:

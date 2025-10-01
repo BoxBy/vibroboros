@@ -1,3 +1,4 @@
+
 import * as vscode from 'vscode';
 
 export type AuthMode = 'apiKey';
@@ -19,6 +20,14 @@ export class ConfigService {
 
     private getConfiguration(section: string) {
         return vscode.workspace.getConfiguration(`vibroboros.${section}`);
+    }
+
+    public getA2AServerPort(): number {
+        return this.getConfiguration('a2a.server').get<number>('port') || 3000;
+    }
+
+    public getAlwaysConfirmExecution(): boolean {
+        return this.getConfiguration('execution').get<boolean>('alwaysConfirm') || false;
     }
 
     /**

@@ -1,21 +1,15 @@
 
 import { AgentExecutor, AgentCard, Task, TaskStatus, StreamEvent, GetRequest, SendMessageRequest, TaskArtifact } from "@a2a-js/sdk";
 import { v4 as uuidv4 } from 'uuid';
-import { LLMService } from '../services/LLMService';
-import { ConfigService } from '../config_service';
 import { getMcpClient } from "../mcp_client_provider";
 import { McpClient } from "@modelcontextprotocol/sdk";
 
 const taskStore = new Map<string, Task>();
 
-export class DocumentationGenerationAgent implements AgentExecutor {
-    private llmService: LLMService;
-    private configService: ConfigService;
+export class ProgressTrackingAgent implements AgentExecutor {
     private mcpClient: McpClient;
 
     constructor(private card: AgentCard) {
-        this.llmService = LLMService.getInstance();
-        this.configService = ConfigService.getInstance();
         this.mcpClient = getMcpClient();
     }
 

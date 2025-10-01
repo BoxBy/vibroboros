@@ -1,67 +1,51 @@
-/**
- * @interface GitAutomationParams
- * Defines the parameters for the GitAutomationTool.
- */
-interface GitAutomationParams {
-  args: string[];
-}
 
-/**
- * @class GitAutomationTool
- * A tool for preparing and previewing Git commands.
- */
-export class GitAutomationTool {
-  /**
-   * Returns the JSON schema for the tool's input parameters.
-   */
-  public getSchema() {
-    return {
-      type: "function",
-      function: {
-        name: "GitAutomationTool",
-        description: "Prepares a Git command for execution. Use this for git operations like status, log, diff, etc.",
-        parameters: {
-          type: "object",
-          properties: {
-            args: {
-              type: "array",
-              items: { "type": "string" },
-              description: "The arguments to pass to the git command, e.g., ['status'] or ['log', '-1'].",
-            },
-          },
-          required: ["args"],
+import { McpServer } from '@modelcontextprotocol/sdk';
+import { z } from 'zod';
+import { exec, ExecOptions } from 'child_process';
+import * as vscode from 'vscode';
+
+export function registerGitAutomationTool(server: McpServer) {
+    server.registerTool(
+        'GitAutomationTool',
+        {
+            title: "Git Automation",
+            description: "Executes a Git command.",
+            inputSchema: z.object({
+                args: z.array(z.string()).describe("The arguments to pass to the git command, e.g., ['status'] or ['log', '-1']."),
+            }),
+            outputSchema: z.object({
+                output: z.string().describe("The output of the git command."),
+            }),
         },
-      },
-    };
-  }
+        async ({ args }) => {
+            if (!args || args.length === 0) {
+                throw new Error('Args parameter is required for GitAutomationTool.');
+            }
 
-  /**
-   * Prepares a Git command and returns a structured, actionable response for the UI.
-   * @param params The Git command arguments.
-   * @returns A promise that resolves with the content array for the MCP result.
-   */
-  public async execute(params: GitAutomationParams): Promise<any[]> {
-    console.log('[GitAutomationTool] Executing with params:', params);
+            const command = `git ${args.join(' ')}`;
 
-    if (!params.args || params.args.length === 0) {
-      throw new Error('Args parameter is required for GitAutomationTool.');
-    }
+            const defaultCwd = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri.fsPath : undefined;
+            const options: ExecOptions = {
+                cwd: defaultCwd,
+            };
 
-    const commandStr = `git ${params.args.join(' ')}`;
+            if (!options.cwd) {
+                throw new Error('Could not determine a working directory. Please open a folder.');
+            }
 
-    return [
-      {
-        type: 'text',
-        text: `Prepared command: ${commandStr}`,
-      },
-      {
-        type: 'ui-action',
-        action: {
-          label: `Run '${commandStr}'`,
-          command: 'runTerminalCommand',
-          payload: { commandString: commandStr },
-        },
-      },
-    ];
-  }
+            return new Promise((resolve, reject) => {
+                exec(command, options, (error, stdout, stderr) => {
+                    if (error) {
+                        reject(error);
+                        return;
+                    }
+                    if (stderr) {
+                        resolve({ output: stderr });
+                        return;
+                    }
+                    resolve({ output: stdout });
+                });
+            });
+        }
+    );
 }

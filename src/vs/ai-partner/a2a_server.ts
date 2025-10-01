@@ -1,58 +1,53 @@
-import { AgentCard, Task, Message, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from "./core_data_structures";
+import { A2AExpressApp } from "@a2a-js/sdk/dist/server/express";
+import express from "express";
+import * as vscode from 'vscode';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { AgentExecutor, AgentCard } from "@a2a-js/sdk";
 
-/**
- * A simple in-memory store for tasks.
- * In a production environment, this might be replaced with a database.
- */
-export class InMemoryTaskStore {
-    private tasks = new Map<string, Task>();
+interface AgentInfo {
+    path: string;
+    card: AgentCard;
+    constructor: new (...args: any[]) => AgentExecutor;
+}
 
-    async get(id: string): Promise<Task | undefined> {
-        return this.tasks.get(id);
+export async function startA2AServer(context: vscode.ExtensionContext, agentBaseUrl: string) {
+    const server = express();
+    server.use(express.json());
+
+    const serversConfigPath = path.join(context.extensionPath, '.agent', 'a2a-servers.json');
+    const serversConfigContent = await fs.readFile(serversConfigPath, 'utf-8');
+    const agentConfigs: { path: string, card: AgentCard }[] = JSON.parse(serversConfigContent);
+
+    const agents: AgentInfo[] = [];
+
+    for (const config of agentConfigs) {
+        const agentPath = path.join(context.extensionPath, 'src', 'vs', 'ai-partner', config.path);
+        const module = await import(agentPath);
+        const agentClassName = Object.keys(module).find(key => key.endsWith('Agent'));
+        if (agentClassName) {
+            const constructor = module[agentClassName];
+            agents.push({ ...config, constructor });
+        }
     }
 
-    async set(task: Task): Promise<void> {
-        this.tasks.set(task.id, task);
-    }
-}
+    agents.forEach(agentInfo => {
+        const agent = new agentInfo.constructor(agentBaseUrl, agents.map(a => a.path), context.workspaceState, agentInfo.card);
+        const app = new A2AExpressApp(agent);
+        server.use(`/agent/${agentInfo.card.name.replace('Agent', '').toLowerCase()}`, app.router);
+    });
 
-/**
- * Represents the context for a request being processed by an AgentExecutor.
- */
-export interface RequestContext {
-    taskId: string;
-    contextId: string;
-    userMessage: Message;
-    task?: Task; // The existing task, if any
-}
+    const port = 3000; // Will be replaced by config
+    const listener = server.listen(port, () => {
+        console.log(`A2A Server listening on port ${port}`);
+        console.log('Registered agents:');
+        agents.forEach(agent => {
+            console.log(`- ${agent.card.name} at /agent/${agent.card.name.replace('Agent', '').toLowerCase()}`);
+        });
+    });
 
-/**
- * An event bus for publishing execution events during a task.
- */
-export interface ExecutionEventBus {
-    publish(event: Task | TaskStatusUpdateEvent | TaskArtifactUpdateEvent): void;
-    finished(): void;
-}
-
-/**
- * The interface that agent logic must implement.
- */
-export interface AgentExecutor {
-    execute(requestContext: RequestContext, eventBus: ExecutionEventBus): Promise<void>;
-    cancelTask(taskId: string, eventBus: ExecutionEventBus): Promise<void>;
-}
-
-/**
- * A basic request handler that wires together the agent card, task store, and executor.
- * This is a simplified version of the DefaultRequestHandler from the A2A SDK docs.
- */
-export class A2ARequestHandler {
-    constructor(
-        public readonly agentCard: AgentCard,
-        public readonly taskStore: InMemoryTaskStore,
-        public readonly agentExecutor: AgentExecutor
-    ) { }
-
-    // In a real implementation, this class would have methods to handle
-    // 'sendMessage', 'getTask', etc., by calling the agentExecutor.
+    return {
+        close: () => listener.close(),
+        server: server
+    };
 }
