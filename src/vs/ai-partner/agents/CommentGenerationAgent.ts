@@ -6,11 +6,11 @@ import { LLMService } from '../services/LLMService';
 import { randomUUID } from 'crypto';
 
 /**
- * @class DocumentationGenerationAgent
- * A specialized agent for generating documentation for code.
+ * @class CommentGenerationAgent
+ * A specialized agent for generating inline comments for code.
  */
-export class DocumentationGenerationAgent {
-    private static readonly AGENT_ID = 'DocumentationGenerationAgent';
+export class CommentGenerationAgent {
+    private static readonly AGENT_ID = 'CommentGenerationAgent';
     private dispatch: (message: A2AMessage<any>) => void;
     private mcpServer: MCPServer;
     private llmService: LLMService;
@@ -22,7 +22,7 @@ export class DocumentationGenerationAgent {
     }
 
     public async handleA2AMessage(message: A2AMessage<{ filePath: string, query: string }>): Promise<void> {
-        if (message.type !== 'request-documentation-generation') {
+        if (message.type !== 'request-comment-generation') {
             return;
         }
 
@@ -36,19 +36,18 @@ export class DocumentationGenerationAgent {
             const fileContentResponse = await this.mcpServer.handleRequest(fileReadRequest);
             const fileContent = fileContentResponse.result.content[0].text;
 
-            const systemPrompt = `You are an expert technical writer, skilled at creating easy-to-understand documentation for complex code.\n\n` +
+            const systemPrompt = `You are an expert programmer tasked with writing high-quality code comments.\n\n` +
                                  `**INSTRUCTIONS:**\n` +
-                                 `1. Analyze the user's request and the provided code.\n` +
-                                 `2. Generate clear and concise documentation for the code.\n` +
-                                 `3. The documentation should be in Markdown format.\n` +
-                                 `4. Explain the code's overall purpose, its main functions or classes, and any important parameters or return values.`;
+                                 `1. Analyze the provided code.\n` +
+                                 `2. Add concise, helpful JSDoc-style comments to all functions, classes, and complex logic blocks.\n` +
+                                 `3. **IMPORTANT**: You MUST return the complete, fully-modified code for the entire file. Do NOT use markdown or any other formatting. Output only the raw code.`;
 
-            const userPrompt = `The user wants to document this file: ${message.payload.filePath}.\nTheir request is: \"${message.payload.query}\"\n\nHere is the code to document:\n\`\`\`\n${fileContent}\n\`\`\``;
+            const userPrompt = `Add comments to the following code:\n\n${fileContent}`;
 
             const config = vscode.workspace.getConfiguration('vibroboros');
             const apiKey = config.get<string>('llm.apiKeys')?.[0] || '';
             const endpoint = config.get<string>('llm.endpoint') || 'https://api.openai.com/v1/chat/completions';
-            const model = config.get<string>('agent.docGen.model') || 'gpt-3.5-turbo';
+            const model = config.get<string>('agent.commentGen.model') || 'gpt-4'; // Using a different model config key
 
             const llmResponse = await this.llmService.requestLLMCompletion(
                 [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
@@ -58,43 +57,48 @@ export class DocumentationGenerationAgent {
                 model
             );
 
-            const generatedDocs = llmResponse.choices[0]?.message?.content;
+            const commentedCode = llmResponse.choices[0]?.message?.content;
+
+            if (!commentedCode) {
+                throw new Error('LLM failed to generate comments.');
+            }
 
             const responsePayload = {
+                rawContent: commentedCode, // Send the raw code back
                 content: [
-                    { type: 'text', text: `Here is the suggested documentation for ${message.payload.filePath}:\n\n---\n${generatedDocs}` },
+                    { type: 'text', text: `I have added comments to ${message.payload.filePath}.` },
                     {
                         type: 'ui-action',
                         action: {
-                            label: 'Save to new file (e.g., DOCS.md)',
+                            label: 'Overwrite original file',
                             toolName: 'FileWriteTool',
                             arguments: {
-                                filePath: 'DOCS.md',
-                                content: generatedDocs
+                                filePath: message.payload.filePath,
+                                content: commentedCode
                             },
                             suggestionId: randomUUID(),
-                            suggestionType: 'documentation'
+                            suggestionType: 'commenting'
                         }
                     }
                 ]
             };
 
             this.dispatch({
-                sender: DocumentationGenerationAgent.AGENT_ID,
+                sender: CommentGenerationAgent.AGENT_ID,
                 recipient: 'OrchestratorAgent',
                 timestamp: new Date().toISOString(),
-                type: 'response-documentation-generation',
+                type: 'response-comment-generation',
                 payload: responsePayload
             });
 
         } catch (error: any) {
-            console.error(`[${DocumentationGenerationAgent.AGENT_ID}] Error during documentation generation:`, error);
+            console.error(`[${CommentGenerationAgent.AGENT_ID}] Error during comment generation:`, error);
             this.dispatch({
-                sender: DocumentationGenerationAgent.AGENT_ID,
+                sender: CommentGenerationAgent.AGENT_ID,
                 recipient: 'OrchestratorAgent',
                 timestamp: new Date().toISOString(),
-                type: 'response-documentation-generation',
-                payload: { content: [{ type: 'text', text: `An error occurred while generating documentation: ${error.message}` }] }
+                type: 'response-comment-generation',
+                payload: { content: [{ type: 'text', text: `An error occurred while generating comments: ${error.message}` }] }
             });
         }
     }

@@ -215,3 +215,44 @@ body,
 	margin-top: 0;
 	padding-left: 20px;
 }
+
+/* --- Settings Page --- */
+.settings-page-container {
+    padding: 16px;
+}
+
+.settings-section {
+    margin-bottom: 24px;
+}
+
+.settings-section h3 {
+    margin-top: 0;
+}
+
+.agent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+}
+
+.agent-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--vscode-editorWidget-background);
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid var(--vscode-editorWidget-border);
+}
+
+.agent-info {
+    flex-grow: 1;
+}
+
+.agent-info p {
+    margin: 4px 0 0 0;
+    font-size: 0.9em;
+    color: var(--vscode-descriptionForeground);
+}

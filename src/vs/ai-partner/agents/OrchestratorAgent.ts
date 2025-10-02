@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { A2AMessage } from '../interfaces/A2AMessage';
 import { MCPServer } from '../server/MCPServer';
 import { LLMService, LlmMessage } from '../services/LLMService';
 import { AuthService } from '../auth_service';
 import { ConfigService } from '../config_service';
 import { DeveloperLogService } from '../services/DeveloperLogService';
+import { CommentGenerationAgent } from './CommentGenerationAgent';
 
 // --- Type Definitions ---
 type ChatMessage = { author: 'user' | 'agent', content: any[] };
@@ -39,6 +42,7 @@ export class OrchestratorAgent {
 	private state: vscode.Memento;
 	private diagnosticCollection: vscode.DiagnosticCollection;
 	private developerLogService: DeveloperLogService;
+	private commentGenerationAgent: CommentGenerationAgent;
 	private chatHistory: ChatMessage[] = [];
 	private llmConversationHistory: LlmMessage[] = [];
 	private isAutonomousMode: boolean = false;
@@ -74,6 +78,7 @@ export class OrchestratorAgent {
 		this.state = state;
 		this.diagnosticCollection = diagnosticCollection;
 		this.developerLogService = developerLogService;
+		this.commentGenerationAgent = new CommentGenerationAgent(this.dispatch.bind(this), this.mcpServer, this.llmService);
 		this.loadOrInitializeSession();
 	}
 
@@ -128,13 +133,41 @@ export class OrchestratorAgent {
                 setTimeout(() => this.sendFullSettingsToUI(), 250);
                 break;
             case 'userQuery':
+                if (message.query.startsWith('/remember ')) {
+                    const memoryText = message.query.substring(10).trim();
+                    if (memoryText) {
+                        try {
+                            const memoryPath = path.join(this.configService.getExtensionPath(), '.agent', 'memory.json');
+                            let memories: string[] = [];
+                            try {
+                                const memoryJson = await fs.readFile(memoryPath, 'utf-8');
+                                memories = JSON.parse(memoryJson);
+                            } catch (e) {
+                                // File might not exist yet, which is fine.
+                            }
+                            memories.push(memoryText);
+                            await fs.writeFile(memoryPath, JSON.stringify(memories, null, 4));
+                            
+                            const userMessage: ChatMessage = { author: 'user', content: [{ type: 'text', text: message.query }] };
+                            const confirmationMessage: ChatMessage = { author: 'agent', content: [{ type: 'text', text: "I will remember that: " + memoryText }] };
+                            this.addMessageToHistory(userMessage);
+                            this.addMessageToHistory(confirmationMessage);
+                            this._onDidPostMessage.fire({ command: 'loadHistory', payload: this.chatHistory });
+
+                        } catch (error) {
+                            console.error('Error saving memory:', error);
+                            this.handleError(new Error('Could not save memory.'));
+                        }
+                    }
+                    return;
+                }
                 await this.handleChatAndSpecialistCommands(message.query);
                 break;
             case 'setAutonomousMode':
                 this.isAutonomousMode = message.enabled;
                 this.developerLogService.log(`Autonomous mode set to: ${this.isAutonomousMode}`);
                 if (this.llmConversationHistory.length > 0 && this.llmConversationHistory[0].role === 'system') {
-                    this.llmConversationHistory[0] = { role: 'system', content: this.createSystemPrompt() };
+                    this.llmConversationHistory[0] = { role: 'system', content: await this.createSystemPrompt() };
                     this.saveCurrentLlmHistory();
                 }
                 this._onDidPostMessage.fire({ command: 'loopModeChanged', payload: this.isAutonomousMode });
@@ -226,16 +259,22 @@ export class OrchestratorAgent {
                 let searchContextSummary = "";
 
                 if (contextPayload.codebaseSearchResults && contextPayload.codebaseSearchResults.length > 0) {
-                    searchContextSummary += `Codebase search found the following relevant items:\n`;
+                    searchContextSummary += `Codebase search found the following relevant items:
+`;
                     contextPayload.codebaseSearchResults.slice(0, 5).forEach((result: any) => {
-                        searchContextSummary += `  - In file: ${result.filePath}\n`;
+                        searchContextSummary += `  - In file: ${result.filePath}
+`;
                         result.symbols.forEach((symbol: any) => {
-                            searchContextSummary += `    - Symbol '${symbol.name}' (${symbol.type}) at line ${symbol.line}\n`;
+                            searchContextSummary += `    - Symbol '${symbol.name}' (${symbol.type}) at line ${symbol.line}
+`;
                         });
                     });
                 }
 
-                const systemPrompt = this.createSystemPrompt(contextPayload.activeFilePath, contextPayload.uiLanguage, contextPayload.folderOverview) + (searchContextSummary ? `\n\n## Codebase Search Context\n${searchContextSummary}` : "");
+                const systemPrompt = await this.createSystemPrompt(contextPayload.activeFilePath, contextPayload.uiLanguage, contextPayload.folderOverview) + (searchContextSummary ? `
+
+## Codebase Search Context
+${searchContextSummary}` : "");
 
                 this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Context received. Thinking...' } });
 
@@ -247,6 +286,7 @@ export class OrchestratorAgent {
 				await this.saveCurrentLlmHistory();
 				await this.processLlmResponse();
 				break;
+            case 'response-comment-generation':
             case 'response-refactoring-suggestions':
             case 'response-documentation-generation':
             case 'response-test-generation':
@@ -329,7 +369,9 @@ export class OrchestratorAgent {
     private async createAndExecutePlan(userText: string): Promise<void> {
         this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Creating a plan...' } });
 
-        const planPrompt = `Based on the user's request, create a step-by-step execution plan. Each step should be a clear, actionable task that can be routed to a specialist agent. Respond with a JSON array of strings. For example: ["Step 1: Description", "Step 2: Description"].\n\nUser Request: "${userText}"`;
+        const planPrompt = `Based on the user's request, create a step-by-step execution plan. Each step should be a clear, actionable task that can be routed to a specialist agent. Respond with a JSON array of strings. For example: ["Step 1: Description", "Step 2: Description"].
+
+User Request: "${userText}"`;
 
         try {
             const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
@@ -390,6 +432,10 @@ export class OrchestratorAgent {
                 description: 'Generates documentation or explanations for the code in the current file. Use for requests like "document this function", "explain this code", "how does this work?".'
             },
             {
+                name: 'CommentGenerationAgent',
+                description: 'Adds inline comments to the code in the current file. Use for requests like "add comments to this code", "comment this file".'
+            },
+            {
                 name: 'TestGenerationAgent',
                 description: 'Writes unit tests for the code in the current file. Use for requests like "write tests for this", "create a test case", "generate unit tests".'
             },
@@ -399,7 +445,17 @@ export class OrchestratorAgent {
             }
         ];
 
-        const routingPrompt = `You are an expert system for routing user requests to the correct specialist agent. Based on the user's query, decide which of the following agents is most appropriate. Respond with ONLY the name of the agent, or "Conversational" if no specialist is suitable.\n\nAvailable Agents:\n${specialistAgents.map(agent => `- ${agent.name}: ${agent.description}`).join('\n')}\n\n---\nUser Query: "${stepDescription}"\n---\n\nChosen Agent:`;
+        const routingPrompt = `You are an expert system for routing user requests to the correct specialist agent. Based on the user's query, decide which of the following agents is most appropriate. Respond with ONLY the name of the agent, or "Conversational" if no specialist is suitable.
+
+Available Agents:
+${specialistAgents.map(agent => `- ${agent.name}: ${agent.description}`).join('
+')}
+
+---
+User Query: "${stepDescription}"
+---
+
+Chosen Agent:`;
 
         const messages: LlmMessage[] = [
             { role: 'system', content: routingPrompt }
@@ -422,6 +478,9 @@ export class OrchestratorAgent {
                     break;
                 case 'DocumentationGenerationAgent':
                     this.delegateToSpecialist('DocumentationGenerationAgent', 'request-documentation-generation', stepDescription);
+                    break;
+                case 'CommentGenerationAgent':
+                    this.delegateToSpecialist('CommentGenerationAgent', 'request-comment-generation', stepDescription);
                     break;
                 case 'TestGenerationAgent':
                     this.delegateToSpecialist('TestGenerationAgent', 'request-test-generation', stepDescription);
@@ -491,34 +550,99 @@ export class OrchestratorAgent {
         this.dispatch({ sender: OrchestratorAgent.AGENT_ID, recipient, timestamp: new Date().toISOString(), type, payload: { filePath, query } });
     }
 
-    private createSystemPrompt(activeFilePath?: string, uiLanguage?: string, folderOverview?: string): string {
+    private async createSystemPrompt(activeFilePath?: string, uiLanguage?: string, folderOverview?: string): Promise<string> {
+        const basePrompt = 'You are a helpful AI assistant inside VS Code. Your primary goal is to provide a conversational response.';
+        let agentMdContent = '';
+        try {
+            const agentMdPath = path.join(this.configService.getExtensionPath(), '.agent', 'AGENT.md');
+            agentMdContent = await fs.readFile(agentMdPath, 'utf-8');
+        } catch (error) {
+            console.warn('[OrchestratorAgent] AGENT.md not found or could not be read.');
+        }
+
+        let memoryContent = '';
+        try {
+            const memoryPath = path.join(this.configService.getExtensionPath(), '.agent', 'memory.json');
+            const memoryJson = await fs.readFile(memoryPath, 'utf-8');
+            const memories = JSON.parse(memoryJson);
+            if (memories.length > 0) {
+                memoryContent = `
+
+## Memory (User Feedback)
+This is a list of facts, preferences, and corrections provided by the user. You MUST adhere to them.
+- ` + memories.join('
+- ');
+            }
+        } catch (error) {
+            console.warn('[OrchestratorAgent] memory.json not found or could not be read.');
+        }
+
         let context = '';
         if (uiLanguage) {
-            context += `\n- The user's language is '${uiLanguage}'. You should respond in this language.`;
+            context += `
+- The user's language is '${uiLanguage}'. You should respond in this language.`;
         }
         if (activeFilePath && activeFilePath !== 'N/A') {
-            context += `\n- The user currently has the file '${activeFilePath}' open.`;
+            context += `
+- The user currently has the file '${activeFilePath}' open.`;
         }
         if (folderOverview && folderOverview !== 'N/A' && !folderOverview.includes('No folder overview file found')) {
-            context += `\n\n## Directory Overview (_folder_overview.md)\n**CRITICAL: You MUST consult this overview to understand the directory structure and the purpose of each file.** This is your primary source of information for navigating the project. The content is from the `_folder_overview.md` file in the relevant directory.\n\n${folderOverview}`;
+            context += `
+
+## Directory Overview (_folder_overview.md)
+**CRITICAL: You MUST consult this overview to understand the directory structure and the purpose of each file.** This is your primary source of information for navigating the project. The content is from the 
+_folder_overview.md
+ file in the relevant directory.
+
+${folderOverview}`;
         } else {
-            context += `\n\n## Directory Overview\n**WARNING: `_folder_overview.md` was not found in the current directory.** You have limited information about the project structure. You may need to use file system tools to explore the directory if the user's request requires it.`;
+            context += `
+
+## Directory Overview
+**WARNING: 
+_folder_overview.md
+ was not found in the current directory.** You have limited information about the project structure. You may need to use file system tools to explore the directory if the user's request requires it.`;
         }
 
         let autonomousInstructions = '';
         if (this.isAutonomousMode) {
-            autonomousInstructions = `\n\n**AUTONOMOUS MODE ACTIVATED:** You are in a continuous execution loop. You MUST use tools to make progress towards the user's goal. When you are completely certain that the entire request is finished, you MUST call the "TaskCompletionTool" with a summary of the work completed to exit the loop. Do not ask for intermediate reports or confirmation unless absolutely necessary.`;
+            autonomousInstructions = `
+
+**AUTONOMOUS MODE ACTIVATED:** You are in a continuous execution loop. You MUST use tools to make progress towards the user's goal. When you are completely certain that the entire request is finished, you MUST call the "TaskCompletionTool" with a summary of the work completed to exit the loop. Do not ask for intermediate reports or confirmation unless absolutely necessary.`;
         }
 
-        const completionInstruction = `\n\n**FINAL REPORTING:** If the last message in the history is a result from "TaskCompletionTool", your ONLY job is to provide a final, comprehensive summary to the user based on the entire conversation. Do not call any more tools.`;
+        const completionInstruction = `
 
-        return `You are a helpful AI assistant inside VS Code. Your primary goal is to provide a conversational response.` + 
-            (context ? `\n\n## Environment Context${context}` : '') + 
+**FINAL REPORTING:** If the last message in the history is a result from "TaskCompletionTool", your ONLY job is to provide a final, comprehensive summary to the user based on the entire conversation. Do not call any more tools.`;
+
+        const memoryToolInstruction = `
+
+**MEMORY:** You have access to a 'MemoryTool'. If the user corrects you or states a clear preference, you should use this tool to save the information as a concise fact. For example, if the user says 'No, use tabs instead of spaces', you should call the tool like this: MemoryTool({fact: 'User prefers tabs over spaces for indentation.'})`;
+
+        const gitignoreToolInstruction = `
+
+**GITIGNORE:** You have access to a 'GitignoreTool'. If the user asks to create or update a .gitignore file, you should use this tool. You can optionally provide a list of project types (e.g., 'node', 'python'), or call it with no arguments to have it auto-detect the project types.`;
+
+        return basePrompt + 
+            (agentMdContent ? `
+
+## User Instructions (AGENT.md)
+${agentMdContent}` : '') + 
+            memoryContent +
+            (context ? `
+
+## Environment Context${context}` : '') + 
             autonomousInstructions + 
             completionInstruction + 
-            `\n\nYou can use a <thought> tag to reason about the user's request. This thought process will not be shown to the user.` + 
-            `\n\nWhen providing long blocks of text, such as code, logs, or file dumps, that might not be essential for the immediate next turn of the conversation, you MUST wrap that content within <prunable>...</prunable> tags. This helps manage the context efficiently.` + 
-            `\n\n**CRITICAL INSTRUCTION:** After your thought process, you MUST provide a user-facing response. The final response for the user must be outside of any tags. If you have nothing to say, respond with a message indicating that. DO NOT provide an empty response.`;
+            memoryToolInstruction +
+            gitignoreToolInstruction +
+            `
+
+You can use a <thought> tag to reason about the user's request. This thought process will not be shown to the user.` + 
+            `
+When providing long blocks of text, such as code, logs, or file dumps, that might not be essential for the immediate next turn of the conversation, you MUST wrap that content within <prunable>...</prunable> tags. This helps manage the context efficiently.` + 
+            `
+**CRITICAL INSTRUCTION:** After your thought process, you MUST provide a user-facing response. The final response for the user must be outside of any tags. If you have nothing to say, respond with a message indicating that. DO NOT provide an empty response.`;
     }
 
 	private getPrunedHistory(): LlmMessage[] {
@@ -615,7 +739,8 @@ export class OrchestratorAgent {
 
 			const conversationForLlm = this.getPrunedHistory();
 
-			console.log(`[OrchestratorAgent DEBUG] Conversation history being sent to LLM:\n${JSON.stringify(conversationForLlm, null, 2)}`);
+			console.log(`[OrchestratorAgent DEBUG] Conversation history being sent to LLM:
+${JSON.stringify(conversationForLlm, null, 2)}`);
 
             let isFirstChunk = true;
             const onChunk = (chunk: string) => {
@@ -765,11 +890,17 @@ export class OrchestratorAgent {
 	private createStatusUpdateMessage(toolName: string, toolArgs: any): string | null {
 		switch (toolName) {
 			case 'FileWriteTool':
-				return `Modifying file: `${toolArgs.filePath}``;
+				return `Modifying file: 
+${toolArgs.filePath}
+``;
 			case 'FileReadTool':
-				return `Reading file: `${toolArgs.filePath}``;
+				return `Reading file: 
+${toolArgs.filePath}
+``;
 			case 'TerminalExecutionTool':
-				return `Running terminal command: `$ ${toolArgs.command}``;
+				return `Running terminal command: 
+$ ${toolArgs.command}
+``;
 			case 'WebSearchTool':
 				return `Searching the web for: "${toolArgs.query}"`;
 			default:

@@ -8,14 +8,23 @@ export type AuthMode = 'apiKey';
  */
 export class ConfigService {
     private static instance: ConfigService;
+    private static extensionPath: string;
 
     private constructor() { }
+
+    public static initialize(extensionPath: string): void {
+        ConfigService.extensionPath = extensionPath;
+    }
 
     public static getInstance(): ConfigService {
         if (!ConfigService.instance) {
             ConfigService.instance = new ConfigService();
         }
         return ConfigService.instance;
+    }
+
+    public getExtensionPath(): string {
+        return ConfigService.extensionPath;
     }
 
     private getConfiguration(section: string) {

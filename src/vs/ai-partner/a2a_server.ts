@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { AgentExecutor, AgentCard } from "@a2a-js/sdk";
+import { ConfigService } from "./config_service";
 
 interface AgentInfo {
     path: string;
@@ -37,7 +38,8 @@ export async function startA2AServer(context: vscode.ExtensionContext, agentBase
         server.use(`/agent/${agentInfo.card.name.replace('Agent', '').toLowerCase()}`, app.router);
     });
 
-    const port = 3000; // Will be replaced by config
+    const configService = ConfigService.getInstance();
+    const port = configService.getA2AServerPort();
     const listener = server.listen(port, () => {
         console.log(`A2A Server listening on port ${port}`);
         console.log('Registered agents:');

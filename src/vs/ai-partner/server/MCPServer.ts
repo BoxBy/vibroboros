@@ -6,6 +6,8 @@ import { registerWebSearchTool } from './tools/WebSearchTool';
 import { registerGitAutomationTool } from './tools/GitAutomationTool';
 import { registerSecurityVulnerabilityTool } from './tools/SecurityVulnerabilityTool';
 import { registerTaskCompletionTool } from '../tools/TaskCompletionTool';
+import { registerMemoryTool } from './tools/MemoryTool';
+import { registerGitignoreTool } from './tools/GitignoreTool';
 
 export function createMCPServer(): McpServer {
     const server = new McpServer({
@@ -20,6 +22,8 @@ export function createMCPServer(): McpServer {
     registerGitAutomationTool(server);
     registerSecurityVulnerabilityTool(server);
     registerTaskCompletionTool(server);
+    registerMemoryTool(server);
+    registerGitignoreTool(server);
 
     return server;
 }
