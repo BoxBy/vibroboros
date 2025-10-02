@@ -1,21 +1,18 @@
-
 import * as vscode from 'vscode';
-import { AgentExecutor, AgentCard, Task, TaskStatus, StreamEvent, GetRequest, SendMessageRequest, TaskArtifact } from "@a2a-js/sdk";
-import { v4 as uuidv4 } from 'uuid';
 import { A2AMessage } from '../interfaces/A2AMessage';
 
 export type UserPreference = 'positive' | 'negative' | 'neutral';
 
-const taskStore = new Map<string, Task>();
+export interface FeedbackPayload {
+    suggestionType: string;
+    accepted: boolean;
+}
 
-export class AILedLearningAgent implements AgentExecutor {
+export class AILedLearningAgent {
+    private static readonly AGENT_ID = 'AILedLearningAgent';
     private static readonly LEARNING_DATA_KEY = 'aiPartnerLearningData';
 
-    constructor(private state: vscode.Memento, private card: AgentCard) {}
-
-    getAgentCard(): Promise<AgentCard> {
-        return Promise.resolve(this.card);
-    }
+    constructor(private state: vscode.Memento) {}
 
     /**
      * Handles incoming A2A messages, specifically for logging user feedback.

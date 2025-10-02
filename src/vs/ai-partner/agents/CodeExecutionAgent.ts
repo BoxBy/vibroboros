@@ -1,79 +1,97 @@
-// import { AgentExecutor, AgentCard, Task, TaskStatus, StreamEvent, GetRequest, SendMessageRequest, TaskArtifact } from "@a2a-js/sdk";
-// import { v4 as uuidv4 } from 'uuid';
-// import { getMcpClient } from "../mcp_client_provider";
-// import { McpClient } from "@modelcontextprotocol/sdk";
-// import { ConfigService } from "../config_service";
+import { AgentExecutor, AgentCard, Task, TaskStatus, GetRequest, SendMessageRequest, TaskArtifact, StreamEvent } from "@a2a-js/sdk";
+import { v4 as uuidv4 } from 'uuid';
+import { getMcpClient } from "../mcp_client_provider";
+import { McpClient } from "@modelcontextprotocol/sdk";
+import { ConfigService } from "../config_service";
 
-// const taskStore = new Map<string, Task>();
+const taskStore = new Map<string, Task>();
 
-// export class CodeExecutionAgent implements AgentExecutor {
-//     private mcpClient: McpClient;
-//     private configService: ConfigService;
+export class CodeExecutionAgent implements AgentExecutor {
+    private mcpClient: McpClient;
+    private configService: ConfigService;
 
-//     constructor(private card: AgentCard) {
-//         this.mcpClient = getMcpClient();
-//         this.configService = ConfigService.getInstance();
-//     }
+    constructor(private card: AgentCard) {
+        this.mcpClient = getMcpClient();
+        this.configService = ConfigService.getInstance();
+    }
 
-//     getAgentCard(): Promise<AgentCard> {
-//         return Promise.resolve(this.card);
-//     }
+    getAgentCard(): Promise<AgentCard> {
+        return Promise.resolve(this.card);
+    }
 
-//     // ... (rest of the methods are the same)
-// }
+    getTask(req: GetRequest): Promise<Task> {
+        const task = taskStore.get(req.taskId);
+        if (!task) {
+            throw new Error('Task not found');
+        }
+        return Promise.resolve(task);
+    }
 
-import { A2AMessage } from '../interfaces/A2AMessage';
-import { MCPMessage } from '../interfaces/MCPMessage';
-import { MCPServer } from '../server/MCPServer';
+    async sendMessage(req: SendMessageRequest): Promise<Task> {
+        const taskId = uuidv4();
+        const task: Task = {
+            id: taskId,
+            status: TaskStatus.PENDING,
+            request: req,
+            steps: [],
+            artifacts: [],
+        };
+        taskStore.set(taskId, task);
 
-/**
- * An agent that executes shell commands by calling the TerminalExecutionTool.
- */
-export class CodeExecutionAgent {
-	private static readonly AGENT_ID = 'CodeExecutionAgent';
+        // Do not await, let it run in the background
+        this.processExecution(task, (event) => {
+            // In a real scenario, you'd stream these events back to the client.
+            console.log('StreamEvent:', event);
+        });
 
-	constructor(
-		private dispatch: (message: A2AMessage<any>) => Promise<void>,
-		private mcpServer: MCPServer
-	) {}
+        return task;
+    }
 
-	/**
-	 * Handles incoming messages from other agents.
-	 * @param message The agent-to-agent message.
-	 */
-	public async handleA2AMessage(message: A2AMessage<{ command: string }>): Promise<void> {
-		if (message.type !== 'request-code-execution') {
-			return;
-		}
+    private async processExecution(task: Task, stream: (event: StreamEvent) => void): Promise<void> {
+        try {
+            task.status = TaskStatus.RUNNING;
+            taskStore.set(task.id, task);
+            stream({ type: 'status-changed', status: TaskStatus.RUNNING });
 
-		try {
-			const mcpRequest: MCPMessage<any> = {
-				jsonrpc: '2.0',
-				id: '1', // This could be improved with a unique ID
-				method: 'tools/call',
-				params: { name: 'TerminalExecutionTool', arguments: { command: message.payload.command } }
-			};
+            const command = task.request.message.content as string;
+            if (!command || typeof command !== 'string') {
+                throw new Error('No command provided in the message content.');
+            }
 
-			const mcpResponse = await this.mcpServer.handleRequest(mcpRequest);
-			const rawContent = mcpResponse.result?.content?.[0]?.text || `Error or no output from command: ${message.payload.command}`;
+            stream({ type: 'log', message: `Executing command: ${command}` });
 
-			await this.dispatch({
-				sender: CodeExecutionAgent.AGENT_ID,
-				recipient: 'OrchestratorAgent',
-				timestamp: new Date().toISOString(),
-				type: 'response-code-execution',
-				payload: { rawContent }
-			});
+            const mcpResponse = await this.mcpClient.tool.call({
+                toolName: 'TerminalExecutionTool',
+                input: { command },
+            });
 
-		} catch (error: any) {
-			console.error(`[${CodeExecutionAgent.AGENT_ID}] Error:`, error);
-			await this.dispatch({
-				sender: CodeExecutionAgent.AGENT_ID,
-				recipient: 'OrchestratorAgent',
-				timestamp: new Date().toISOString(),
-				type: 'response-code-execution',
-				payload: { rawContent: `Failed to execute command: ${error.message}` }
-			});
-		}
-	}
+            const output = mcpResponse.output.text || `(No output from command)`;
+
+            const artifact: TaskArtifact = {
+                id: uuidv4(),
+                taskId: task.id,
+                type: 'tool_output',
+                data: output,
+                description: `Output of command: ${command}`
+            };
+            task.artifacts.push(artifact);
+            stream({ type: 'artifact-created', artifact });
+
+            task.status = TaskStatus.COMPLETED;
+            task.output = output;
+            taskStore.set(task.id, task);
+            stream({ type: 'status-changed', status: TaskStatus.COMPLETED });
+
+        } catch (e: any) {
+            const errorMessage = e.message || 'An unknown error occurred.';
+            task.status = TaskStatus.FAILED;
+            task.output = errorMessage;
+            if (task.steps.length > 0) {
+                task.steps[task.steps.length - 1].output = { error: errorMessage };
+            }
+            taskStore.set(task.id, task);
+            stream({ type: 'status-changed', status: TaskStatus.FAILED });
+            stream({ type: 'log', message: `Task failed: ${errorMessage}` });
+        }
+    }
 }

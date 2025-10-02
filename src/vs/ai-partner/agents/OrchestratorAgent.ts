@@ -220,10 +220,10 @@ export class OrchestratorAgent {
 				this.state.update(this.getSessionLlmHistoryKey(sessionIdToDelete), undefined);
 				if (activeId === sessionIdToDelete) {
 					if (remainingSessions.length > 0) {
-						activeId = remainingSessions[remainingSessions.length - 1].id;
+						actId = remainingSessions[remainingSessions.length - 1].id;
 					} else {
 						const now = new Date();
-						activeId = `session-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
+						actId = `session-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
 						const newMeta = { id: activeId, title: `Chat ${now.toLocaleString()}`, createdAt: now.toISOString(), messageCount: 0 };
 						remainingSessions.push(newMeta);
 						this.chatHistory = [];
@@ -259,22 +259,16 @@ export class OrchestratorAgent {
                 let searchContextSummary = "";
 
                 if (contextPayload.codebaseSearchResults && contextPayload.codebaseSearchResults.length > 0) {
-                    searchContextSummary += `Codebase search found the following relevant items:
-`;
+                    searchContextSummary += `Codebase search found the following relevant items:\n`;
                     contextPayload.codebaseSearchResults.slice(0, 5).forEach((result: any) => {
-                        searchContextSummary += `  - In file: ${result.filePath}
-`;
+                        searchContextSummary += `  - In file: ${result.filePath}\n`;
                         result.symbols.forEach((symbol: any) => {
-                            searchContextSummary += `    - Symbol '${symbol.name}' (${symbol.type}) at line ${symbol.line}
-`;
+                            searchContextSummary += `    - Symbol '${symbol.name}' (${symbol.type}) at line ${symbol.line}\n`;
                         });
                     });
                 }
 
-                const systemPrompt = await this.createSystemPrompt(contextPayload.activeFilePath, contextPayload.uiLanguage, contextPayload.folderOverview) + (searchContextSummary ? `
-
-## Codebase Search Context
-${searchContextSummary}` : "");
+                const systemPrompt = await this.createSystemPrompt(contextPayload.activeFilePath, contextPayload.uiLanguage, contextPayload.folderOverview) + (searchContextSummary ? `\n\n## Codebase Search Context\n${searchContextSummary}` : "");
 
                 this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Context received. Thinking...' } });
 
@@ -369,9 +363,7 @@ ${searchContextSummary}` : "");
     private async createAndExecutePlan(userText: string): Promise<void> {
         this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Creating a plan...' } });
 
-        const planPrompt = `Based on the user's request, create a step-by-step execution plan. Each step should be a clear, actionable task that can be routed to a specialist agent. Respond with a JSON array of strings. For example: ["Step 1: Description", "Step 2: Description"].
-
-User Request: "${userText}"`;
+        const planPrompt = `Based on the user's request, create a step-by-step execution plan. Each step should be a clear, actionable task that can be routed to a specialist agent. Respond with a JSON array of strings. For example: ["Step 1: Description", "Step 2: Description"].\n\nUser Request: "${userText}"`;
 
         try {
             const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
@@ -445,17 +437,7 @@ User Request: "${userText}"`;
             }
         ];
 
-        const routingPrompt = `You are an expert system for routing user requests to the correct specialist agent. Based on the user's query, decide which of the following agents is most appropriate. Respond with ONLY the name of the agent, or "Conversational" if no specialist is suitable.
-
-Available Agents:
-${specialistAgents.map(agent => `- ${agent.name}: ${agent.description}`).join('
-')}
-
----
-User Query: "${stepDescription}"
----
-
-Chosen Agent:`;
+        const routingPrompt = `You are an expert system for routing user requests to the correct specialist agent. Based on the user's query, decide which of the following agents is most appropriate. Respond with ONLY the name of the agent, or "Conversational" if no specialist is suitable.\n\nAvailable Agents:\n${specialistAgents.map(agent => `- ${agent.name}: ${agent.description}`).join('\n')}\n\n---\nUser Query: "${stepDescription}"\n---\n\nChosen Agent:`;
 
         const messages: LlmMessage[] = [
             { role: 'system', content: routingPrompt }
@@ -566,12 +548,7 @@ Chosen Agent:`;
             const memoryJson = await fs.readFile(memoryPath, 'utf-8');
             const memories = JSON.parse(memoryJson);
             if (memories.length > 0) {
-                memoryContent = `
-
-## Memory (User Feedback)
-This is a list of facts, preferences, and corrections provided by the user. You MUST adhere to them.
-- ` + memories.join('
-- ');
+                memoryContent = `\n\n## Memory (User Feedback)\nThis is a list of facts, preferences, and corrections provided by the user. You MUST adhere to them.\n- ` + memories.join('\n- ');
             }
         } catch (error) {
             console.warn('[OrchestratorAgent] memory.json not found or could not be read.');
@@ -579,70 +556,42 @@ This is a list of facts, preferences, and corrections provided by the user. You 
 
         let context = '';
         if (uiLanguage) {
-            context += `
-- The user's language is '${uiLanguage}'. You should respond in this language.`;
+            context += `\n- The user's language is '${uiLanguage}'. You should respond in this language.`;
         }
         if (activeFilePath && activeFilePath !== 'N/A') {
-            context += `
-- The user currently has the file '${activeFilePath}' open.`;
+            context += `\n- The user currently has the file '${activeFilePath}' open.`;
         }
         if (folderOverview && folderOverview !== 'N/A' && !folderOverview.includes('No folder overview file found')) {
-            context += `
-
-## Directory Overview (_folder_overview.md)
-**CRITICAL: You MUST consult this overview to understand the directory structure and the purpose of each file.** This is your primary source of information for navigating the project. The content is from the 
+            context += `\n\n## Directory Overview (_folder_overview.md)\n**CRITICAL: You MUST consult this overview to understand the directory structure and the purpose of each file.** This is your primary source of information for navigating the project. The content is from the 
 _folder_overview.md
- file in the relevant directory.
-
-${folderOverview}`;
+ file in the relevant directory.\n\n${folderOverview}`;
         } else {
-            context += `
-
-## Directory Overview
-**WARNING: 
-_folder_overview.md
- was not found in the current directory.** You have limited information about the project structure. You may need to use file system tools to explore the directory if the user's request requires it.`;
+            context += `\n\n## Directory Overview\n**WARNING: 
+_folder_overview.md\n was not found in the current directory.** You have limited information about the project structure. You may need to use file system tools to explore the directory if the user's request requires it.`;
         }
 
         let autonomousInstructions = '';
         if (this.isAutonomousMode) {
-            autonomousInstructions = `
-
-**AUTONOMOUS MODE ACTIVATED:** You are in a continuous execution loop. You MUST use tools to make progress towards the user's goal. When you are completely certain that the entire request is finished, you MUST call the "TaskCompletionTool" with a summary of the work completed to exit the loop. Do not ask for intermediate reports or confirmation unless absolutely necessary.`;
+            autonomousInstructions = `\n\n**AUTONOMOUS MODE ACTIVATED:** You are in a continuous execution loop. You MUST use tools to make progress towards the user's goal. When you are completely certain that the entire request is finished, you MUST call the "TaskCompletionTool" with a summary of the work completed to exit the loop. Do not ask for intermediate reports or confirmation unless absolutely necessary.`;
         }
 
-        const completionInstruction = `
+        const completionInstruction = `\n\n**FINAL REPORTING:** If the last message in the history is a result from "TaskCompletionTool", your ONLY job is to provide a final, comprehensive summary to the user based on the entire conversation. Do not call any more tools.`;
 
-**FINAL REPORTING:** If the last message in the history is a result from "TaskCompletionTool", your ONLY job is to provide a final, comprehensive summary to the user based on the entire conversation. Do not call any more tools.`;
+        const memoryToolInstruction = `\n\n**MEMORY:** You have access to a 'MemoryTool'. If the user corrects you or states a clear preference, you should use this tool to save the information as a concise fact. For example, if the user says 'No, use tabs instead of spaces', you should call the tool like this: MemoryTool({fact: 'User prefers tabs over spaces for indentation.'})`;
 
-        const memoryToolInstruction = `
-
-**MEMORY:** You have access to a 'MemoryTool'. If the user corrects you or states a clear preference, you should use this tool to save the information as a concise fact. For example, if the user says 'No, use tabs instead of spaces', you should call the tool like this: MemoryTool({fact: 'User prefers tabs over spaces for indentation.'})`;
-
-        const gitignoreToolInstruction = `
-
-**GITIGNORE:** You have access to a 'GitignoreTool'. If the user asks to create or update a .gitignore file, you should use this tool. You can optionally provide a list of project types (e.g., 'node', 'python'), or call it with no arguments to have it auto-detect the project types.`;
+        const gitignoreToolInstruction = `\n\n**GITIGNORE:** You have access to a 'GitignoreTool'. If the user asks to create or update a .gitignore file, you should use this tool. You can optionally provide a list of project types (e.g., 'node', 'python'), or call it with no arguments to have it auto-detect the project types.`;
 
         return basePrompt + 
-            (agentMdContent ? `
-
-## User Instructions (AGENT.md)
-${agentMdContent}` : '') + 
-            memoryContent +
-            (context ? `
-
-## Environment Context${context}` : '') + 
+            (agentMdContent ? `\n\n## User Instructions (AGENT.md)\n${agentMdContent}` : '') + 
+            memoryContent + 
+            (context ? `\n\n## Environment Context${context}` : '') + 
             autonomousInstructions + 
             completionInstruction + 
-            memoryToolInstruction +
-            gitignoreToolInstruction +
-            `
-
-You can use a <thought> tag to reason about the user's request. This thought process will not be shown to the user.` + 
-            `
-When providing long blocks of text, such as code, logs, or file dumps, that might not be essential for the immediate next turn of the conversation, you MUST wrap that content within <prunable>...</prunable> tags. This helps manage the context efficiently.` + 
-            `
-**CRITICAL INSTRUCTION:** After your thought process, you MUST provide a user-facing response. The final response for the user must be outside of any tags. If you have nothing to say, respond with a message indicating that. DO NOT provide an empty response.`;
+            memoryToolInstruction + 
+            gitignoreToolInstruction + 
+            `\n\nYou can use a <thought> tag to reason about the user's request. This thought process will not be shown to the user.` + 
+            `\nWhen providing long blocks of text, such as code, logs, or file dumps, that might not be essential for the immediate next turn of the conversation, you MUST wrap that content within <prunable>...</prunable> tags. This helps manage the context efficiently.` + 
+            `\n**CRITICAL INSTRUCTION:** After your thought process, you MUST provide a user-facing response. The final response for the user must be outside of any tags. If you have nothing to say, respond with a message indicating that. DO NOT provide an empty response.`;
     }
 
 	private getPrunedHistory(): LlmMessage[] {
@@ -890,17 +839,11 @@ ${JSON.stringify(conversationForLlm, null, 2)}`);
 	private createStatusUpdateMessage(toolName: string, toolArgs: any): string | null {
 		switch (toolName) {
 			case 'FileWriteTool':
-				return `Modifying file: 
-${toolArgs.filePath}
-``;
+				return `Modifying file: \n${toolArgs.filePath}\n`;
 			case 'FileReadTool':
-				return `Reading file: 
-${toolArgs.filePath}
-``;
+				return `Reading file: \n${toolArgs.filePath}\n`;
 			case 'TerminalExecutionTool':
-				return `Running terminal command: 
-$ ${toolArgs.command}
-``;
+				return `Running terminal command: \n$ ${toolArgs.command}\n`;
 			case 'WebSearchTool':
 				return `Searching the web for: "${toolArgs.query}"`;
 			default:

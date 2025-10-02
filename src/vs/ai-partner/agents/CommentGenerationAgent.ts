@@ -1,105 +1,103 @@
 import * as vscode from 'vscode';
-import { A2AMessage } from '../interfaces/A2AMessage';
-import { MCPMessage } from '../interfaces/MCPMessage';
-import { MCPServer } from '../server/MCPServer';
+import { AgentExecutor, AgentCard, Task, TaskStatus, GetRequest, SendMessageRequest, TaskArtifact, StreamEvent } from "@a2a-js/sdk";
+import { v4 as uuidv4 } from 'uuid';
 import { LLMService } from '../services/LLMService';
-import { randomUUID } from 'crypto';
+import { ConfigService } from '../config_service';
+import { getMcpClient } from "../mcp_client_provider";
+import { McpClient } from "@modelcontextprotocol/sdk";
 
-/**
- * @class CommentGenerationAgent
- * A specialized agent for generating inline comments for code.
- */
-export class CommentGenerationAgent {
-    private static readonly AGENT_ID = 'CommentGenerationAgent';
-    private dispatch: (message: A2AMessage<any>) => void;
-    private mcpServer: MCPServer;
+const taskStore = new Map<string, Task>();
+
+export class CommentGenerationAgent implements AgentExecutor {
     private llmService: LLMService;
+    private configService: ConfigService;
+    private mcpClient: McpClient;
 
-    constructor(dispatch: (message: A2AMessage<any>) => void, mcpServer: MCPServer, llmService: LLMService) {
-        this.dispatch = dispatch;
-        this.mcpServer = mcpServer;
-        this.llmService = llmService;
+    constructor(private card: AgentCard) {
+        this.llmService = LLMService.getInstance();
+        this.configService = ConfigService.getInstance();
+        this.mcpClient = getMcpClient();
     }
 
-    public async handleA2AMessage(message: A2AMessage<{ filePath: string, query: string }>): Promise<void> {
-        if (message.type !== 'request-comment-generation') {
-            return;
-        }
+    getAgentCard(): Promise<AgentCard> {
+        return Promise.resolve(this.card);
+    }
 
+    getTask(req: GetRequest): Promise<Task> {
+        const task = taskStore.get(req.taskId);
+        if (!task) { throw new Error('Task not found'); }
+        return Promise.resolve(task);
+    }
+
+    async sendMessage(req: SendMessageRequest): Promise<Task> {
+        const taskId = uuidv4();
+        const task: Task = { id: taskId, status: TaskStatus.PENDING, request: req, steps: [], artifacts: [] };
+        taskStore.set(taskId, task);
+        this.processGeneration(task, (event) => { console.log('StreamEvent:', event); });
+        return task;
+    }
+
+    private async processGeneration(task: Task, stream: (event: StreamEvent) => void): Promise<void> {
         try {
-            const fileReadRequest: MCPMessage<any> = {
-                jsonrpc: '2.0',
-                id: '1',
-                method: 'tools/call',
-                params: { name: 'FileReadTool', arguments: { filePath: message.payload.filePath } }
-            };
-            const fileContentResponse = await this.mcpServer.handleRequest(fileReadRequest);
-            const fileContent = fileContentResponse.result.content[0].text;
+            task.status = TaskStatus.RUNNING;
+            taskStore.set(task.id, task);
+            stream({ type: 'status-changed', status: TaskStatus.RUNNING });
 
-            const systemPrompt = `You are an expert programmer tasked with writing high-quality code comments.\n\n` +
-                                 `**INSTRUCTIONS:**\n` +
-                                 `1. Analyze the provided code.\n` +
-                                 `2. Add concise, helpful JSDoc-style comments to all functions, classes, and complex logic blocks.\n` +
-                                 `3. **IMPORTANT**: You MUST return the complete, fully-modified code for the entire file. Do NOT use markdown or any other formatting. Output only the raw code.`;
+            const { filePath } = task.request.message.content as { filePath: string };
+            if (!filePath) {
+                throw new Error('No filePath provided.');
+            }
+            stream({ type: 'log', message: `Reading file for comment generation: ${filePath}` });
 
+            const fileContentResponse = await this.mcpClient.tool.call({ toolName: 'FileReadTool', input: { filePath } });
+            const fileContent = fileContentResponse.output.text;
+
+            const systemPrompt = `You are an expert programmer tasked with writing high-quality code comments.\n\n**INSTRUCTIONS:**\n1. Analyze the provided code.\n2. Add concise, helpful JSDoc-style comments to all functions, classes, and complex logic blocks.\n3. **IMPORTANT**: You MUST return the complete, fully-modified code for the entire file. Do NOT use markdown or any other formatting. Output only the raw code.`;
             const userPrompt = `Add comments to the following code:\n\n${fileContent}`;
 
-            const config = vscode.workspace.getConfiguration('vibroboros');
-            const apiKey = config.get<string>('llm.apiKeys')?.[0] || '';
-            const endpoint = config.get<string>('llm.endpoint') || 'https://api.openai.com/v1/chat/completions';
-            const model = config.get<string>('agent.commentGen.model') || 'gpt-4'; // Using a different model config key
+            stream({ type: 'log', message: 'Generating comments with LLM...' });
+            const model = this.configService.getModel('CommentGenerationAgent');
+            const apiKey = this.configService.getApiKeys()[0] || '';
+            const endpoint = this.configService.getEndpoint();
 
             const llmResponse = await this.llmService.requestLLMCompletion(
                 [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-                apiKey,
-                endpoint,
-                [],
-                model
+                apiKey, endpoint, [], model
             );
-
             const commentedCode = llmResponse.choices[0]?.message?.content;
 
             if (!commentedCode) {
                 throw new Error('LLM failed to generate comments.');
             }
 
-            const responsePayload = {
-                rawContent: commentedCode, // Send the raw code back
-                content: [
-                    { type: 'text', text: `I have added comments to ${message.payload.filePath}.` },
-                    {
-                        type: 'ui-action',
-                        action: {
-                            label: 'Overwrite original file',
-                            toolName: 'FileWriteTool',
-                            arguments: {
-                                filePath: message.payload.filePath,
-                                content: commentedCode
-                            },
-                            suggestionId: randomUUID(),
-                            suggestionType: 'commenting'
-                        }
-                    }
-                ]
+            const artifact: TaskArtifact = {
+                id: uuidv4(),
+                taskId: task.id,
+                type: 'ui-action',
+                data: {
+                    label: 'Overwrite original file with comments',
+                    toolName: 'FileWriteTool',
+                    arguments: { filePath, content: commentedCode },
+                    suggestionId: uuidv4(),
+                    suggestionType: 'commenting'
+                },
+                description: `Suggested comments for ${filePath}`
             };
+            task.artifacts.push(artifact);
+            stream({ type: 'artifact-created', artifact });
 
-            this.dispatch({
-                sender: CommentGenerationAgent.AGENT_ID,
-                recipient: 'OrchestratorAgent',
-                timestamp: new Date().toISOString(),
-                type: 'response-comment-generation',
-                payload: responsePayload
-            });
+            task.status = TaskStatus.COMPLETED;
+            task.output = `Comment generation complete for ${filePath}.`;
+            taskStore.set(task.id, task);
+            stream({ type: 'status-changed', status: TaskStatus.COMPLETED });
 
-        } catch (error: any) {
-            console.error(`[${CommentGenerationAgent.AGENT_ID}] Error during comment generation:`, error);
-            this.dispatch({
-                sender: CommentGenerationAgent.AGENT_ID,
-                recipient: 'OrchestratorAgent',
-                timestamp: new Date().toISOString(),
-                type: 'response-comment-generation',
-                payload: { content: [{ type: 'text', text: `An error occurred while generating comments: ${error.message}` }] }
-            });
+        } catch (e: any) {
+            const errorMessage = e.message || 'An unknown error occurred.';
+            task.status = TaskStatus.FAILED;
+            task.output = errorMessage;
+            taskStore.set(task.id, task);
+            stream({ type: 'status-changed', status: TaskStatus.FAILED });
+            stream({ type: 'log', message: `Task failed: ${errorMessage}` });
         }
     }
 }
