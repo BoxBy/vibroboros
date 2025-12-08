@@ -1,0 +1,42 @@
+body {
+    font-family: var(--vscode-font-family);
+    color: var(--vscode-editor-foreground);
+    background-color: var(--vscode-side-bar-background);
+    padding: 10px;
+}
+
+.header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+h2 {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin: 0;
+}
+
+#clear-tasks-button {
+    padding: 2px 8px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 2px;
+    background-color: var(--vscode-button-secondary-background);
+    color: var(--vscode-button-secondary-foreground);
+    cursor: pointer;
+}
+
+#clear-tasks-button:hover {
+    background-color: var(--vscode-button-secondary-hover-background);
+}
+
+#task-list-container, #agent-list-container {
+    margin-bottom: 15px;
+}
+
+.task-item {
+    /* styles remain the same */
+}
+
+/* ... other styles remain the same ... */

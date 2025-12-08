@@ -1,0 +1,24 @@
+{
+    "contributes": {
+        "configuration": {
+            "title": "AI Partner",
+            "properties": {
+                "ai-partner.llm.apiKeys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Your OpenAI-compatible API keys. The system will rotate to the next available key if a QuotaLimit error occurs.",
+                    "scope": "application"
+                },
+                "ai-partner.llm.model": {
+                    "type": "string",
+                    "default": "gpt-4",
+                    "description": "The language model to use for AI-powered features.",
+                    "scope": "application"
+                }
+            }
+        }
+    }
+}

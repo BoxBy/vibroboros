@@ -1,0 +1,9 @@
+export declare const getTaskTypePrompt: (userText: string) => string;
+export declare const getConversationalPrompt: (userText: string) => string;
+export declare const getPlanPrompt: (userLanguage: string, userText: string, specialistAgentDescriptions: string, uroborosMode?: boolean) => string;
+export declare const getBugFixProcessPrompt: (userLanguage: string, userText: string) => string;
+export declare const getRoutingPrompt: (stepDescription: string, specialistAgentDescriptions: string) => string;
+export declare const getPostActionsSelectionPrompt: (userLanguage: string, userText: string, followUps: string[]) => string;
+export declare const getSeniorEngineerThinkingPrompt: () => string;
+export declare const getRobustToolUsePrompt: () => string;
+export declare const getSecuritySanitizationPrompt: (userInput: string) => string;

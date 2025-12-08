@@ -1,0 +1,317 @@
+{
+  "name": "viper",
+  "displayName": "Viper",
+  "description": "An A2A-based multi-agent AI coding partner.",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.103.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:viper.mainView"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "viper.generateDocumentation",
+        "title": "Viper: Generate Documentation"
+      },
+      {
+        "command": "viper.getRefactoringSuggestions",
+        "title": "Viper: Get Refactoring Suggestions"
+      },
+      {
+        "command": "viper.summarizeCode",
+        "title": "Viper: Summarize Code"
+      },
+      {
+        "command": "viper.toViper",
+        "title": "Send to Viper"
+      },
+      {
+        "command": "viper.toViperSelection",
+        "title": "Send Selection to Viper"
+      },
+      {
+        "command": "viper.toViperActiveFile",
+        "title": "Send File to Viper"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "viper-sidebar",
+          "title": "Viper",
+          "icon": "media/logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "viper-sidebar": [
+        {
+          "id": "viper.mainView",
+          "name": "Viper Partner",
+          "type": "webview",
+          "retainContextWhenHidden": true
+        }
+      ]
+    },
+    "configuration": [
+      {
+        "title": "Viper",
+        "properties": {
+          "viper.history.advancedSummary.enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable LLM-based concise session title summarization for chat history.",
+            "scope": "application"
+          },
+          "viper.llm.provider": {
+            "type": "string",
+            "enum": [
+              "openai",
+              "ollama",
+              "anthropic",
+              "xai",
+              "google",
+              "groq",
+              "openrouter"
+            ],
+            "default": "openai",
+            "description": "The LLM provider to use.",
+            "scope": "application"
+          },
+          "viper.openai.endpoint": {
+            "type": "string",
+            "default": "https://api.openai.com/v1",
+            "description": "The endpoint URL for OpenAI API.",
+            "scope": "application"
+          },
+          "viper.ollama.endpoint": {
+            "type": "string",
+            "default": "http://localhost:11434",
+            "description": "The endpoint URL for Ollama service.",
+            "scope": "application"
+          },
+          "viper.ollama.isCloud": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether Ollama is cloud-hosted.",
+            "scope": "application"
+          },
+          "viper.anthropic.endpoint": {
+            "type": "string",
+            "default": "https://api.anthropic.com/v1",
+            "description": "The endpoint URL for Anthropic API.",
+            "scope": "application"
+          },
+          "viper.xai.endpoint": {
+            "type": "string",
+            "default": "https://api.xai.com/v1",
+            "description": "The endpoint URL for xAI API.",
+            "scope": "application"
+          },
+          "viper.google.endpoint": {
+            "type": "string",
+            "default": "https://generativelanguage.googleapis.com/v1beta",
+            "description": "The endpoint URL for Google API.",
+            "scope": "application"
+          },
+          "viper.groq.endpoint": {
+            "type": "string",
+            "default": "https://api.groq.com/openai/v1",
+            "description": "The endpoint URL for Groq API.",
+            "scope": "application"
+          },
+          "viper.openrouter.endpoint": {
+            "type": "string",
+            "default": "https://openrouter.ai/api/v1",
+            "description": "The endpoint URL for OpenRouter API.",
+            "scope": "application"
+          },
+          "viper.auth.mode": {
+            "type": "string",
+            "enum": [
+              "apiKey"
+            ],
+            "default": "apiKey",
+            "description": "The authentication method to use for the LLM service.",
+            "scope": "application"
+          },
+          "viper.agent.model": {
+            "type": "string",
+            "default": "gpt-4",
+            "description": "The global language model to use for all agents.",
+            "scope": "application"
+          },
+          "viper.agent.docGen.requestTimeout": {
+            "type": "number",
+            "default": 30000,
+            "description": "Timeout in milliseconds for requests to the DocGen Agent.",
+            "scope": "resource"
+          },
+          "viper.agent.refactoring.requestTimeout": {
+            "type": "number",
+            "default": 90000,
+            "description": "Timeout in milliseconds for requests to the Refactoring Agent.",
+            "scope": "resource"
+          },
+          "viper.agent.codeAnalysis.requestTimeout": {
+            "type": "number",
+            "default": 45000,
+            "description": "Timeout in milliseconds for requests to the Code Analysis Agent.",
+            "scope": "resource"
+          },
+          "viper.agent.orchestrator.contextTokenThreshold": {
+            "type": "number",
+            "default": 8000,
+            "description": "The number of tokens in the conversation history that will trigger automatic summarization. Set to 0 to disable.",
+            "scope": "application"
+          },
+          "viper.agent.orchestrator.requestTimeout": {
+            "type": "number",
+            "default": 90000,
+            "description": "Timeout in milliseconds for requests to the Orchestrator Agent.",
+            "scope": "application"
+          },
+          "viper.llm.stream.enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable streaming responses from the LLM globally.",
+            "scope": "application"
+          },
+          "viper.llm.stream.agents": {
+            "type": "object",
+            "default": {},
+            "description": "Per-agent streaming overrides, e.g. { \"RefactoringSuggestionAgent\": true }.",
+            "scope": "application"
+          },
+          "viper.openai.apiKey": {
+            "type": "string",
+            "default": "",
+            "description": "OpenAI API key.",
+            "scope": "application"
+          },
+          "viper.ollama.apiKey": {
+            "type": "string",
+            "default": "",
+            "description": "Ollama API key (Bearer token).",
+            "scope": "application"
+          },
+          "viper.anthropic.apiKey": {
+            "type": "string",
+            "default": "",
+            "description": "Anthropic API key.",
+            "scope": "application"
+          },
+          "viper.xai.apiKey": {
+            "type": "string",
+            "default": "",
+            "description": "xAI API key.",
+            "scope": "application"
+          },
+          "viper.google.apiKey": {
+            "type": "string",
+            "default": "",
+            "description": "Google API key.",
+            "scope": "application"
+          },
+          "viper.groq.apiKey": {
+            "type": "string",
+            "default": "",
+            "description": "Groq API key.",
+            "scope": "application"
+          },
+          "viper.openrouter.apiKey": {
+            "type": "string",
+            "default": "",
+            "description": "OpenRouter API key.",
+            "scope": "application"
+          },
+          "viper.developerMode": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enables developer mode for verbose logging and other diagnostics.",
+            "scope": "application"
+          },
+          "viper.checkpoints.enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "When enabled, Viper creates a safety checkpoint under .viper/checkpoints before applying file writes or running commands.",
+            "scope": "application"
+          }
+        }
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "viper.toViper",
+          "group": "navigation@9"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "viper.toViperSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@9"
+        },
+        {
+          "command": "viper.toViperActiveFile",
+          "when": "!editorHasSelection",
+          "group": "navigation@9"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run build",
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "lint": "eslint src",
+    "check-types": "rm -rf src/temp_types && tsc --emitDeclarationOnly --project tsconfig.json"
+  },
+  "dependencies": {
+    "@a2a-js/sdk": "^0.3.4",
+    "@modelcontextprotocol/sdk": "^1.18.2",
+    "@types/diff": "^7.0.2",
+    "@types/turndown": "^5.0.6",
+    "@types/uuid": "^10.0.0",
+    "diff": "^8.0.2",
+    "express": "^4.21.1",
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^15.6.6",
+    "remark-gfm": "^4.0.1",
+    "ts-node": "^10.9.2",
+    "turndown": "^7.2.2",
+    "uuid": "^9.0.1",
+    "zod-to-json-schema": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/mocha": "^10.0.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/vscode": "^1.103.0",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "@vscode/codicons": "^0.0.35",
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "esbuild": "^0.25.8",
+    "eslint": "^9.32.0",
+    "fs-extra": "^11.3.1",
+    "npm-run-all": "^4.1.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "prismjs": "^1.30.0"
+  }
+}
