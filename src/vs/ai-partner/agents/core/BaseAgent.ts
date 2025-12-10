@@ -72,6 +72,23 @@ export abstract class BaseAgent implements AgentExecutor {
     }
 
     /**
+     * Check if a file exists to determine if we're creating or modifying.
+     * Use this helper to set correct suggestionType for UI messages.
+     * 
+     * @param filePath Absolute or relative file path
+     * @returns 'create' if file doesn't exist, 'modify' if it exists
+     */
+    protected async getFileStatus(filePath: string): Promise<'create' | 'modify'> {
+        try {
+            const fsPromises = require('fs/promises');
+            await fsPromises.stat(filePath);
+            return 'modify'; // File exists
+        } catch {
+            return 'create'; // File doesn't exist
+        }
+    }
+
+    /**
      * Loads custom agent configuration from local markdown file.
      * Path: C:\Users\LuTe\.gemini\agents\[AgentName].md
      */
@@ -84,70 +101,17 @@ export abstract class BaseAgent implements AgentExecutor {
      * # [AgentName]
      * ...
      */
+    /**
+     * Loads custom agent configuration from workspace markdown file.
+     * Delegates to reusable helper promptLoader.ts
+     */
     protected async loadAgentConfig(): Promise<string> {
-        try {
-            const workspaceFolders = vscode.workspace.workspaceFolders;
-            if (!workspaceFolders || workspaceFolders.length === 0) {
-                return '';
-            }
-            const rootPath = workspaceFolders[0].uri.fsPath;
-            const configNames = ['AGENTS.md', 'GEMINI.md'];
-            let content = '';
-            let loadedPath = '';
-
-            for (const name of configNames) {
-                const checkPath = path.join(rootPath, '.gemini', name);
-                try {
-                    content = await fs.promises.readFile(checkPath, 'utf-8');
-                    loadedPath = checkPath;
-                    break;
-                } catch {
-                    // Try next
-                }
-            }
-
-            if (!content) {
-                return '';
-            }
-
-            this.log(`Loaded custom configuration from ${loadedPath}`);
-
-            // Parse sections using simple regex/string searching
-            // We look for headers like '# Common' or '## Common' regarding the agent name
-            const lines = content.split('\n');
-            let currentSection = '';
-            let commonPrompt = '';
-            let agentPrompt = '';
-
-            const agentName = this.card.name;
-
-            for (const line of lines) {
-                const headerMatch = line.match(/^(#{1,3})\s+(.+)$/);
-                if (headerMatch) {
-                    currentSection = headerMatch[2].trim();
-                    continue;
-                }
-
-                if (currentSection.toLowerCase() === 'common') {
-                    commonPrompt += line + '\n';
-                } else if (currentSection === agentName) {
-                    agentPrompt += line + '\n';
-                }
-            }
-
-            let result = '';
-            if (commonPrompt.trim()) {
-                result += `\n\n[Project Common Instructions]\n${commonPrompt.trim()}`;
-            }
-            if (agentPrompt.trim()) {
-                result += `\n\n[User Custom Instructions for ${agentName}]\n${agentPrompt.trim()}`;
-            }
-
-            return result;
-        } catch (e) {
-            this.log(`Failed to load agent config: ${e}`);
+        const { loadPromptConfig } = require('../utils/promptLoader');
+        const config = await loadPromptConfig(this.card.name);
+        if (config) {
+            this.log(`Loaded custom configuration for ${this.card.name}`);
         }
-        return '';
+        return config;
     }
     /**
      * Robustly parses LLM response text into JSON (or text list).

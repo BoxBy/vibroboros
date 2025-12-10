@@ -1,16 +1,24 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+// Force refresh: 2025-12-10 19:35
 import { VSCodeButton, VSCodeDivider, VSCodeDropdown, VSCodeOption, VSCodeTextField } from '@vscode/webview-ui-toolkit/react';
 import { vscodeService } from './services/vscode';
 import { ProviderSettings } from './components/LLMProviderSettings';
 import { validateApiKey, validateEndpoint, getDefaultEndpoint } from './utils/validation';
 
-// Define the structure of an agent based on a2a-servers.json
+// Defimport { VSCodeCheckbox } from '@vscode/webview-ui-toolkit/react'; // 추가
+
+// Agent interface for internal Viper agents (from ConfigService.getInternalAgents())
+interface InternalAgent {
+  name: string;
+  description: string;
+}
+
+// Legacy Agent interface for A2A agents
 interface Agent {
   path: string;
   card: {
     name: string;
     description: string;
-    // Add other card properties if needed for display
   };
 }
 
@@ -37,7 +45,11 @@ interface LlmSettings {
   model: string;
 }
 
-export const SettingsPage: React.FC = () => {
+interface SettingsPageProps {
+  models?: string[];
+}
+
+export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels = [] }) => {
   // 유효성 검사 상태
   const [validationState, setValidationState] = useState<{
     apiKeyValid: boolean;
@@ -46,7 +58,7 @@ export const SettingsPage: React.FC = () => {
     apiKeyValid: true,
     endpointValid: true
   });
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<InternalAgent[]>([]); // Changed to InternalAgent[]
   // LLM 설정 상태 추가
   const [llmSettings, setLlmSettings] = useState<LlmSettings>({
     llmProvider: undefined, // 초기값을 undefined로 설정하여 configService에서 가져온 값으로 초기화되도록 합니다.
@@ -67,7 +79,8 @@ export const SettingsPage: React.FC = () => {
     openrouterEndpoint: 'https://openrouter.ai/api/v1',
     model: '',
   });
-  const [models, setModels] = useState<string[]>([]); // 모델 목록 상태 추가
+  const [models, setModels] = useState<string[]>(propModels || []);
+  console.log('[SettingsPage] Component rendering, models state:', models.length);
   // Profiles state
   const [profiles, setProfiles] = useState<Array<{ id: string; name: string; provider: string; endpoint: string; model: string; enabled?: boolean; isDefault?: boolean }>>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
@@ -86,35 +99,27 @@ export const SettingsPage: React.FC = () => {
   const [agentOverridesDraft, setAgentOverridesDraft] = useState<Record<string, { useDefault: boolean; model: string; profileId?: string }>>({});
   const [showAgentOverrides, setShowAgentOverrides] = useState<boolean>(false);
 
+  // startModelPolling은 더 이상 필요 없음 (MainView가 models를 관리)
   const startModelPolling = useCallback((durationMs: number = 20000, intervalMs: number = 2000) => {
-    if (modelPollTimerRef.current) {
-      clearInterval(modelPollTimerRef.current);
-      modelPollTimerRef.current = null;
-    }
-    modelPollDeadlineRef.current = Date.now() + durationMs;
-    modelPollTimerRef.current = setInterval(() => {
-      if (Date.now() > modelPollDeadlineRef.current) {
-        clearInterval(modelPollTimerRef.current);
-        modelPollTimerRef.current = null;
-        return;
-      }
-      vscodeService.postMessage({ command: 'requestModels' });
-    }, intervalMs);
+    // No-op: MainView handles model loading via availableModels prop
+    console.log('[SettingsPage] startModelPolling called but disabled (MainView handles models)');
   }, []);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
+      console.log('[SettingsPage] handleMessage received:', message.command);
+      
+      if (message.command === 'updateModels') {
+        console.log('[SettingsPage] Processing updateModels directly:', Array.isArray(message.payload) ? message.payload.length : 0, 'models');
+        setModels(message.payload || []);
+        return;
+      }
+      
       if (message.command === 'updateAgentList') {
         setAgents(message.agents);
       } else if (message.command === 'llmSettingsResponse') { // LLM 설정 응답 처리
         setLlmSettings(message.payload);
-      } else if (message.command === 'updateModels') { // 모델 목록 응답 처리
-        setModels(message.payload);
-        if (Array.isArray(message.payload) && message.payload.length > 0 && modelPollTimerRef.current) {
-          clearInterval(modelPollTimerRef.current);
-          modelPollTimerRef.current = null;
-        }
       } else if (message.command === 'featureToggles') {
         const p = message.payload || {};
         setStreamingEnabled(!!p.streamingEnabled);
@@ -126,6 +131,18 @@ export const SettingsPage: React.FC = () => {
         setActiveProfileId(typeof message.payload === 'string' ? message.payload : null);
       } else if (message.command === 'profileSaved' || message.command === 'profileDeleted') {
         vscodeService.postMessage({ command: 'requestProfiles' });
+      } else if (message.command === 'configuredItemsUpdate') {
+         setConfiguredItems(message.payload);
+         // Update health status if provided
+         if (message.payload?.healthStatus) {
+           const { mcp, a2a } = message.payload.healthStatus;
+           if (mcp) {
+             setMcpHealthStatus(mcp);
+           }
+           if (a2a) {
+             setA2aHealthStatus(a2a);
+           }
+         }
       }
     };
 
@@ -141,10 +158,13 @@ export const SettingsPage: React.FC = () => {
     document.addEventListener('click', onDocClick);
 
     // 초기 LLM 설정 요청
+    vscodeService.postMessage({ command: 'requestAgentList' });
     vscodeService.postMessage({ command: 'requestLlmSettings' });
-    vscodeService.postMessage({ command: 'requestModels' }); // 모델 목록 요청
+    // requestModels는 MainView가 처리함 (propModels로 전달받음)
     vscodeService.postMessage({ command: 'requestProfiles' });
     vscodeService.postMessage({ command: 'requestFeatureToggles' });
+    vscodeService.postMessage({ command: 'refreshConfiguredItems' }); // Request items on mount
+    vscodeService.postMessage({ command: 'requestAgents' }); // Request internal agents for Per-Agent LLM Override
 
     return () => {
       window.removeEventListener('message', handleMessage);
@@ -152,9 +172,64 @@ export const SettingsPage: React.FC = () => {
     };
   }, []);
 
+  const [configuredItems, setConfiguredItems] = useState<{ mcp: string[]; a2a: string[]; prompts: { name: string; content: string }[] }>({ mcp: [], a2a: [], prompts: [] });
+  const [mcpExpanded, setMcpExpanded] = useState(false);
+  const [a2aExpanded, setA2aExpanded] = useState(false);
+  const [expandedPrompts, setExpandedPrompts] = useState<Record<string, boolean>>({});
+  // Health status for MCP and A2A servers
+  const [mcpHealthStatus, setMcpHealthStatus] = useState<Record<string, { status: 'healthy' | 'unhealthy' | 'unknown'; message?: string; tools?: string[] }>>({});
+  const [a2aHealthStatus, setA2aHealthStatus] = useState<Record<string, { status: 'healthy' | 'unhealthy' | 'unknown'; message?: string }>>({});
+  const [expandedServerTools, setExpandedServerTools] = useState<Record<string, boolean>>({});
+
+  const toggleServerTools = (serverId: string) => {
+      setExpandedServerTools(prev => ({
+          ...prev,
+          [serverId]: !prev[serverId]
+      }));
+  };
+
+  const togglePrompt = (agentName: string) => {
+    setExpandedPrompts(prev => ({
+      ...prev,
+      [agentName]: !prev[agentName]
+    }));
+  };
+
   const handleRemoveAgent = (agentName: string) => {
     vscodeService.postMessage({ command: 'removeAgent', agentName });
   };
+// ...
+          {configuredItems.prompts.length > 0 ? (
+            <div>
+               {configuredItems.prompts.map(agent => (
+                 <div key={agent.name} style={{ marginBottom: '8px' }}>
+                   <div 
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.9, cursor: 'pointer', userSelect: 'none' }}
+                     onClick={() => togglePrompt(agent.name)}
+                   >
+                      <span className={`codicon codicon-${expandedPrompts[agent.name] ? 'chevron-down' : 'chevron-right'}`}></span>
+                      <span style={{ fontSize: '13px', fontWeight: 600 }}>{agent.name}</span>
+                   </div>
+                   {expandedPrompts[agent.name] && (
+                       <div style={{ marginTop: '8px', paddingLeft: '16px', borderLeft: '2px solid var(--vscode-dropdown-border)' }}>
+                           <pre style={{ 
+                               fontSize: '12px', 
+                               whiteSpace: 'pre-wrap', 
+                               backgroundColor: 'var(--vscode-editor-background)', 
+                               padding: '8px',
+                               borderRadius: '4px',
+                               margin: 0
+                           }}>
+                               {agent.content || '(No specific guidelines)'}
+                           </pre>
+                       </div>
+                   )}
+                 </div>
+               ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: '13px', opacity: 0.7 }}>No prompt configurations found.</div>
+          )}
 
   const handleAddAgent = () => {
     // For now, adds a placeholder agent. A form should be implemented later.
@@ -299,8 +374,10 @@ export const SettingsPage: React.FC = () => {
       agentName,
       model: override.model,
       useDefault: !!override.useDefault,
+      useExternal: !!override.useExternal,
+      externalUrl: override.externalUrl,
       profileId: override.profileId,
-    })).filter(o => !o.useDefault || (o.model && o.model.trim().length > 0));
+    })).filter(o => !o.useDefault || (o.model && o.model.trim().length > 0) || o.useExternal);
     if (overridesArray.length > 0) {
       profileBase.agentOverrides = overridesArray;
     }
@@ -335,7 +412,7 @@ export const SettingsPage: React.FC = () => {
     setProfileName(p.name || '');
     setEditingProfileId(p.id || null);
     setAgentOverridesDraft(() => {
-      const draft: Record<string, { useDefault: boolean; model: string; profileId?: string }> = {};
+      const draft: Record<string, { useDefault: boolean; model: string; profileId?: string; useExternal?: boolean; externalUrl?: string }> = {};
       const overrides = Array.isArray(p.agentOverrides) ? p.agentOverrides : [];
       overrides.forEach((o: any) => {
         if (!o || typeof o.agentName !== 'string') {
@@ -345,6 +422,8 @@ export const SettingsPage: React.FC = () => {
           useDefault: !!o.useDefault,
           model: (o.model || ''),
           profileId: typeof o.profileId === 'string' && o.profileId.length > 0 ? o.profileId : undefined,
+          useExternal: !!o.useExternal,
+          externalUrl: (o.externalUrl || ''),
         };
       });
       return draft;
@@ -397,32 +476,17 @@ export const SettingsPage: React.FC = () => {
     vscodeService.postMessage({ command: 'setActiveProfile', payload: { id } });
   };
 
-  // Ensure core MAS agents are always visible in the overrides list
-  const mergedAgents: Agent[] = useMemo(() => {
-    const defaults: Agent[] = [
-      { path: './agents/OrchestratorAgent.ts', card: { name: 'OrchestratorAgent', description: 'Routes tasks and coordinates all agents.' } },
-      { path: './agents/BrainstormAgent.ts', card: { name: 'BrainstormAgent', description: 'Understands complex goals and drafts execution plans.' } },
-      { path: './agents/CodeEditAgent.ts', card: { name: 'CodeEditAgent', description: 'Creates and edits source files.' } },
-      { path: './agents/TestGenerationAgent.ts', card: { name: 'TestGenerationAgent', description: 'Generates tests for your code.' } },
-      { path: './agents/DocumentationGenerationAgent.ts', card: { name: 'DocumentationGenerationAgent', description: 'Generates documentation and comments.' } },
-      { path: './agents/RefactoringSuggestionAgent.ts', card: { name: 'RefactoringSuggestionAgent', description: 'Suggests refactorings.' } },
-      { path: './agents/TaskDecompositionAgent.ts', card: { name: 'TaskDecompositionAgent', description: 'Breaks large goals into concrete steps.' } },
-      { path: './agents/ContextManagementAgent.ts', card: { name: 'ContextManagementAgent', description: 'Handles conversational context and Q&A.' } },
-    ];
-
-    const byName = new Map<string, Agent>();
-    defaults.forEach(a => {
-      if (a && a.card && a.card.name) {
-        byName.set(a.card.name, a);
-      }
-    });
-    (agents || []).forEach(a => {
-      const name = a?.card?.name;
-      if (name) {
-        byName.set(name, a);
-      }
-    });
-    return Array.from(byName.values());
+  // Merge system agents with dynamically loaded agents from backend
+  // Use agents from ConfigService.getInternalAgents() instead of hardcoded list
+  const mergedAgents = useMemo(() => {
+    // Convert agents to the format expected by Per-Agent LLM Override section
+    return agents.map(agent => ({
+      card: {
+        name: agent.name,
+        description: agent.description
+      },
+      path: agent.name // Use name as path for consistency
+    }));
   }, [agents]);
 
   return (
@@ -458,6 +522,9 @@ export const SettingsPage: React.FC = () => {
           />
         </div>
       </div>
+
+      <VSCodeDivider style={{ margin: '16px 0' }} />
+
       {/* 기존 설정 섹션들 */}
       {/* LLM 설정 섹션 추가 */}
       <div className="settings-section" ref={llmSectionRef} id="llm-configuration">
@@ -498,7 +565,9 @@ export const SettingsPage: React.FC = () => {
           <div ref={modelComboRef} style={{ flexGrow: 1, position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
             <VSCodeButton
               appearance="secondary"
-              onClick={() => { vscodeService.postMessage({ command: 'requestModels' }); startModelPolling(); }}
+              onClick={() => { 
+                vscodeService.postMessage({ command: 'requestModels' });
+              }}
               title="Refresh models"
               aria-label="Refresh models"
             >
@@ -518,15 +587,52 @@ export const SettingsPage: React.FC = () => {
             <VSCodeButton appearance="secondary" onClick={() => setShowModelSuggestions(v => !v)} title="Show models" aria-label="Show models">
               <span className="codicon codicon-chevron-down" />
             </VSCodeButton>
-            {models.length > 0 && showModelSuggestions && (
-              <div className="suggestions-popup" style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0 }}>
-                {(llmSettings.model ? models.filter(m => m.toLowerCase().includes((llmSettings.model || '').toLowerCase())) : models)
-                  .slice(0, 50)
-                  .map(m => (
-                    <div key={m} className="suggestion-item" onClick={() => { handleLlmSettingChange('model', m); setShowModelSuggestions(false); }}>
+            {showModelSuggestions && (
+              <div className="suggestions-popup" style={{ 
+                position: 'absolute', 
+                top: '100%', 
+                left: 0, 
+                right: 0, 
+                zIndex: 1000, 
+                background: 'var(--vscode-dropdown-background)', 
+                border: '1px solid var(--vscode-dropdown-border)', 
+                borderRadius: '4px', 
+                maxHeight: '300px', 
+                minHeight: '35px',
+                height: 'fit-content',
+                overflowY: 'auto', 
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)', 
+                marginTop: '4px' 
+              }}>
+                {(() => {
+                  if (models.length === 0) {
+                    return (
+                      <div style={{ padding: '8px 12px', opacity: 0.7, fontSize: '12px', color: 'var(--vscode-foreground)' }}>
+                        No models found. Click Refresh to load.
+                      </div>
+                    );
+                  }
+                  
+                  return models.map((m: string) => (
+                    <div 
+                      key={m} 
+                      className="suggestion-item" 
+                      onClick={() => { handleLlmSettingChange('model', m); setShowModelSuggestions(false); }} 
+                      style={{ 
+                        padding: '6px 12px', 
+                        cursor: 'pointer', 
+                        borderBottom: '1px solid var(--vscode-dropdown-border)', 
+                        color: 'var(--vscode-foreground)', 
+                        display: 'block',
+                        background: 'transparent'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    >
                       <span className="suggestion-command">{m}</span>
                     </div>
-                  ))}
+                  ));
+                })()}
               </div>
             )}
           </div>
@@ -556,13 +662,16 @@ export const SettingsPage: React.FC = () => {
               apiKeyLabel="Ollama API Key:"
               apiKeyHelpTooltip="optional"
             />
-            <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', justifyContent: 'flex-end' }}>
-              <label htmlFor="ollama-is-cloud" style={{ marginRight: '5px' }}>Cloud Hosted?</label>
-              <VSCodeCheckbox
-                id="ollama-is-cloud"
-                checked={llmSettings.ollamaIsCloud}
-                onChange={(e: any) => handleLlmSettingChange('ollamaIsCloud', e.target.checked)}
-              />
+            <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', justifyContent: 'space-between' }}>
+              <VSCodeButton onClick={handleSaveLlmSettings}>Save LLM Settings</VSCodeButton>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <label htmlFor="ollama-is-cloud" style={{ marginRight: '5px' }}>Cloud Hosted?</label>
+                <VSCodeCheckbox
+                  id="ollama-is-cloud"
+                  checked={llmSettings.ollamaIsCloud}
+                  onChange={(e: any) => handleLlmSettingChange('ollamaIsCloud', e.target.checked)}
+                />
+              </div>
             </div>
           </>
         )}
@@ -627,13 +736,17 @@ export const SettingsPage: React.FC = () => {
           />
         )}
 
-        <VSCodeButton onClick={handleSaveLlmSettings} style={{ marginTop: '10px' }}>Save LLM Settings</VSCodeButton>
+        {llmSettings.llmProvider !== 'ollama' && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '16px' }}>
+            <VSCodeButton onClick={handleSaveLlmSettings}>Save LLM Settings</VSCodeButton>
+          </div>
+        )}
       </div>
 
-      <VSCodeDivider />
+      <VSCodeDivider style={{ margin: '24px 0' }} />
 
       <div className="settings-section">
-        <h3>LLM Profiles</h3>
+        <h3 style={{ marginTop: 0 }}>LLM Profiles</h3>
         <p>Manage multiple LLM endpoints and quickly switch between them.</p>
         {/* Inline edit form removed. Use LLM Configuration section for editing/creating profiles. */}
 
@@ -692,11 +805,11 @@ export const SettingsPage: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {mergedAgents.map(agent => {
                   const agentName = agent.card?.name || agent.path || 'UnknownAgent';
-                  const override = agentOverridesDraft[agentName] || { useDefault: true, model: '', profileId: undefined };
+                  const override = agentOverridesDraft[agentName] || { useDefault: true, model: '', profileId: undefined, useExternal: false, externalUrl: '' };
                   const effectiveProfileId = override.profileId || activeProfileId || '';
                   const allModels: string[] = Array.from(new Set([
                     ...profiles.map(p => (p.model || '').trim()).filter(m => !!m),
-                    ...(models || []).map(m => (m || '').trim()).filter(m => !!m),
+                    ...(models || []).map((m: string) => (m || '').trim()).filter(m => !!m),
                   ]));
                   return (
                     <div key={agentName} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
@@ -706,6 +819,7 @@ export const SettingsPage: React.FC = () => {
                         <div style={{ marginTop: 2 }}>
                           <VSCodeCheckbox
                             checked={override.useDefault}
+                            disabled={override.useExternal}
                             onChange={(e: any) => {
                               const checked = !!e.target.checked;
                               setAgentOverridesDraft(prev => {
@@ -720,12 +834,48 @@ export const SettingsPage: React.FC = () => {
                             Use Default
                           </VSCodeCheckbox>
                         </div>
+                        <div style={{ marginTop: 2 }}>
+                            <VSCodeCheckbox
+                                checked={!!override.useExternal}
+                                onChange={(e: any) => {
+                                    const checked = !!e.target.checked;
+                                    setAgentOverridesDraft(prev => {
+                                        const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
+                                        return {
+                                            ...prev,
+                                            [agentName]: { ...prevEntry, useExternal: checked, useDefault: checked ? false : prevEntry.useDefault },
+                                        };
+                                    });
+                                }}
+                            >
+                                Override with External Agent
+                            </VSCodeCheckbox>
+                        </div>
+                        {override.useExternal && (
+                            <div style={{ marginTop: 4 }}>
+                                <VSCodeTextField
+                                    placeholder="Agent URL (e.g. http://localhost:8000/agent/foo/card)"
+                                    value={override.externalUrl || ''}
+                                    onInput={(e: any) => {
+                                        const val = e.target.value;
+                                        setAgentOverridesDraft(prev => {
+                                            const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
+                                            return {
+                                                ...prev,
+                                                [agentName]: { ...prevEntry, externalUrl: val },
+                                            };
+                                        });
+                                    }}
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+                        )}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 240 }}>
                         <div style={{ fontSize: 11, opacity: 0.7, alignSelf: 'stretch', textAlign: 'right' }}>Profile</div>
                         <VSCodeDropdown
                           style={{ width: '100%' }}
-                          disabled={override.useDefault || profiles.length === 0}
+                          disabled={override.useDefault || override.useExternal || profiles.length === 0}
                           value={effectiveProfileId}
                           onChange={(e: any) => {
                             const value = (e.target.value || '').toString();
@@ -751,7 +901,7 @@ export const SettingsPage: React.FC = () => {
                         {allModels.length > 0 ? (
                           <VSCodeDropdown
                             style={{ width: '100%' }}
-                            disabled={override.useDefault}
+                            disabled={override.useDefault || override.useExternal}
                             value={override.model || ''}
                             onChange={(e: any) => {
                               const value = (e.target.value || '').toString();
@@ -772,7 +922,7 @@ export const SettingsPage: React.FC = () => {
                         ) : (
                           <VSCodeTextField
                             style={{ width: '100%' }}
-                            disabled={override.useDefault}
+                            disabled={override.useDefault || override.useExternal}
                             value={override.model || ''}
                             placeholder="Custom model name"
                             onInput={(e: any) => {
@@ -797,39 +947,218 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="settings-section">
-        <h3>MCP Connectors</h3>
-        <p>Manage your connections to Multi-Agent Communication Protocol (MCP) servers.</p>
-        <VSCodeButton onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/mcp-servers.json' })}>Open mcp-servers.json</VSCodeButton>
-      </div>
-
-      <VSCodeDivider />
+      <VSCodeDivider style={{ margin: '24px 0' }} />
 
       <div className="settings-section">
-        <h3>A2A Agents</h3>
-        <p>Manage the Agent-to-Agent (A2A) agents available in this workspace.</p>
-        <div className="agent-list">
-          {agents.map(agent => (
-            <div key={agent.card.name} className="agent-item">
-              <div className="agent-info">
-                <strong>{agent.card.name}</strong>
-                <p>{agent.card.description}</p>
-              </div>
-              <VSCodeButton appearance="secondary" onClick={() => handleRemoveAgent(agent.card.name)}>
-                Remove
-              </VSCodeButton>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ marginTop: 0 }}>Model Context Protocol (MCP)</h3>
+            <div style={{ display: 'flex', gap: '4px' }}>
+                <VSCodeButton appearance="icon" onClick={() => vscodeService.postMessage({ command: 'refreshConfiguredItems' })} title="Refresh MCP configs">
+                    <span className="codicon codicon-refresh"></span>
+                </VSCodeButton>
             </div>
-          ))}
         </div>
-        <VSCodeButton onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/a2a-servers.json' })}>Open a2a-servers.json</VSCodeButton>
+        <p>Manage connections to Model Context Protocol settings via <code>.agent/mcp-servers.json</code>.</p>
+        
+        <div style={{ marginTop: '12px' }}>
+          <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/mcp-servers.json' })} style={{ height: '28px', whiteSpace: 'nowrap', marginBottom: '12px' }}>
+            <span className="codicon codicon-json" style={{ marginRight: '6px' }}></span>
+            Open mcp-servers.json
+          </VSCodeButton>
+
+          {configuredItems.mcp.length > 0 ? (
+            <div>
+               <div 
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', opacity: 0.9, userSelect: 'none' }}
+                onClick={() => setMcpExpanded(!mcpExpanded)}
+               >
+                  <span className={`codicon codicon-${mcpExpanded ? 'chevron-down' : 'chevron-right'}`}></span>
+                  <span style={{ fontSize: '13px', fontWeight: 600 }}>
+                    Total: {configuredItems.mcp.length}, 
+                    Active: {configuredItems.mcp.filter(s => mcpHealthStatus[s]?.status === 'healthy').length}, 
+                    Inactive: {configuredItems.mcp.filter(s => mcpHealthStatus[s]?.status !== 'healthy').length}
+                  </span>
+               </div>
+               
+               {mcpExpanded && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '16px', marginTop: '8px', borderLeft: '2px solid var(--vscode-dropdown-border)' }}>
+                      {configuredItems.mcp.map(server => {
+                          const health = mcpHealthStatus[server] || { status: 'unknown' };
+                          const iconClass = health.status === 'healthy' ? 'codicon-check' : 
+                                            health.status === 'unhealthy' ? 'codicon-error' : 'codicon-question';
+                          const iconColor = health.status === 'healthy' ? 'var(--vscode-testing-iconPassed)' : 
+                                            health.status === 'unhealthy' ? 'var(--vscode-testing-iconFailed)' : 'var(--vscode-testing-iconSkipped)';
+                          const statusText = health.status === 'healthy' ? 'Ready' : 
+                                             health.status === 'unhealthy' ? 'Error' : 'Unknown';
+                          const hasTools = health.status === 'healthy' && Array.isArray(health.tools);
+                          
+                          return (
+                              <div key={server} style={{ display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', fontSize: '13px' }}>
+                                    <span className={`codicon ${iconClass}`} style={{ fontSize: '12px', marginRight: '6px', color: iconColor }} title={health.message || statusText}></span>
+                                    <span>{server}</span>
+                                    <span style={{ fontSize: '11px', opacity: 0.6, marginLeft: '8px' }}>({statusText})</span>
+                                    {health.message && health.status === 'unhealthy' && (
+                                        <span style={{ fontSize: '11px', opacity: 0.8, marginLeft: '8px', color: 'var(--vscode-errorForeground)' }}>- {health.message}</span>
+                                    )}
+                                    {hasTools && (
+                                        <div 
+                                            onClick={() => toggleServerTools(server)}
+                                            style={{ marginLeft: 'auto', cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: 0.8, fontSize: '11px' }}
+                                            title="View Tools"
+                                        >
+                                            <span style={{ marginRight: '4px' }}>{health.tools?.length} tools</span>
+                                            <span className={`codicon codicon-${expandedServerTools[server] ? 'chevron-down' : 'chevron-right'}`}></span>
+                                        </div>
+                                    )}
+                                </div>
+                                {hasTools && expandedServerTools[server] && (
+                                    <div style={{ margin: '4px 0 8px 20px', fontSize: '11px', opacity: 0.8, display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                        {health.tools?.map(tool => (
+                                            <span key={tool} style={{ 
+                                                backgroundColor: 'var(--vscode-badge-background)', 
+                                                color: 'var(--vscode-badge-foreground)', 
+                                                padding: '2px 6px', 
+                                                borderRadius: '3px' 
+                                            }}>
+                                                {tool}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                              </div>
+                          );
+                      })}
+                  </div>
+               )}
+            </div>
+          ) : (
+            <div style={{ fontSize: '13px', opacity: 0.7 }}>No MCP servers configured.</div>
+          )}
+        </div>
       </div>
 
-      <VSCodeDivider />
+      <VSCodeDivider style={{ margin: '24px 0' }} />
+
+
 
       <div className="settings-section">
-        <h3>Prompt Settings</h3>
-        <p>Configure the main prompt for the Orchestrator Agent.</p>
-        <VSCodeButton onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/AGENT.md' })}>Open AGENT.md</VSCodeButton>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ marginTop: 0 }}>Agents to Agents (A2A)</h3>
+            <div style={{ display: 'flex', gap: '4px' }}>
+                <VSCodeButton appearance="icon" onClick={() => vscodeService.postMessage({ command: 'refreshConfiguredItems' })} title="Refresh A2A configs">
+                    <span className="codicon codicon-refresh"></span>
+                </VSCodeButton>
+            </div>
+        </div>
+        <p>Manage Agent-to-Agent (A2A) configurations via <code>.agent/a2a-servers.json</code>.</p>
+        
+        <div style={{ marginTop: '12px' }}>
+          <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/a2a-servers.json' })} style={{ height: '28px', whiteSpace: 'nowrap', marginBottom: '12px' }}>
+            <span className="codicon codicon-json" style={{ marginRight: '6px' }}></span>
+            Open a2a-servers.json
+          </VSCodeButton>
+
+          {configuredItems.a2a.filter(a => a !== 'SecurityAnalysisAgent').length > 0 ? (
+            <div>
+               <div 
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', opacity: 0.9, userSelect: 'none' }}
+                onClick={() => setA2aExpanded(!a2aExpanded)}
+               >
+                  <span className={`codicon codicon-${a2aExpanded ? 'chevron-down' : 'chevron-right'}`}></span>
+                  <span style={{ fontSize: '13px', fontWeight: 600 }}>
+                    Total: {configuredItems.a2a.filter(a => a !== 'SecurityAnalysisAgent').length}, 
+                    Connected: {configuredItems.a2a.filter(s => s !== 'SecurityAnalysisAgent' && a2aHealthStatus[s]?.status === 'healthy').length}, 
+                    Disconnected: {configuredItems.a2a.filter(s => s !== 'SecurityAnalysisAgent' && a2aHealthStatus[s]?.status !== 'healthy').length}
+                  </span>
+               </div>
+               
+               {a2aExpanded && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '16px', marginTop: '8px', borderLeft: '2px solid var(--vscode-dropdown-border)' }}>
+                      {configuredItems.a2a
+                          .filter(agent => agent !== 'SecurityAnalysisAgent')
+                          .map(agent => {
+                          const health = a2aHealthStatus[agent] || { status: 'unknown' };
+                          const iconClass = health.status === 'healthy' ? 'codicon-radio-tower' : 
+                                            health.status === 'unhealthy' ? 'codicon-error' : 'codicon-question';
+                          const iconColor = health.status === 'healthy' ? 'var(--vscode-testing-iconPassed)' : 
+                                            health.status === 'unhealthy' ? 'var(--vscode-testing-iconFailed)' : 'var(--vscode-testing-iconSkipped)';
+                          const statusText = health.status === 'healthy' ? 'Connected' : 
+                                             health.status === 'unhealthy' ? 'Disconnected' : 'Unknown';
+                          return (
+                              <div key={agent} style={{ display: 'flex', alignItems: 'center', fontSize: '13px' }}>
+                                  <span className={`codicon ${iconClass}`} style={{ fontSize: '12px', marginRight: '6px', color: iconColor }} title={health.message || statusText}></span>
+                                  <span>{agent}</span>
+                                  <span style={{ fontSize: '11px', opacity: 0.6, marginLeft: '8px' }}>({statusText})</span>
+                                  {health.message && health.status === 'unhealthy' && (
+                                      <span style={{ fontSize: '11px', opacity: 0.8, marginLeft: '8px', color: 'var(--vscode-errorForeground)' }}>- {health.message}</span>
+                                  )}
+                              </div>
+                          );
+                      })}
+                  </div>
+               )}
+            </div>
+          ) : (
+             <div style={{ fontSize: '13px', opacity: 0.7 }}>No Agent to Agent configured.</div>
+          )}
+        </div>
+      </div>
+
+      <VSCodeDivider style={{ margin: '16px 0' }} />
+
+      <div className="settings-section">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ marginTop: 0 }}>Prompt Settings</h3>
+            <div style={{ display: 'flex', gap: '4px' }}>
+                <VSCodeButton appearance="icon" onClick={() => vscodeService.postMessage({ command: 'refreshConfiguredItems' })} title="Refresh Prompt configs">
+                    <span className="codicon codicon-refresh"></span>
+                </VSCodeButton>
+            </div>
+        </div>
+        <p>Manage custom prompts via <code>.agent/AGENTS.md</code>.</p>
+        
+        <div style={{ marginTop: '12px' }}>
+          <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/AGENTS.md' })} style={{ height: '28px', whiteSpace: 'nowrap', marginBottom: '12px' }}>
+            <span className="codicon codicon-markdown" style={{ marginRight: '6px' }}></span>
+            Open AGENTS.md
+          </VSCodeButton>
+          
+          {configuredItems.prompts.length > 0 ? (
+            <div>
+               {configuredItems.prompts
+                 .filter(agent => agent.name !== 'SecurityAnalysisAgent')
+                 .map(agent => (
+                 <div key={agent.name} style={{ marginBottom: '8px' }}>
+                   <div 
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.9, cursor: 'pointer', userSelect: 'none' }}
+                     onClick={() => togglePrompt(agent.name)}
+                   >
+                      <span className={`codicon codicon-${expandedPrompts[agent.name] ? 'chevron-down' : 'chevron-right'}`}></span>
+                      <span style={{ fontSize: '13px', fontWeight: 600 }}>{agent.name}</span>
+                   </div>
+                   {expandedPrompts[agent.name] && (
+                       <div style={{ marginTop: '8px', paddingLeft: '16px', borderLeft: '2px solid var(--vscode-dropdown-border)' }}>
+                           <pre style={{ 
+                               fontSize: '12px', 
+                               whiteSpace: 'pre-wrap', 
+                               backgroundColor: 'var(--vscode-editor-background)', 
+                               padding: '8px',
+                               borderRadius: '4px',
+                               margin: 0,
+                               fontFamily: 'var(--vscode-editor-font-family)'
+                           }}>
+                               {agent.content || '(No specific guidelines)'}
+                           </pre>
+                       </div>
+                   )}
+                 </div>
+               ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: '13px', opacity: 0.7 }}>No prompt configurations found.</div>
+          )}
+        </div>
       </div>
     </div>
   );

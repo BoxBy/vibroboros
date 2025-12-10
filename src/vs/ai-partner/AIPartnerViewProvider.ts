@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConfigService } from './config_service';
 import { LLMService } from './services/LLMService';
+import { MCPHealthCheckService } from './services/MCPHealthCheckService';
 import { A2AMessage, A2A_MIME_TYPES, createProgressMessage, createPlanMessage, createFileEditMessage, createA2ADataMessage, PlanData, FileEditData } from './types/A2AMessages';
 
 function getNonce() {
@@ -203,7 +204,43 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                         if (workspaceFolders && workspaceFolders.length > 0) {
                             const fileUri = vscode.Uri.joinPath(workspaceFolders[0].uri, message.filePath);
                             try {
-                                await vscode.window.showTextDocument(fileUri);
+                                try {
+                                    await vscode.workspace.fs.stat(fileUri);
+                                } catch {
+                                    // File does not exist, create it with default content
+                                    let content = '';
+                                    if (message.filePath.endsWith('.json')) {
+                                        if (message.filePath.includes('mcp-servers')) {
+                                            content = JSON.stringify({ mcpServers: {} }, null, 2);
+                                        } else if (message.filePath.includes('a2a-servers')) {
+                                            content = JSON.stringify({ agents: [] }, null, 2);
+                                        } else {
+                                            content = '{}';
+                                        }
+                                    } else if (message.filePath.endsWith('.md')) {
+                                        const agentNames = [
+                                            'OrchestratorAgent',
+                                            'ContextManagementAgent',
+                                            'CodeEditAgent',
+                                            'DocumentationGenerationAgent',
+                                            'RefactoringSuggestionAgent',
+                                            'TestGenerationAgent',
+                                            'ReadmeGenerationAgent',
+                                            'SecurityAnalysisAgent',
+                                            'CodeAnalysisAgent',
+                                            'TaskDecompositionAgent',
+                                            'BrainstormAgent',
+                                            'BugFixAgent'
+                                        ];
+                                        
+                                        content = '# Custom Instructions (Global)\nAnything written here will be applied to ALL agents.\n\n';
+                                        content += agentNames.map(name => `## ${name}\nGuidelines for ${name} go here.\n`).join('\n');
+                                    }
+                                    await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf8'));
+                                }
+                                
+                                const doc = await vscode.workspace.openTextDocument(fileUri);
+                                await vscode.window.showTextDocument(doc);
                             } catch (error) {
                                 vscode.window.showErrorMessage(`Could not open file: ${message.filePath}. Error: ${error}`);
                             }
@@ -222,33 +259,131 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 }
-                case 'setStreamingEnabled': {
+                // ... (omitted handlers)
+                
+                case 'refreshConfiguredItems': {
                     try {
-                        const enabled = !!(message.payload?.enabled ?? message.enabled);
-                        await this.configService.setStreamingEnabled(enabled);
-                        this.postMessage({ command: 'featureToggles', payload: { streamingEnabled: enabled, advancedHistorySummaryEnabled: this.configService.getAdvancedHistorySummaryEnabled() } });
-                    } catch {}
+                        const workspaceFolders = vscode.workspace.workspaceFolders;
+                        let mcp: string[] = [];
+                        let a2a: string[] = [];
+                        let prompts: { name: string; content: string }[] = [];
+
+                        if (workspaceFolders && workspaceFolders.length > 0) {
+                            const root = workspaceFolders[0].uri;
+
+                            // Read .agent/mcp-servers.json
+                            try {
+                                const mcpUri = vscode.Uri.joinPath(root, '.agent', 'mcp-servers.json');
+                                // Use try-catch for reading as file might not exist
+                                try {
+                                    const mcpContent = await vscode.workspace.fs.readFile(mcpUri);
+                                    const mcpJson = JSON.parse(Buffer.from(mcpContent).toString('utf8'));
+                                    if (mcpJson && typeof mcpJson === 'object') {
+                                        // Support both wrapper 'mcpServers' key and direct object
+                                        if (mcpJson.mcpServers && typeof mcpJson.mcpServers === 'object') {
+                                            mcp = Object.keys(mcpJson.mcpServers);
+                                        } else {
+                                            mcp = Object.keys(mcpJson);
+                                        }
+                                    }
+                                } catch {}
+                            } catch (e) { console.log('MCP config read error', e); }
+
+                            // Read .agent/a2a-servers.json
+                            try {
+                                const a2aUri = vscode.Uri.joinPath(root, '.agent', 'a2a-servers.json');
+                                try {
+                                    const a2aContent = await vscode.workspace.fs.readFile(a2aUri);
+                                    const a2aJson = JSON.parse(Buffer.from(a2aContent).toString('utf8'));
+                                    if (Array.isArray(a2aJson)) {
+                                        a2a = a2aJson.map((c: any) => c.card?.name || c.name).filter((n: any) => typeof n === 'string');
+                                    }
+                                } catch {}
+                            } catch (e) { console.log('A2A config read error', e); }
+
+                            // Read .agent/AGENTS.md
+                            try {
+                                const agentsUri = vscode.Uri.joinPath(root, '.agent', 'AGENTS.md');
+                                try {
+                                    const agentsContent = Buffer.from(await vscode.workspace.fs.readFile(agentsUri)).toString('utf8');
+                                    // Extract headings level 2 (## AgentName) and content
+                                    // Also extract Global section (level 1 #)
+                                    const lines = agentsContent.split('\n');
+                                    let currentAgent = '';
+                                    let currentContent: string[] = [];
+                                    
+                                    for (const line of lines) {
+                                        const matchH1 = line.match(/^#\s+(.+)$/); // Global
+                                        const matchH2 = line.match(/^##\s+(.+)$/); // Agent
+                                        
+                                        if (matchH1 || matchH2) {
+                                            // Finish previous agent
+                                            if (currentAgent) {
+                                                prompts.push({ name: currentAgent, content: currentContent.join('\n').trim() });
+                                                currentContent = [];
+                                            }
+                                            // Start new section
+                                            currentAgent = matchH1 ? 'Global' : matchH2![1].trim();
+                                            // If it's the specific title "Custom Instructions (Global)", normalize to "Global"
+                                            if (currentAgent.includes('Custom Instructions (Global)')) {
+                                                currentAgent = 'Global';
+                                            }
+                                        } else if (currentAgent) {
+                                            currentContent.push(line);
+                                        }
+                                    }
+                                    // Push last agent
+                                    if (currentAgent) {
+                                        prompts.push({ name: currentAgent, content: currentContent.join('\n').trim() });
+                                    }
+                                } catch {}
+                            } catch (e) { console.log('Prompts config read error', e); }
+
+                            // Perform health check
+                            let healthStatus = { mcp: {}, a2a: {} };
+                            try {
+                                const healthService = MCPHealthCheckService.getInstance();
+                                healthStatus = await healthService.checkAllServers(root.fsPath);
+                            } catch (e) {
+                                console.error('[ViperView] Health check failed:', e);
+                            }
+
+                            this.postMessage({
+                                command: 'configuredItemsUpdate',
+                                payload: { mcp, a2a, prompts, healthStatus }
+                            });
+                        }
+                    } catch (error) {
+                        console.error('[ViperView] Error refreshing configured items:', error);
+                    }
                     break;
                 }
-                case 'setAdvancedHistorySummaryEnabled': {
+                case 'requestAgents':
                     try {
-                        const enabled = !!(message.payload?.enabled ?? message.enabled);
-                        await this.configService.setAdvancedHistorySummaryEnabled(enabled);
-                        this.postMessage({ command: 'featureToggles', payload: { streamingEnabled: this.configService.isStreamingEnabled(), advancedHistorySummaryEnabled: enabled } });
-                    } catch {}
+                        // Get internal Viper agents (not A2A external agents)
+                        const internalAgents = this.configService.getInternalAgents();
+                        this.postMessage({ 
+                            command: 'updateAgentList', 
+                            agents: internalAgents 
+                        });
+                    } catch (error) {
+                        console.error('[AIPartnerViewProvider] Failed to get internal agents:', error);
+                        this.postMessage({ 
+                            command: 'updateAgentList', 
+                            agents: [] 
+                        });
+                    }
                     break;
-                }
+                
+                // LLM Configuration & Profiles
                 case 'requestLlmSettings':
-                    {
-                        // 일부 설정은 비동기 SecretStorage를 사용하므로 await 필요
-                        const openaiKeys = await this.configService.getOpenaiApiKeys();
-                        const ollamaKey = await this.configService.getOllamaApiKey();
-                        const llmSettings = {
+                    try {
+                        const settings = {
                             llmProvider: this.configService.getLlmProvider(),
-                            openaiApiKeys: openaiKeys.join(','),
+                            openaiApiKeys: (await this.configService.getOpenaiApiKeys()).join(','),
                             openaiEndpoint: this.configService.getOpenaiEndpoint(),
                             ollamaEndpoint: this.configService.getOllamaEndpoint(),
-                            ollamaApiKey: ollamaKey,
+                            ollamaApiKey: await this.configService.getOllamaApiKey(),
                             ollamaIsCloud: this.configService.getOllamaIsCloud(),
                             anthropicApiKey: this.configService.getAnthropicApiKey(),
                             anthropicEndpoint: this.configService.getAnthropicEndpoint(),
@@ -260,281 +395,87 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                             groqEndpoint: this.configService.getGroqEndpoint(),
                             openrouterApiKey: this.configService.getOpenrouterApiKey(),
                             openrouterEndpoint: this.configService.getOpenrouterEndpoint(),
-                            model: this.configService.getModel(),
+                            model: this.configService.getModel()
                         };
-                        this.postMessage({ command: 'llmSettingsResponse', payload: llmSettings });
+                        this.postMessage({ command: 'llmSettingsResponse', payload: settings });
+                    } catch (e) {
+                         console.error('requestLlmSettings failed', e);
                     }
                     break;
                 case 'saveLlmSettings':
-                    {
-                        const {
-                            llmProvider,
-                            openaiApiKeys, openaiEndpoint,
-                            ollamaEndpoint, ollamaApiKey, ollamaIsCloud,
-                            anthropicApiKey, anthropicEndpoint,
-                            xaiApiKey, xaiEndpoint,
-                            googleApiKey, googleEndpoint,
-                            groqApiKey, groqEndpoint,
-                            openrouterApiKey, openrouterEndpoint,
-                            model
-                        } = message.payload;
-
-                        // Removed verbose settings logging per UX/security request
-
-                        await this.configService.setLlmProvider(llmProvider);
-
-                        // Save provider-specific settings
-                        await Promise.all([
-                            // OpenAI
-                            this.configService.setOpenaiApiKeys(openaiApiKeys.split(',').map((key: string) => key.trim()).filter((key: string) => key.length > 0)),
-                            this.configService.setOpenaiEndpoint(openaiEndpoint),
-
-                            // Ollama
-                            this.configService.setOllamaEndpoint(ollamaEndpoint),
-                            this.configService.setOllamaApiKey(ollamaApiKey),
-                            this.configService.setOllamaIsCloud(ollamaIsCloud),
-
-                            // Anthropic
-                            this.configService.setAnthropicApiKey(anthropicApiKey),
-                            this.configService.setAnthropicEndpoint(anthropicEndpoint),
-
-                            // xAI
-                            this.configService.setXaiApiKey(xaiApiKey),
-                            this.configService.setXaiEndpoint(xaiEndpoint),
-
-                            // Google
-                            this.configService.setGoogleApiKey(googleApiKey),
-                            this.configService.setGoogleEndpoint(googleEndpoint),
-
-                            // Groq
-                            this.configService.setGroqApiKey(groqApiKey),
-                            this.configService.setGroqEndpoint(groqEndpoint),
-
-                            // OpenRouter
-                            this.configService.setOpenrouterApiKey(openrouterApiKey),
-                            this.configService.setOpenrouterEndpoint(openrouterEndpoint),
-
-                            // Model
-                            this.configService.setModel(model)
-                        ]);
-
-                        // Removed intrusive notification per UX request
-
-                        // Refresh models list after saving settings
-                        try {
-                            const apiKeys = await this.configService.getApiKeys();
-                            const apiKey = apiKeys[0] || '';
-                            const endpoint = this.configService.getEndpoint();
-                            const models = await this.llmService.listModels(llmProvider, apiKey, endpoint);
-                            this.postMessage({ command: 'updateModels', payload: models });
-                        } catch (error: any) {
-                            console.error('[ViperView] Error refreshing models:', error);
-                        }
-                    }
-                    break;
-                case 'requestModels':
                     try {
-                        const provider = this.configService.getLlmProvider();
-                        const apiKeys = await this.configService.getApiKeys();
-                        const apiKey = apiKeys[0] || '';
-                        const endpoint = this.configService.getEndpoint();
-                        const models = await this.llmService.listModels(provider, apiKey, endpoint);
-                        this.postMessage({ command: 'updateModels', payload: models });
-                    } catch (error: any) {
-                        console.error('[ViperView] Error fetching models:', error);
-                        this.postMessage({ command: 'error', payload: `Failed to load models: ${error.message}` });
+                        const s = message.payload;
+                        if (s) {
+                            if (s.llmProvider) await this.configService.setLlmProvider(s.llmProvider);
+                            if (s.openaiApiKeys !== undefined) await this.configService.setOpenaiApiKeys(s.openaiApiKeys.split(','));
+                            if (s.openaiEndpoint !== undefined) await this.configService.setOpenaiEndpoint(s.openaiEndpoint);
+                            if (s.ollamaEndpoint !== undefined) await this.configService.setOllamaEndpoint(s.ollamaEndpoint);
+                            if (s.ollamaApiKey !== undefined) await this.configService.setOllamaApiKey(s.ollamaApiKey);
+                            if (s.ollamaIsCloud !== undefined) await this.configService.setOllamaIsCloud(s.ollamaIsCloud);
+                            if (s.anthropicApiKey !== undefined) await this.configService.setAnthropicApiKey(s.anthropicApiKey);
+                            if (s.anthropicEndpoint !== undefined) await this.configService.setAnthropicEndpoint(s.anthropicEndpoint);
+                            if (s.xaiApiKey !== undefined) await this.configService.setXaiApiKey(s.xaiApiKey);
+                            if (s.xaiEndpoint !== undefined) await this.configService.setXaiEndpoint(s.xaiEndpoint);
+                            if (s.googleApiKey !== undefined) await this.configService.setGoogleApiKey(s.googleApiKey);
+                            if (s.googleEndpoint !== undefined) await this.configService.setGoogleEndpoint(s.googleEndpoint);
+                            if (s.groqApiKey !== undefined) await this.configService.setGroqApiKey(s.groqApiKey);
+                            if (s.groqEndpoint !== undefined) await this.configService.setGroqEndpoint(s.groqEndpoint);
+                            if (s.openrouterApiKey !== undefined) await this.configService.setOpenrouterApiKey(s.openrouterApiKey);
+                            if (s.openrouterEndpoint !== undefined) await this.configService.setOpenrouterEndpoint(s.openrouterEndpoint);
+                            if (s.model !== undefined) await this.configService.setModel(s.model);
+
+                            // Refresh settings
+                            vscode.window.showInformationMessage('LLM Settings Saved');
+                            // We can trigger a refresh of the settings in the UI
+                            this.postMessage({ command: 'llmSettingsResponse', payload: s });
+                        }
+                    } catch (e) {
+                         vscode.window.showErrorMessage('Failed to save LLM settings: ' + e);
                     }
                     break;
                 case 'requestProfiles':
                     try {
-                        let profiles = this.configService.getLlmProfiles();
-                        let activeId = this.configService.getActiveProfileId();
-                        if (!profiles || profiles.length === 0) {
-                            // Migrate existing single settings into a default profile
-                            const provider = this.configService.getLlmProvider();
-                            const endpoint = this.configService.getEndpoint();
-                            const model = this.configService.getModel();
-                            const apiKeys = await this.configService.getApiKeys();
-                            const apiKey = apiKeys[0] || '';
-                            const defaultProfile = {
-                                id: `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-                                name: 'Default',
-                                provider,
-                                endpoint,
-                                model,
-                                isDefault: true,
-                                enabled: true,
-                            };
-                            await this.configService.saveProfile(defaultProfile, apiKey);
-                            await this.configService.setActiveProfileId(defaultProfile.id);
-                            profiles = this.configService.getLlmProfiles();
-                            activeId = defaultProfile.id;
-                        }
-                        this.postMessage({ command: 'profilesResponse', payload: { profiles, activeProfileId: activeId } });
-                    } catch (e: any) {
-                        console.error('[ViperView] Error sending profiles:', e);
-                        this.postMessage({ command: 'error', payload: `Failed to get profiles: ${e.message}` });
+                        const profiles = this.configService.getLlmProfiles();
+                        const activeProfileId = this.configService.getActiveProfileId();
+                        this.postMessage({ command: 'profilesResponse', payload: { profiles, activeProfileId } });
+                    } catch (e) {
+                        console.error('requestProfiles failed', e);
+                        this.postMessage({ command: 'profilesResponse', payload: { profiles: [], activeProfileId: null } });
                     }
                     break;
                 case 'saveProfile':
                     try {
-                        const { profile, apiKey, activateAfterSave } = message.payload || {};
-                        if (!profile || !profile.id) {
-                            profile.id = `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-                        }
-                        await this.configService.saveProfile(profile, apiKey);
+                        const { profile, apiKey, activateAfterSave } = message.payload;
+                        const saved = await this.configService.saveProfile(profile, apiKey);
                         if (activateAfterSave) {
-                            await this.configService.setActiveProfileId(profile.id);
-                            this.postMessage({ command: 'activeProfileChanged', payload: profile.id });
+                            await this.configService.setActiveProfileId(saved.id);
                         }
-                        try {
-                            const apiKeys = await this.configService.getApiKeys();
-                            const apiKeyVal = apiKeys[0] || '';
-                            const endpoint = this.configService.getEndpoint();
-                            const models = await this.llmService.listModels(this.configService.getLlmProvider(), apiKeyVal, endpoint);
-                            this.postMessage({ command: 'updateModels', payload: models });
-                        } catch {}
-                        const profiles = this.configService.getLlmProfiles();
-                        const activeId = this.configService.getActiveProfileId();
-                        this.postMessage({ command: 'profilesResponse', payload: { profiles, activeProfileId: activeId } });
-                        this.postMessage({ command: 'profileSaved', payload: profile });
-                    } catch (e: any) {
-                        console.error('[ViperView] Error saving profile:', e);
-                        this.postMessage({ command: 'error', payload: `Failed to save profile: ${e.message}` });
+                        this.postMessage({ command: 'profileSaved', payload: saved });
+                        vscode.window.showInformationMessage(`Profile '${saved.name}' saved.`);
+                    } catch (e) {
+                        vscode.window.showErrorMessage('Failed to save profile: ' + e);
                     }
                     break;
                 case 'deleteProfile':
                     try {
-                        const { id } = message.payload || {};
-                        if (id) {
-                            await this.configService.deleteProfile(id);
-                            this.postMessage({ command: 'profileDeleted', payload: id });
-                            const profiles = this.configService.getLlmProfiles();
-                            const activeId = this.configService.getActiveProfileId();
-                            this.postMessage({ command: 'profilesResponse', payload: { profiles, activeProfileId: activeId } });
-                        }
-                    } catch (e: any) {
-                        console.error('[ViperView] Error deleting profile:', e);
-                        this.postMessage({ command: 'error', payload: `Failed to delete profile: ${e.message}` });
+                        const { id } = message.payload;
+                        await this.configService.deleteProfile(id);
+                        this.postMessage({ command: 'profileDeleted', payload: { id } });
+                        vscode.window.showInformationMessage('Profile deleted.');
+                    } catch (e) {
+                        vscode.window.showErrorMessage('Failed to delete profile: ' + e);
                     }
                     break;
                 case 'setActiveProfile':
                     try {
-                        const { id } = message.payload || {};
-                        await this.configService.setActiveProfileId(id || null);
-                        this.postMessage({ command: 'activeProfileChanged', payload: id || null });
-                        const provider = this.configService.getLlmProvider();
-                        const apiKeys = await this.configService.getApiKeys();
-                        const apiKey = apiKeys[0] || '';
-                        const endpoint = this.configService.getEndpoint();
-                        const models = await this.llmService.listModels(provider, apiKey, endpoint);
-                        this.postMessage({ command: 'updateModels', payload: models });
-                    } catch (e: any) {
-                        console.error('[ViperView] Error setting active profile:', e);
-                        this.postMessage({ command: 'error', payload: `Failed to set active profile: ${e.message}` });
+                        const { id } = message.payload;
+                        await this.configService.setActiveProfileId(id);
+                        this.postMessage({ command: 'activeProfileChanged', payload: id });
+                        vscode.window.showInformationMessage('Active profile changed.');
+                    } catch (e) {
+                        vscode.window.showErrorMessage('Failed to set active profile: ' + e);
                     }
                     break;
-                case 'setModel':
-                    try {
-                        const { model } = message.payload || {};
-                        if (typeof model === 'string' && model.length > 0) {
-                            await this.configService.setModel(model);
-                            this.postMessage({ command: 'modelChanged', payload: model });
-                        }
-                    } catch (e: any) {
-                        console.error('[ViperView] Error setting model:', e);
-                        this.postMessage({ command: 'error', payload: `Failed to set model: ${e.message}` });
-                    }
-                    break;
-                case 'setLlmProvider':
-                    try {
-                        const { provider } = message.payload || {};
-                        if (provider) {
-                            await this.configService.setLlmProvider(provider);
-                            // After provider change, refresh models for that provider
-                            const apiKeys = await this.configService.getApiKeys();
-                            const apiKey = apiKeys[0] || '';
-                            const endpoint = this.configService.getEndpoint();
-                            const models = await this.llmService.listModels(provider, apiKey, endpoint);
-                            this.postMessage({ command: 'updateModels', payload: models });
-                            this.postMessage({ command: 'llmSettingsResponse', payload: { llmProvider: provider, model: this.configService.getModel() } });
-                        }
-                    } catch (e: any) {
-                        console.error('[ViperView] Error setting LLM provider:', e);
-                        this.postMessage({ command: 'error', payload: `Failed to set LLM provider: ${e.message}` });
-                    }
-                    break;
-                case 'requestPick': {
-                    // Trigger file picker UI by calling listWorkspaceFiles
-                    const kind = message.payload?.kind || 'file';
-                    this.postMessage({ command: 'listWorkspaceFiles', payload: { path: '', type: kind === 'folder' ? 'directory' : undefined } });
-                    break;
-                }
-                case 'getSlashCommands':
-                    this.sendSlashCommands([
-                        { command: '/clear', description: 'Clear chat history' },
-                        { command: '/reset', description: 'Reset session' },
-                        { command: '/help', description: 'Show help' }
-                    ]);
-                    break;
-                case 'insertAttachment':
-                    // Echo back to UI to update state
-                    this.postMessage(message);
-                    break;
-                case 'listWorkspaceFiles': {
-                    try {
-                        const workspaceFolders = vscode.workspace.workspaceFolders;
-                        if (!workspaceFolders || workspaceFolders.length === 0) {
-                            this.postMessage({ command: 'workspaceFilesList', payload: { files: [] } });
-                            break;
-                        }
-                        const rootPath = workspaceFolders[0].uri.fsPath;
-                        const targetPath = message.payload?.path || '';
-                        const targetType = message.payload?.type || 'file';
-                        const fullPath = targetPath ? require('path').join(rootPath, targetPath) : rootPath;
-                        
-                        const fs = require('fs').promises;
-                        const path = require('path');
-                        
-                        try {
-                            const entries = await fs.readdir(fullPath, { withFileTypes: true });
-                            // Sort: directories first, then files, both alphabetically
-                            const sortedEntries = entries.sort((a: any, b: any) => {
-                                if (a.isDirectory() && !b.isDirectory()) return -1;
-                                if (!a.isDirectory() && b.isDirectory()) return 1;
-                                return a.name.localeCompare(b.name);
-                            });
-                            
-                            const files = await Promise.all(
-                                sortedEntries
-                                    .filter((entry: any) => {
-                                        if (targetType === 'directory') {
-                                            return entry.isDirectory();
-                                        }
-                                        // For file picker, show both files and directories (to allow navigation)
-                                        return true;
-                                    })
-                                    .map(async (entry: any) => {
-                                        const entryPath = path.join(fullPath, entry.name);
-                                        const relativePath = path.relative(rootPath, entryPath);
-                                        return {
-                                            name: entry.name,
-                                            path: relativePath.replace(/\\/g, '/'),
-                                            type: entry.isDirectory() ? 'directory' as const : 'file' as const
-                                        };
-                                    })
-                            );
-                            this.postMessage({ command: 'workspaceFilesList', payload: { files } });
-                        } catch (error: any) {
-                            console.error('[ViperView] Error listing workspace files:', error);
-                            this.postMessage({ command: 'workspaceFilesList', payload: { files: [] } });
-                        }
-                    } catch (e: any) {
-                        console.error('[ViperView] Error in listWorkspaceFiles:', e);
-                        this.postMessage({ command: 'workspaceFilesList', payload: { files: [] } });
-                    }
-                    break;
-                }
                 default:
                     this._onDidReceiveMessage.fire(message);
                     break;

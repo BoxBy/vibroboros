@@ -1,4 +1,4 @@
-ï»¿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './Header';
 import { SettingsPage } from './SettingsPage';
 import { WelcomeScreen } from './WelcomeScreen';
@@ -83,7 +83,6 @@ export const MainView: React.FC = () => {
 
 		const handleExtensionMessage = useCallback((event: MessageEvent) => {
 			const message = event.data;
-			console.log('[MainView v2] handleExtensionMessage received:', message.command);
 			console.log('Received message from extension:', message);
 
 			switch (message.command) {
@@ -101,9 +100,7 @@ export const MainView: React.FC = () => {
                 }
                 break;
             case 'updateModels':
-                console.log('[MainView] Received updateModels:', message.payload?.length || 0, 'models');
                 if (Array.isArray(message.payload)) {
-                    console.log('[MainView] Setting availableModels to:', message.payload.length);
                     setAvailableModels(message.payload);
                 }
                 break;
@@ -268,11 +265,43 @@ export const MainView: React.FC = () => {
                         // SDK-driven UI folding flag
                         requiresUserInput: message.payload.requiresUserInput,
                         attachments: lastUserAttachmentsRef.current && lastUserAttachmentsRef.current.length ? [...lastUserAttachmentsRef.current] : undefined,
-                    }]);
                     // Clear after attaching to AI message
                     lastUserAttachmentsRef.current = [];
                 }
                 break;
+			case 'displayDiffInChatBubble':
+				// ì±„íŒ… ë²„ë¸” ?€???ë‹¨ ?”ì•½ ë°”ì— ?„ì 
+				setStatusText(null);
+				// Keep plan during diff prompts
+				setIsThinking(false);
+				if (message.payload) {
+					try { vscodeService.postMessage({ command: 'debugLog', payload: { source: 'UI', event: 'displayDiffInChatBubble received', meta: { filePath: message.payload.filePath, title: message.payload.title, suggestionType: message.payload.suggestionType } } }); } catch {}
+					setPendingDiffs(prev => {
+						const exists = prev.some(d => d.filePath === message.payload.filePath);
+						const next = exists
+							? prev.map(d => d.filePath === message.payload.filePath ? { ...d, ...message.payload } : d)
+							: [...prev, message.payload];
+						return next;
+					});
+					// ê¸°ë³¸?€ ?«íž˜ ?íƒœ ? ì?
+					setShowDiffSummary(false);
+					// ì±„íŒ… ë²„ë¸”?ë„ diff ?œì‹œ
+					setMessages(prev => [...prev, {
+						sender: 'ai',
+						text: 'Changes proposed:',
+						thought: undefined,
+						senderName: message.payload.senderName,
+						timestamp: message.payload.timestamp,
+						diff: message.payload
+					}]);
+				}
+				break;
+			case 'diffBatchApplied':
+				// Accept All ?„ë£Œ ???”ì•½ ì´ˆê¸°??				setPendingDiffs([]);
+				setShowDiffSummary(false);
+				break;
+			case 'focusDiffSummary':
+				break;
 			case 'forceEnable':
 				setIsThinking(false);
 				setStatusText(null);
@@ -304,19 +333,14 @@ export const MainView: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        console.log('[MainView] useEffect - registering message listener');
         window.addEventListener('message', handleExtensionMessage);
-        console.log('[MainView] useEffect - listener registered');
         vscodeService.postMessage({ command: 'loadInitialData' });
         vscodeService.postMessage({ command: 'requestHistory' });
         vscodeService.postMessage({ command: 'getSlashCommands' });
         vscodeService.postMessage({ command: 'requestLlmSettings' });
         vscodeService.postMessage({ command: 'requestModels' });
         vscodeService.postMessage({ command: 'requestProfiles' });
-        return () => {
-            console.log('[MainView] useEffect cleanup - removing message listener');
-            window.removeEventListener('message', handleExtensionMessage);
-        };
+        return () => window.removeEventListener('message', handleExtensionMessage);
     }, [handleExtensionMessage]);
 
     useEffect(() => {
@@ -492,10 +516,7 @@ export const MainView: React.FC = () => {
 	};
 
 	const renderCentralContent = () => {
-		if (view === 'settings') {
-			console.log('[MainView] Rendering SettingsPage with models:', availableModels.length);
-			return <SettingsPage models={availableModels} />;
-		}
+		if (view === 'settings') return <SettingsPage />;
 		if (error) return <ErrorDisplay error={error} />;
 		if (view === 'welcome') {
 			const recent = [...sessions].slice(-2).reverse();
@@ -569,10 +590,8 @@ export const MainView: React.FC = () => {
                     onNewChat={handleNewChat}
                     onShowHistory={handleShowHistory}
                     onShowSettings={() => {
-                        console.log('[MainView] Gear icon clicked, current view:', view);
                         setView(prev => {
                             const next = prev === 'settings' ? 'chat' : 'settings';
-                            console.log('[MainView] View changing from', prev, 'to', next);
                             if (next === 'settings') { setPlan([]); }
                             return next;
                         });
@@ -691,3 +710,4 @@ export const MainView: React.FC = () => {
             </div>
         );
     };
+

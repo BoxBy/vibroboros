@@ -2,6 +2,12 @@ import * as vscode from 'vscode';
 import { getTaskTypePrompt } from '../prompts/sections/TaskClassification';
 import { getConversationalPrompt } from '../prompts/sections/Conversational';
 import { getPlanPrompt } from '../prompts/sections/Planning';
+import { 
+	CREATE_EXECUTION_PLAN_SCHEMA, 
+	ExecutionPlan, 
+	ExecutionStep,
+	PlanningAnalysis 
+} from '../prompts/schemas/PlanningSchema';
 import { getRoutingPrompt } from '../prompts/sections/Routing';
 import { getPostActionsSelectionPrompt } from '../prompts/sections/PostActions';
 import { getPlanCompletionSummaryPrompt } from '../prompts/sections/Summary';
@@ -379,12 +385,54 @@ export class OrchestratorAgent {
             case 'deleteChat': {
                 try {
                     const targetId = typeof message.sessionId === 'string' ? message.sessionId : this.activeSessionId;
+                    const sessions = this.state.get<any[]>(OrchestratorAgent.SESSIONS_INDEX_KEY, []) || [];
+                    const updatedSessions = sessions.filter(s => s.id !== targetId);
+                    
+                    // Delete session metadata
+                    await this.state.update(OrchestratorAgent.SESSIONS_INDEX_KEY, updatedSessions);
+                    
+                    // Delete session histories
+                    await this.state.update(this.getSessionChatHistoryKey(targetId), undefined);
+                    await this.state.update(this.getSessionLlmHistoryKey(targetId), undefined);
+                    
+                    // If deleted session was active, switch to another session or clear
+                    let newActiveId = this.activeSessionId;
+                    if (targetId === this.activeSessionId) {
+                        if (updatedSessions.length > 0) {
+                            // Switch to the most recent session
+                            newActiveId = updatedSessions[updatedSessions.length - 1].id;
+                            await this.state.update(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, newActiveId);
+                            this.activeSessionId = newActiveId;
+                            this.chatHistory = this.state.get<ChatMessage[]>(this.getSessionChatHistoryKey(newActiveId), []);
+                            this.llmConversationHistory = this.state.get<LlmMessage[]>(this.getSessionLlmHistoryKey(newActiveId), []);
+                        } else {
+                            // 🔧 FIX: No sessions left - DON'T create a new one, just clear everything
+                            newActiveId = '';
+                            await this.state.update(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, '');
+                            this.activeSessionId = '';
+                            this.chatHistory = [];
+                            this.llmConversationHistory = [];
+                            
+                            // 🔧 FIX: Notify UI to show Welcome screen
+                            this._onDidPostMessage.fire({ command: 'clearChat' });
+                        }
+                    }
 
-                    // Notify UI with updated session list
-                    await this.handleSessionChange();
-                    this.developerLogService.log(`[OrchestratorAgent] Deleted chat session ${targetId}. New active: ${newActiveId}.`);
+                    // 🔧 FIX: Always notify UI with updated session list
+                    this._onDidPostMessage.fire({ 
+                        command: 'historyList', 
+                        payload: { sessions: updatedSessions, activeId: newActiveId } 
+                    });
+                    
+                    // Only call handleSessionChange if we switched to another existing session
+                    if (newActiveId && updatedSessions.length > 0) {
+                        await this.handleSessionChange();
+                    }
+                    
+                    this.developerLogService.log(`[viper][OrchestratorAgent] Deleted chat session ${targetId}. Sessions left: ${updatedSessions.length}. New active: ${newActiveId || 'none'}.`);
+
                 } catch (e: any) {
-                    this.developerLogService.log(`[OrchestratorAgent] Failed to delete chat session: ${e?.message || e}`);
+                    this.developerLogService.log(`[viper][OrchestratorAgent] Failed to delete chat session: ${e?.message || e}`);
                 }
                 break;
             }
@@ -3141,7 +3189,7 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
             const endpoint = this.configService.getEndpoint();
             const provider = this.configService.getLlmProvider();
             const timeout = this.configService.getRequestTimeout(OrchestratorAgent.AGENT_ID);
-            const planSchema = { type: 'array', items: { type: 'string' } } as any;
+            const planSchema = CREATE_EXECUTION_PLAN_SCHEMA;
             const planPromise = this.llmService.requestLLMCompletion(
                 provider,
                 [{ role: 'user', content: planPrompt }],
@@ -3151,7 +3199,7 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
                 model,
                 undefined,
                 timeout,
-                { structured: { mode: 'json_schema', schema: planSchema, schemaName: 'PlanSteps' } }
+                { structured: { mode: 'json_schema', schema: planSchema, schemaName: 'create_execution_plan' } }
             );
             const planTimeoutMs = Math.min(Math.max(12000, timeout || 60000), 30000);
             let response: any;
@@ -3163,26 +3211,42 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
             } catch (e: any) {
                 if (e && e.message === 'PlanTimeout') {
                     this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Plan generation is slow; using a fast fallback.' } });
-                    const fallbackSteps: string[] = [];
-                    const attach = (this.lastAttachmentFilePaths && this.lastAttachmentFilePaths[0]) || '';
-                    if (attach) {
-                        fallbackSteps.push(`CommentGenerationAgent: Add comments to ${attach}`);
-                    } else {
-                        fallbackSteps.push(`${userText}`);
-                    }
-                    // Initialize new plan with correlation ids
+                    // Create simple fallback plan
+                    const fallbackPlan: ExecutionPlan = {
+                        analysis: {
+                            complexity_score: 3,
+                            requires_decomposition: false,
+                            workflow_phases: ['implement'],
+                            reasoning: 'Timeout fallback - creating simple plan'
+                        },
+                        plan: [{
+                            step_number: 1,
+                            phase: 'implement',
+                            description: userText,
+                            target_agent: 'CodeEditAgent',
+                            dependencies: []
+                        }]
+                    };
+                    
+                    // Process fallback plan
                     this.planId = uuidv4();
                     this.deferredPostActions = [];
                     this.pendingPostActions = [];
                     this.isAwaitingPostActionsConfirmation = false;
                     this.suppressPostActionsSuggestions = false;
                     this.producedArtifacts.clear();
-                    this.currentPlan = fallbackSteps.map((desc: string, i: number) => ({ id: `${this.planId}:${i + 1}`, description: desc, status: 'pending' }));
+                    
+                    const sortedSteps = this.topologicalSort(fallbackPlan.plan);
+                    this.currentPlan = sortedSteps.map((step: ExecutionStep) => ({
+                        id: `${this.planId}:${step.step_number}`,
+                        description: `${step.target_agent}: ${step.description}`,
+                        status: 'pending'
+                    }));
                     this.currentStepIndex = -1;
                     this.currentExecutionId = '';
                     this.handledExecutions.clear();
+                    
                     if (this.autonomousMode) {
-                        // Show plan and request confirmation in autonomous mode
                         this._onDidPostMessage.fire({ command: 'displayPlan', payload: { plan: this.currentPlan } });
                         const planDetails = this.currentPlan.map((step, index) => `${index + 1}. ${step.description}`).join('\n');
                         const fullResponseMessage = `I created a simplified plan. Proceed?\n${planDetails}`;
@@ -3194,7 +3258,6 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
                         await this.requestPlanConfirmation();
                         return;
                     } else {
-                        // Normal mode: do not show plan; execute immediately
                         await this.executePlan();
                         return;
                     }
@@ -3206,91 +3269,64 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
             if (rawContent) {
                 console.log('[OrchestratorAgent] rawContent:', rawContent);
 
-                // Extract thought (if any) and the user-facing text using the helper
-                const { thought, userFacingText: cleaned } = this.parseThoughtAndUserFacingText(rawContent);
-
-                // If a thought was present, log it and keep it in the LLM conversation history for future context
-                if (thought) {
-                    this.developerLogService.log(`[OrchestratorAgent] Extracted thought from LLM: ${thought}`);
-                    // store thought as a system-level LLM message so it won't be shown to users but is available for routing
-                    this.llmConversationHistory.push({ role: 'system', content: thought });
-                    this.pruneLlmHistoryIfNeeded(); // Prune if history gets too long
-                }
-
-                // If model was instructed to use DIRECT_RESPONSE wrapper, prefer that and return immediately
-                const directTagMatch = cleaned.match(/<DIRECT_RESPONSE>([\s\S]*?)<\/DIRECT_RESPONSE>/i);
-                if (directTagMatch) {
-                    const directText = directTagMatch[1].trim();
-                    console.log('[OrchestratorAgent] Detected DIRECT_RESPONSE tag.');
-                    const agentMessage: ChatMessage = { author: 'agent', content: [{ type: 'text', text: directText }], thought: thought, senderName: OrchestratorAgent.AGENT_ID, timestamp: new Date().toISOString() };
-                    this.addMessageToHistory(agentMessage);
-                    this.llmConversationHistory.push({ role: 'assistant', content: directText });
-                    await this.saveCurrentChatHistory();
-                    await this.saveCurrentLlmHistory();
-                    this._onDidPostMessage.fire({ command: 'response', payload: { text: directText, thought: thought || undefined, senderName: agentMessage.senderName, timestamp: agentMessage.timestamp }});
-                    return;
-                }
-
-                let planDescriptions: string[] | undefined;
-                let isPlan = false;
-
-                // 1) Try robust extractor first
-                const extracted1 = this.extractPlanArray(cleaned);
-                if (extracted1 && extracted1.length > 0) {
-                    planDescriptions = extracted1;
-                    isPlan = true;
-                } else {
-                    console.log('[OrchestratorAgent] First extraction failed. Attempting strict retry...');
-                    // 2) Retry once with a stricter reminder prompt
-                    const strictReminder = `\n\nIMPORTANT: Output ONLY a JSON array of step strings. No prose. No code fences. If unsure, output an empty array [].`;
-                    const strictPlanPrompt = planPrompt + strictReminder;
-                    try {
-                        const retryResp = await this.llmService.requestLLMCompletion(
-                            provider,
-                            [{ role: 'user', content: strictPlanPrompt }],
-                            apiKeys[0] || '',
-                            endpoint,
-                            [],
-                            model,
-                            undefined,
-                            undefined,
-                            { structured: { mode: 'json_schema', schema: planSchema, schemaName: 'PlanSteps' } }
-                        );
-                        const retryRaw = (retryResp.choices?.[0]?.message?.content ?? (retryResp as any).choices?.[0]?.text ?? '').toString().trim();
-                        const { userFacingText: retryCleaned } = this.parseThoughtAndUserFacingText(retryRaw);
-                        const extracted2 = this.extractPlanArray(retryCleaned || retryRaw || '');
-                        if (extracted2 && extracted2.length > 0) {
-                            planDescriptions = extracted2;
-                            isPlan = true;
-                        }
-                    } catch (retryErr) {
-                        console.log('[OrchestratorAgent] Strict retry for plan generation failed:', retryErr);
+                // Try to parse as ExecutionPlan
+                let executionPlan: ExecutionPlan | null = null;
+                try {
+                    executionPlan = JSON.parse(rawContent);
+                    
+                    // Validate structure
+                    if (!executionPlan || !executionPlan.analysis || !executionPlan.plan || !Array.isArray(executionPlan.plan)) {
+                        console.warn('[Orchestrator] Invalid ExecutionPlan structure, treating as conversational');
+                        executionPlan = null;
                     }
+                } catch (parseError) {
+                    console.log('[Orchestrator] Failed to parse as ExecutionPlan, treating as conversational response');
+                    executionPlan = null;
                 }
 
-                console.log('[OrchestratorAgent] isPlan after parsing attempt (with retry):', isPlan);
-
-                if (isPlan && planDescriptions) {
-                    // Initialize new plan with correlation ids
+                // If successfully parsed as ExecutionPlan
+                if (executionPlan) {
+                    // Log analysis
+                    console.log(`[Orchestrator] Complexity: ${executionPlan.analysis.complexity_score}/10`);
+                    console.log(`[Orchestrator] Phases: ${executionPlan.analysis.workflow_phases.join(' → ')}`);
+                    console.log(`[Orchestrator] Reasoning: ${executionPlan.analysis.reasoning}`);
+                    
+                    // Initialize new plan
                     this.planId = uuidv4();
-                    const deferRegex = /(documentationgenerationagent|readmegenerationagent|testgenerationagent)\s*:/i;
-                    const mainSteps = (planDescriptions || []).filter((d: string) => !deferRegex.test(String(d)));
-                    this.currentPlan = mainSteps.map((desc: string, i: number) => ({ id: `${this.planId}:${i + 1}`, description: desc, status: 'pending' }));
+                    this.deferredPostActions = [];
+                    this.pendingPostActions = [];
+                    this.isAwaitingPostActionsConfirmation = false;
+                    this.suppressPostActionsSuggestions = false;
+                    this.producedArtifacts.clear();
+                    
+                    // Topological sort by dependencies
+                    const sortedSteps = this.topologicalSort(executionPlan.plan);
+                    
+                    // Convert to existing plan format for compatibility
+                    this.currentPlan = sortedSteps.map((step: ExecutionStep) => ({
+                        id: `${this.planId}:${step.step_number}`,
+                        description: `${step.target_agent}: ${step.description}`,
+                        status: 'pending'
+                    }));
+                    
                     this.currentStepIndex = -1;
                     this.currentExecutionId = '';
                     this.handledExecutions.clear();
-                    this.pruneLlmHistoryIfNeeded(); // Prune if history gets too long
+                    this.pruneLlmHistoryIfNeeded();
+                    
                     const firstPendingIndex = this.currentPlan.findIndex(s => s.status === 'pending');
                     const firstDescription = firstPendingIndex !== -1 ? (this.currentPlan[firstPendingIndex].description || '') : '';
-                    // Check if first step explicitly targets internal planning agents by exact agent name
+                    
+                    // Check if first step targets internal planning agents
                     const firstIsBrainstorm = firstDescription.toLowerCase().startsWith('brainstormagent:');
                     const firstIsTaskDecomp = firstDescription.toLowerCase().startsWith('taskdecompositionagent:');
+                    
                     if (firstIsBrainstorm || firstIsTaskDecomp) {
-                        // Do NOT display plan yet; let internal planning agents run and then surface the final user-facing plan.
+                        // Do NOT display plan yet; let internal planning agents run first
                         await this.executePlan();
                     } else {
                         if (this.autonomousMode) {
-                            // Autonomous(Uroboros) mode: show plan and ask confirmation
+                            // Autonomous mode: show plan and ask confirmation
                             this._onDidPostMessage.fire({ command: 'displayPlan', payload: { plan: this.currentPlan } });
                             const planDetails = this.currentPlan.map((step, index) => `${index + 1}. ${step.description}`).join('\n');
                             const fullResponseMessage = `I have created the following plan. Please review it and confirm to proceed:\n${planDetails}`;
@@ -3302,24 +3338,16 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
                             this.isAwaitingPlanConfirmation = true;
                             await this.requestPlanConfirmation();
                         } else {
-                            // Normal mode: surface plan briefly and show live checklist in PLAN widget, then execute
+                            // Normal mode: show PLAN widget and execute
                             try {
-                                // Only show the PLAN widget (no duplicate checklist in chat)
                                 this._onDidPostMessage.fire({ command: 'displayPlan', payload: { plan: this.currentPlan } });
                             } catch {}
-                            // Dispatch-time normalization maps legacy edit agents to CodeEditAgent
                             await this.executePlan();
                         }
                     }
                 } else {
-                    // Treat as direct conversational response
-                    const displayText = cleaned || rawContent;
-                    const agentMessage: ChatMessage = { author: 'agent', content: [{ type: 'text', text: displayText }], thought: thought, senderName: OrchestratorAgent.AGENT_ID, timestamp: new Date().toISOString() };
-                    this.addMessageToHistory(agentMessage);
-                    this.llmConversationHistory.push({ role: 'assistant', content: displayText });
-                    await this.saveCurrentChatHistory();
-                    await this.saveCurrentLlmHistory();
-                    this._onDidPostMessage.fire({ command: 'response', payload: { text: displayText, senderName: agentMessage.senderName, timestamp: agentMessage.timestamp }});
+                    // Treat as conversational response
+                    await this.handleConversationalResponse(rawContent);
                 }
 
 
@@ -3331,6 +3359,96 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
             this.handleError(error as Error);
         }
     }
+
+    /**
+     * Topological sort using Kahn's algorithm
+     * Ensures steps are executed in dependency order
+     */
+    private topologicalSort(steps: ExecutionStep[]): ExecutionStep[] {
+        const stepMap = new Map<number, ExecutionStep>();
+        const inDegree = new Map<number, number>();
+        const adjList = new Map<number, number[]>();
+        
+        // Build graph
+        for (const step of steps) {
+            stepMap.set(step.step_number, step);
+            inDegree.set(step.step_number, 0);
+            adjList.set(step.step_number, []);
+        }
+        
+        for (const step of steps) {
+            for (const dep of step.dependencies) {
+                if (!adjList.has(dep)) {
+                    console.warn(`[Orchestrator] Dependency ${dep} not found for step ${step.step_number}`);
+                    continue;
+                }
+                adjList.get(dep)!.push(step.step_number);
+                inDegree.set(step.step_number, inDegree.get(step.step_number)! + 1);
+            }
+        }
+        
+        // Kahn's algorithm
+        const queue: number[] = [];
+        for (const [node, degree] of inDegree.entries()) {
+            if (degree === 0) {
+                queue.push(node);
+            }
+        }
+        
+        const sorted: ExecutionStep[] = [];
+        while (queue.length > 0) {
+            const current = queue.shift()!;
+            sorted.push(stepMap.get(current)!);
+            
+            for (const neighbor of adjList.get(current) || []) {
+                inDegree.set(neighbor, inDegree.get(neighbor)! - 1);
+                if (inDegree.get(neighbor) === 0) {
+                    queue.push(neighbor);
+                }
+            }
+        }
+        
+        // Check for cycles
+        if (sorted.length !== steps.length) {
+            console.error('[Orchestrator] Detected dependency cycle in plan!');
+            // Return unsorted as fallback
+            return steps;
+        }
+        
+        return sorted;
+    }
+
+    /**
+     * Handle response when it's not a plan (Q&A, greeting, etc.)
+     */
+    private async handleConversationalResponse(responseText: string): Promise<void> {
+        const { thought, userFacingText } = this.parseThoughtAndUserFacingText(responseText);
+        
+        const agentMessage: ChatMessage = {
+            author: 'agent',
+            content: [{ type: 'text', text: userFacingText || responseText }],
+            thought: thought,
+            senderName: OrchestratorAgent.AGENT_ID,
+            timestamp: new Date().toISOString()
+        };
+        
+        this.addMessageToHistory(agentMessage);
+        this.llmConversationHistory.push({ role: 'assistant', content: userFacingText || responseText });
+        
+        await this.saveCurrentChatHistory();
+        await this.saveCurrentLlmHistory();
+        
+        this._onDidPostMessage.fire({
+            command: 'response',
+            payload: {
+                text: userFacingText || responseText,
+                thought: thought || undefined,
+                senderName: agentMessage.senderName,
+                timestamp: agentMessage.timestamp
+            }
+        });
+    }
+
 
     private async runAgentHealthCheck(): Promise<void> {
         this.developerLogService.log('Running agent health check...');
@@ -3635,7 +3753,13 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
 
             // try { console.log('[OrchestratorAgent] Routing Prompt:', routingPrompt); } catch {}
         // System message should come first, followed by user message
-        const messages: LlmMessage[] = [ { role: 'system', content: routingPrompt }, { role: 'user', content: stepDescription } ];
+        
+        // Load custom agent configuration
+        const { loadPromptConfig } = require('./utils/promptLoader');
+        const customPrompt = await loadPromptConfig(OrchestratorAgent.AGENT_ID);
+        const fullRoutingPrompt = customPrompt ? `${routingPrompt}\n\n${customPrompt}` : routingPrompt;
+
+        const messages: LlmMessage[] = [ { role: 'system', content: fullRoutingPrompt }, { role: 'user', content: stepDescription } ];
 
         try {
             const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
@@ -3787,9 +3911,17 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
 
                     let responseText = '';
                     try {
+                        // Load custom prompt for conversational context if available
+                        const { loadPromptConfig } = require('./utils/promptLoader');
+                        const chatCustomPrompt = await loadPromptConfig(OrchestratorAgent.AGENT_ID);
+                        const chatMessages: any[] = [{ role: 'user', content: conversationalPrompt }];
+                        if (chatCustomPrompt) {
+                            chatMessages.unshift({ role: 'system', content: chatCustomPrompt });
+                        }
+
                         const convResp = await this.llmService.requestLLMCompletion(
                             provider,
-                            [{ role: 'user', content: conversationalPrompt }],
+                            chatMessages,
                             apiKeys[0] || '',
                             endpoint,
                             [],

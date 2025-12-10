@@ -128,14 +128,31 @@ Generate developer documentation in Markdown for the given source file.
 ${getRobustToolUsePrompt()}
 Do not include any references to AI, assistants, agents, or "Vibe". Use a neutral, professional tone and avoid first-person wording. If additional context or exact definitions are required, prefer retrieving precise source content via available MCP tools (e.g., FileReadTool for local files). Do not speculate; only incorporate verifiable content.
 
-**Context:**
-
-*   **File to Document:** \`${filePath}\`
-*   **Language:** \`${language}\`
-*   **User's Goal:** "${queryStr}"
+**Input Configuration:**
+*   **Source File**: \`${filePath}\`
+*   **Target Language**: \`${language}\`
+*   **User Intent**: "${queryStr}"
 
 System: You are an expert Technical Writer following the **Google Developer Documentation Style Guide**.
 Your goal is to create clear, consistent, and user-focused documentation for the provided code.
+
+**Output Requirement (Target File):**
+You must generate a documentation file derived from the provided Source File.
+
+**Naming Strategy:**
+The Target File's name must be inferred from the Source File:
+1.  **Test Files**: If the Source File is a test (e.g., \`test_user.py\`, \`auth.spec.ts\`), the Target File must document the *subject* of the test (e.g., \`user.md\`, \`auth.md\`).
+2.  **Implementation Files**: Use the base name directly (e.g., \`utils.ts\` -> \`utils.md\`).
+
+**Output Format:**
+Return a single JSON object:
+\`\`\`json
+{
+  "filename": "suggested_filename.md",
+  "content": "# Documentation Content..."
+}
+\`\`\`
+If clarification is needed, return: \`{ "request_clarification": { ... } }\`
 
 **Style Guidelines (Google Style):**
 1.  **Voice & Tone**: Use the **active voice** ("The function calculates...") instead of passive ("The calculation is performed by..."). Be authoritative but friendly.
@@ -192,6 +209,7 @@ ${code}
 ${additionalContext}
             `;
 
+            // 1. Generate English Documentation (Primary)
             console.log('Generating documentation with LLM...');
             const model = this.configService.getModel();
             const apiKeys = await this.configService.getApiKeys();
@@ -200,8 +218,9 @@ ${additionalContext}
             const provider = this.configService.getLlmProvider();
             const tools = getCoreLLMTools(provider);
 
-            const lang = (vscode.env.language || 'en').toLowerCase();
-            const localeSystem = `Speak only in ${lang}.`;
+            // Always generate in English first for consistency
+            const sysLang = 'en'; 
+            const localeSystem = `Speak only in ${sysLang}.`;
 
             const llmCall = async (previousError?: string) => {
                 const messages: any[] = [
@@ -211,7 +230,6 @@ ${additionalContext}
                 if (previousError) {
                     messages.push({ role: 'user', content: `Previous attempt failed: ${previousError}. Please try again.` });
                 }
-            // Streaming logic refactoring in progress
             const createStreamingCallback = () => {
                 if (!this.configService.isStreamingEnabled(this.card.name)) { return undefined; }
                 let buffer = '';
@@ -219,10 +237,8 @@ ${additionalContext}
                 return (chunk: string) => {
                     if (!chunk) { return; }
                     buffer += chunk;
-                    
                     let output = '';
                     let i = 0;
-                    
                     while (i < buffer.length) {
                         if (inThinkingBlock) {
                             const closeIdx = buffer.indexOf('</thinking>', i);
@@ -293,99 +309,6 @@ ${additionalContext}
                     }
                 };
             };
-            const stream = this.configService.isStreamingEnabled(this.card.name);
-            const onChunk = stream ? (chunk: string) => {
-                if (!chunk) return;
-                buffer += chunk;
-                
-                let output = '';
-                let i = 0;
-                
-                while (i < buffer.length) {
-                    if (inThinkingBlock) {
-                        const closeIdx = buffer.indexOf('</thinking>', i);
-                        if (closeIdx !== -1) {
-                            // Found closing tag. Output content up to tag.
-                            output += buffer.slice(i, closeIdx);
-                            inThinkingBlock = false;
-                            i = closeIdx + 11; // Skip </thinking>
-                        } else {
-                            // No closing tag. Output safe part, keep tail for partial tag.
-                            // </thinking> is 11 chars.
-                            const remaining = buffer.length - i;
-                            if (remaining < 11) {
-                                break; // Keep all in buffer
-                            } else {
-                                const safeEnd = buffer.length - 10;
-                                output += buffer.slice(i, safeEnd);
-                                i = safeEnd;
-                                break;
-                            }
-                        }
-                    } else {
-                        const openIdx = buffer.indexOf('<thinking>', i);
-                        if (openIdx !== -1) {
-                            // Found opening tag.
-                            inThinkingBlock = true;
-                            i = openIdx + 10; // Skip <thinking>
-
-                            // Force a new log line for the new thinking block
-                            const startMsg: Message = {
-                                kind: 'message',
-                                messageId: uuidv4(),
-                                message: '> ',
-                                role: 'agent',
-                                parts: [{
-                                    kind: 'data',
-                                    mimeType: 'application/vnd.a2a+json',
-                                    data: {
-                                        toolName: 'OrchestratorAgent',
-                                        command: 'status-update',
-                                        payload: { state: 'working', message: '> ', final: false }
-                                    }
-                                }],
-                                contextId: requestContext.contextId
-                            } as any;
-                            eventBus.publish(startMsg as any);
-                        } else {
-                            // No opening tag. Suppress everything but keep tail for partial tag.
-                            // <thinking> is 10 chars.
-                            const remaining = buffer.length - i;
-                            if (remaining < 10) {
-                                break; // Keep all in buffer
-                            } else {
-                                // Suppress content (skip i)
-                                const safeEnd = buffer.length - 9;
-                                i = safeEnd;
-                                break;
-                            }
-                        }
-                    }
-                }
-                
-                // Update buffer to keep only unprocessed part
-                buffer = buffer.slice(i);
-
-                if (output) {
-                    const streamingMsg: Message = {
-                        kind: 'message',
-                        messageId: uuidv4(),
-                        role: 'agent',
-                        parts: [{
-                            kind: 'data',
-                            mimeType: 'application/vnd.a2a+json',
-                            data: {
-                                toolName: 'OrchestratorAgent',
-                                command: 'status-update',
-                                payload: { state: 'streaming-chunk', message: output, final: false }
-                            }
-                        }],
-                        contextId: requestContext.contextId
-                    } as any;
-                    eventBus.publish(streamingMsg as any);
-                }
-            } : undefined;
-
                 return await runAgenticLoop({
                     llmService: this.llmService,
                     provider,
@@ -402,64 +325,44 @@ ${additionalContext}
             };
 
             const parser = (text: string) => {
-                // Pre-processing: Strip thinking tags to avoid false positives/negatives
-                const cleanText = text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+                let cleanText = text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+                // Try extracting JSON from markdown block
+                const jsonMatch = cleanText.match(/```json\s*([\s\S]*?)```/) || cleanText.match(/```\s*([\s\S]*?)```/);
+                if (jsonMatch) { cleanText = jsonMatch[1]; }
                 
-                // Debug log
-                console.log(`[DocumentationGenerationAgent] Raw response length: ${text.length}, Clean text length: ${cleanText.length}`);
-
-                // 1. Try extracting from markdown block
-                const codeMatch = cleanText.match(/```markdown\s*([\s\S]*?)```/) || cleanText.match(/```\s*([\s\S]*?)```/);
-                if (codeMatch) { return codeMatch[1]; }
-                
-                // 2. Fallback: Check for headers/bullets
-                if (cleanText.includes('# ') || cleanText.includes('## ') || cleanText.includes('* ') || cleanText.includes('- ')) {
-                    return cleanText;
-                }
-                
-                // 3. Check for clarification JSON
                 try {
-                    const json = JSON.parse(cleanText);
-                    if (json.request_clarification) return json;
-                } catch {}
-                
-                // 4. Relaxed Fallback: If cleanText is substantial, use it
-                if (cleanText.length > 20) return cleanText;
-
-                // 5. Deep Fallback: If cleanText is empty but we have Raw Text (e.g. only thinking tags),
-                // return the raw text (or extracted thinking) to avoid a crash.
-                if (text.length > 0) {
-                     const thinkingMatch = text.match(/<thinking>([\s\S]*?)<\/thinking>/i);
-                     if (thinkingMatch) {
-                         return `> **AI Thought Process:**\n${thinkingMatch[1].trim()}`;
+                    const parsed = JSON.parse(cleanText);
+                    return parsed;
+                } catch (e: any) {
+                     // Fallback: if it looks like markdown, wrap it (legacy support if LLM fails JSON instruction)
+                     if (cleanText.includes('# ')) {
+                         // Default filename if fallback occurs
+                         const fallbackName = filePath ? path.basename(filePath, path.extname(filePath)) + '.md' : 'DOCUMENT.md';
+                         return { filename: fallbackName, content: cleanText };
                      }
-                     return text; // Absolute fallback
+                    throw new Error(`Failed to parse JSON response: ${e.message}`);
                 }
-
-                throw new Error(`No documentation found in response (Length: ${text.length})`);
             };
 
             const validator = (parsed: any) => {
-                if (typeof parsed === 'string') {
-                    if (parsed.length < 10) { return { valid: false, error: "Generated documentation is too short" }; }
-                    return { valid: true };
+                if (parsed?.request_clarification) return { valid: true };
+                if (parsed?.content && typeof parsed.content === 'string') {
+                    if (parsed.content.length < 10) return { valid: false, error: "Content too short" };
+                    if (parsed.filename && typeof parsed.filename === 'string') return { valid: true };
+                    return { valid: false, error: "Missing filename" };
                 }
-                if (parsed.request_clarification) {
-                    if (!parsed.request_clarification.question) { return { valid: false, error: "Missing clarification question" }; }
-                    return { valid: true };
-                }
-                return { valid: false, error: "Output must be a string (markdown) or a clarification object" };
+                return { valid: false, error: "Invalid JSON structure. Expected { filename, content }" };
             };
 
             let generatedDocs: any;
             try {
                 generatedDocs = await runLLMLoop(llmCall, parser, validator, 3);
             } catch (e: any) {
-                generatedDocs = `<!-- Failed to generate documentation: ${e.message} -->`;
+                generatedDocs = { content: `<!-- Failed to generate documentation: ${e.message} -->`, filename: 'error.md' };
             }
 
             // Handle Clarification
-            if (typeof generatedDocs !== 'string' && generatedDocs?.request_clarification) {
+            if (generatedDocs?.request_clarification) {
                 const { question, context, options } = generatedDocs.request_clarification;
                 const clarificationMsg: Message = {
                     kind: 'message',
@@ -476,51 +379,111 @@ ${additionalContext}
                 return;
             }
 
-            if (typeof generatedDocs !== 'string') {
-                 generatedDocs = '<!-- No documentation generated -->';
+            // Extract content and filename
+            // generatedDocs is now expected to be { filename: string, content: string } based on new validator
+            const finalContent = generatedDocs.content || '<!-- No content -->';
+            
+            // Fallback logic if LLM didn't return filename (or error occurred)
+            const fallbackBaseName = filePath ? path.basename(filePath, path.extname(filePath)) : 'DOCUMENT';
+            const finalFilename = generatedDocs.filename || `${fallbackBaseName}.md`;
+            
+            // Remove extension from finalFilename to get base for localization
+            const enBaseName = path.basename(finalFilename, path.extname(finalFilename));
+
+            // --- LOCALIZATION & FILE PREPARATION ---
+            
+            const rootPath = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri.fsPath : '';
+            const docsDir = rootPath ? path.join(rootPath, 'docs') : 'docs';
+            
+            // Note: Regex logic for stripping 'test_' is REMOVED in favor of LLM providing the filename.
+            
+            const filesToCreate: any[] = [];
+            const artifacts: any[] = [];
+            
+            // 1. English (Default)
+            // Filename: <finalFilename>
+            const enDocsPath = path.join(docsDir, finalFilename);
+            filesToCreate.push({ filePath: enDocsPath, content: finalContent, suggestionType: 'create-file' });
+            artifacts.push({ type: 'file', path: enDocsPath, summary: `Generated documentation for ${filePath}` });
+
+            // 2. Localized (if applicable)
+            const userLang = vscode.env.language || 'en';
+            if (userLang !== 'en' && userLang !== 'en-us') {
+                console.log(`[DocGen] Generating localized documentation for ${userLang}...`);
+                const localizedPrompt = `
+                You are a professional technical translator.
+                Translate the following Markdown documentation into "${userLang}" (locale).
+                
+                Rules:
+                1. Keep all code blocks, variable names, class names, and technical terms intact (do not translate code).
+                2. Translate descriptions, comments, and narrative text naturally.
+                3. Maintain the original Markdown structure.
+                4. Output ONLY the translated markdown content.
+                
+                Content to Translate:
+                ${finalContent}
+                `;
+                
+                try {
+                    const translationResponse = await this.llmService.requestLLMCompletion(
+                        provider,
+                        [{ role: 'system', content: 'You are a translator.' }, { role: 'user', content: localizedPrompt }],
+                        apiKey,
+                        endpoint,
+                        [],
+                        model,
+                        undefined,
+                        60000 
+                    );
+                    let localizedContent = (translationResponse.choices?.[0]?.message?.content ?? '').toString();
+                    localizedContent = localizedContent.replace(/```markdown\s*/g, '').replace(/```\s*$/g, '').trim();
+
+                    if (localizedContent && localizedContent.length > 50) {
+                        const locDocsPath = path.join(docsDir, `${enBaseName}_${userLang}.md`);
+                        filesToCreate.push({ filePath: locDocsPath, content: localizedContent, suggestionType: 'create-file' });
+                        artifacts.push({ type: 'file', path: locDocsPath, summary: `Localized documentation (${userLang}) for ${filePath}` });
+                        console.log(`[DocGen] Localized doc ready: ${locDocsPath}`);
+                    }
+                } catch (e: any) {
+                    console.log(`[DocGen] Localization failed: ${e.message}`);
+                }
             }
 
-            const artifact: any = {
+            // Publish Artifact (Legacy, might only support one, keeping first one primarily but we send via payload)
+            // We'll publish the English one as the main artifact event for now, or maybe generic
+            const primaryArtifact: any = {
                 kind: 'artifact',
                 artifactId: uuidv4(),
                 mimeType: 'text/markdown',
-                data: generatedDocs,
+                data: finalContent,
                 description: `Generated documentation for ${filePath}`
             };
-            eventBus.publish(artifact as any);
+            eventBus.publish(primaryArtifact as any);
 
-            // Decide output docs path: /docs/<basename>.md
-            const baseName = filePath ? path.basename(filePath, path.extname(filePath)) : 'DOCUMENT';
-            const rootPath = vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders[0].uri.fsPath : '';
-            const docsDir = rootPath ? path.join(rootPath, 'docs') : 'docs';
-            const docsPath = path.join(docsDir, `${baseName}.md`);
-            console.log(`[DocGen] Calculated output paths -> filePath: "${filePath}", baseName: "${baseName}", docsPath: "${docsPath}"`);
-
-
-            // Propose a new docs file back to Orchestrator for confirmation
+            // Propose files
             const successPayload = {
                 success: true,
                 status: 'ok',
                 needsConfirmation: true,
-                filePath: docsPath,
-                content: generatedDocs,
+                files: filesToCreate, // NEW: Multiple files support
+                filePath: enDocsPath, // Legacy fallback
+                content: finalContent, // Legacy fallback
                 suggestionType: 'create-file',
                 correlation,
-                artifacts: [{ type: 'file', path: docsPath, summary: `Generated documentation for ${filePath}` }]
+                artifacts
             };
 
-            // Combine text and data into a single atomic message to prevent race conditions
             const combinedMessage: Message = {
                 kind: 'message',
                 messageId: uuidv4(),
                 role: 'agent',
                 parts: [
-                    { kind: "text", text: `Documentation has been generated. Suggested path: ${docsPath}` },
+                    { kind: "text", text: `Documentation generated (${filesToCreate.map(f => path.basename(f.filePath)).join(', ')}). path: ${enDocsPath}` },
                     {
                         kind: 'data',
                         mimeType: 'application/vnd.a2a+json',
                         data: {
-                            toolName: sender, // Dynamic Routing
+                            toolName: sender,
                             command: 'response-code-execution',
                             payload: successPayload
                         }
@@ -529,7 +492,6 @@ ${additionalContext}
                 contextId: (requestContext as any)?.contextId
             } as any;
             
-            try { console.log('[DocumentationGenerationAgent] publishing combined response to OrchestratorAgent', { hasCorrelation: !!correlation, filePath: docsPath, len: (generatedDocs || '').length }); } catch {}
             eventBus.publish(combinedMessage as any);
 
         } catch (e: any) {

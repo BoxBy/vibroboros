@@ -93,9 +93,9 @@ export class CodeAnalysisAgent implements AgentExecutor {
             const contextFiles = (dataPart?.data as any)?.contextFiles as string[] || [];
             if (contextFiles && Array.isArray(contextFiles) && contextFiles.length > 0) {
                 for (const cf of contextFiles) {
-                    if (typeof cf !== 'string') continue;
+                    if (typeof cf !== 'string') { continue; }
 
-                    if (cf === filePath) continue; // Skip primary file
+                    if (cf === filePath) { continue; } // Skip primary file
                     try {
                         let absCf = cf;
                         if (!path.isAbsolute(cf)) {
@@ -142,29 +142,32 @@ export class CodeAnalysisAgent implements AgentExecutor {
             };
 
             const prompt = `
-Analyze the provided source code and answer the user's query.
-${getRobustToolUsePrompt()}
-**CRITICAL INSTRUCTION**: You MUST provide a DETAILED, IN-DEPTH analysis. Short, lazy, or summary-only responses are invalid. Dig deep into the code's logic, potential issues, and optimization opportunities.
+            # Role
+            You are an expert code analysis agent capable of identifying bugs, security vulnerabilities, performance bottlenecks, and code style issues.
 
+            # Input Configuration
+            - **Source File**: \`${filePath}\` (Language: ${language})
+            - **User Query**: "${queryStr}"
+            - **Additional Context**: ${additionalContext ? 'Provided below' : 'None'}
 
-**Context:**
-*   **File:** \`${filePath}\`
-*   **Language:** \`${language}\`
-*   **User Query:** "${queryStr}"
+            # Output Requirement
+            1.  **Analyze**: Perform a deep static analysis of the **Source File** based on the **User Query**.
+            2.  **Report**: Generate a detailed markdown report covering:
+                -   **Summary**: Brief overview of findings.
+                -   **Issues**: Bugs, security risks, logic errors.
+                -   **Performance**: Bottlenecks, memory usage (specifically ${queryStr}).
+                -   **Recommendations**: Concrete code snippets or steps to fix identified issues.
+            3.  **Tool Use**: You MUST use the \`submit_analysis\` tool to return your report.
 
-**Task:**
-Perform a deep static analysis of the code. Identify potential bugs, security vulnerabilities, performance bottlenecks, and code style issues. Explain your reasoning clearly.
+            # Output Format
+            - **Tool Call ONLY**: Do not output conversational text. Call \`submit_analysis\` with your markdown report.
+            - **Clarification**: If missing critical info, return JSON: \`{"request_clarification": {"question": "...", "context": "..."}}\`
 
-**Output Specification:**
-You must use the \`submit_analysis\` tool to return your report.
-Call \`submit_analysis\` with the Markdown report in the \`analysis\` argument.
-CLARIFICATION: If you need more info, return ONLY a JSON object: {"request_clarification": {"question": "...", "context": "..."}}
-
-**Source Code:**
-\`\`\`${language}
-${code}
-\`\`\`
-${additionalContext}
+            # Content
+            \`\`\`${language}
+            ${code}
+            \`\`\`
+            ${additionalContext}
             `;
 
             console.log('Generating analysis with LLM...');
@@ -186,7 +189,7 @@ ${additionalContext}
                 let buffer = '';
                 let inThinkingBlock = false;
                 const onChunk = stream ? (chunk: string) => {
-                    if (!chunk) return;
+                    if (!chunk) { return; }
                     buffer += chunk;
                     
                     let output = '';
@@ -307,8 +310,8 @@ ${additionalContext}
                 // 1. Try parsing as JSON (Tool arguments or Clarification)
                 try {
                     const json = JSON.parse(cleanText || text);
-                    if (json.analysis) return json.analysis;
-                    if (json.request_clarification) return json;
+                    if (json.analysis) { return json.analysis; }
+                    if (json.request_clarification) { return json; }
                 } catch {}
 
                 // 1.5 Try parsing JSON from markdown code blocks (common failure mode)
@@ -316,8 +319,8 @@ ${additionalContext}
                 if (jsonMatch) {
                     try {
                         const json = JSON.parse(jsonMatch[1]);
-                        if (json.analysis) return json.analysis;
-                        if (json.request_clarification) return json;
+                        if (json.analysis) { return json.analysis; }
+                        if (json.request_clarification) { return json; }
                     } catch {}
                 }
 

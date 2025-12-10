@@ -232,39 +232,39 @@ export class ConfigService {
 
         // Fallback: check user settings for a previously stored API key and migrate it into secret storage.
         const settingsKey = this.getConfiguration('ollama').get<string>('apiKey') || '';
-        console.log('[ConfigService] getOllamaApiKey - settings key:', settingsKey ? 'exists' : 'not found');
+        console.log('[viper][ConfigService] getOllamaApiKey - settings key:', settingsKey ? 'exists' : 'not found');
 
         if (settingsKey && settingsKey.trim().length > 0) {
             try {
                 await this.secretStorage.setApiKey('ollama', settingsKey);
                 // Clear the setting to avoid leaving secrets in plaintext settings
                 await this.getConfiguration('ollama').update('apiKey', '', vscode.ConfigurationTarget.Global);
-                console.log('[ConfigService] getOllamaApiKey - migrated settings key to secret storage');
-                console.log(`[ConfigService] getOllamaApiKey returning migrated API key. Length: ${settingsKey.length}. Value: ${settingsKey.substring(0, 5)}...${settingsKey.substring(settingsKey.length - 5)}`); // Log first/last 5 chars
+                console.log('[viper][ConfigService] getOllamaApiKey - migrated settings key to secret storage');
+                console.log('[viper][ConfigService] getOllamaApiKey returning migrated API key');
                 return settingsKey;
             } catch (e) {
                 // If migration fails, still return the settings value so the UI can display it,
                 // but prefer not to throw here to avoid breaking callers.
-                console.error('[ConfigService] Failed to migrate Ollama API key to SecretStorage:', e);
-                console.log(`[ConfigService] getOllamaApiKey returning settings key (migration failed). Length: ${settingsKey.length}. Value: ${settingsKey.substring(0, 5)}...${settingsKey.substring(settingsKey.length - 5)}`); // Log first/last 5 chars
+                console.error('[viper][ConfigService] Failed to migrate Ollama API key to SecretStorage:', e);
+                console.log('[viper][ConfigService] getOllamaApiKey returning settings key (migration failed)');
                 return settingsKey;
             }
         }
 
-        console.log('[ConfigService] getOllamaApiKey - no key found');
+        console.log('[viper][ConfigService] getOllamaApiKey - no key found');
         return '';
     }
 
     public async setOllamaApiKey(key: string): Promise<void> {
-        console.log('[ConfigService] Setting Ollama API key. Key present:', !!key);
+        console.log('[viper][ConfigService] Setting Ollama API key. Key present:', !!key);
         try {
             // Store Ollama API key securely in SecretStorage
             await this.secretStorage.setApiKey('ollama', key);
-            console.log('[ConfigService] Ollama API key stored in SecretStorage');
+            console.log('[viper][ConfigService] Ollama API key stored in SecretStorage');
 
             // Clear any plaintext setting to avoid duplication
             await this.getConfiguration('ollama').update('apiKey', '', vscode.ConfigurationTarget.Global);
-            console.log('[ConfigService] Cleared plaintext Ollama API key from settings');
+            console.log('[viper][ConfigService] Cleared plaintext Ollama API key from settings');
 
             // Verify the key was stored correctly
             const storedKey = await this.getOllamaApiKey();
@@ -507,5 +507,23 @@ export class ConfigService {
 	                return vscode.workspace.workspaceFolders[0].uri.fsPath;
 	            }
 	            return ''; // 또는 적절한 오류 처리
+	        }
+
+	        /**
+	         * Returns the list of internal Viper agents for Per-Agent LLM Override configuration.
+	         */
+	        public getInternalAgents(): Array<{ name: string; description: string }> {
+	            return [
+	                { name: 'OrchestratorAgent', description: 'Main orchestration agent' },
+	                { name: 'CodeEditAgent', description: 'Code editing and file operations' },
+	                { name: 'TestGenerationAgent', description: 'Test generation' },
+	                { name: 'DocumentationGenerationAgent', description: 'Documentation generation' },
+	                { name: 'CodeAnalysisAgent', description: 'Code analysis and review' },
+	                { name: 'SecurityAnalysisAgent', description: 'Security analysis' },
+	                { name: 'RefactoringSuggestionAgent', description: 'Refactoring suggestions' },
+	                { name: 'TaskDecompositionAgent', description: 'Task decomposition' },
+	                { name: 'ReadmeGenerationAgent', description: 'README generation' },
+	                { name: 'BugFixAgent', description: 'Bug fixing' }
+	            ];
 	        }
 	    }

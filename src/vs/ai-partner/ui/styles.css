@@ -101,9 +101,24 @@ body {
 
 .welcome-actions {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    /* Default to 4 columns for wide screens */
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 32px;
+}
+
+/* Force 2 columns when space is limited (preventing 3-column layout) */
+@media (max-width: 850px) {
+    .welcome-actions {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Force 1 column when very narrow */
+@media (max-width: 500px) {
+    .welcome-actions {
+        grid-template-columns: 1fr;
+    }
 }
 
 .action-item {
@@ -375,7 +390,7 @@ body {
     left: 8px;
     right: 8px;
     width: auto;
-    max-height: calc(100vh - 100px);
+    max-height: calc(100vh - 250px);
     background-color: var(--vscode-editorWidget-background);
     border: 1px solid var(--vscode-editorWidget-border);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);

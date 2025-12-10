@@ -37,6 +37,12 @@ export interface HandlerContext {
 	viewRef: React.MutableRefObject<'welcome' | 'chat' | 'settings'>;
 	dropIncomingRef: React.MutableRefObject<boolean>;
 	lastUserAttachmentsRef: React.MutableRefObject<any[]>;
+    setLoadingStatus: React.Dispatch<React.SetStateAction<{
+        llmSettings: boolean;
+        models: boolean;
+        profiles: boolean;
+        slashCommands: boolean;
+    }>>;
 	vscodeService: any;
 }
 
@@ -47,6 +53,9 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 	return {
 		slashCommandsResponse: (payload) => {
 			context.setSlashCommands(payload || []);
+            console.log('[MainView] Loaded Slash Commands');
+            context.vscodeService.postMessage({ command: 'debugLog', payload: { source: 'MainView', event: 'Loaded Slash Commands' } });
+            context.setLoadingStatus(prev => ({ ...prev, slashCommands: false }));
 		},
 		llmSettingsResponse: (payload) => {
 			if (payload) {
@@ -57,11 +66,17 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 					context.setCurrentModel(payload.model);
 				}
 			}
+            console.log('[MainView] Loaded LLM Settings');
+            context.vscodeService.postMessage({ command: 'debugLog', payload: { source: 'MainView', event: 'Loaded LLM Settings' } });
+            context.setLoadingStatus(prev => ({ ...prev, llmSettings: false }));
 		},
 		updateModels: (payload) => {
 			if (Array.isArray(payload)) {
 				context.setAvailableModels(payload);
 			}
+            console.log('[MainView] Loaded Models (MCP)');
+            context.vscodeService.postMessage({ command: 'debugLog', payload: { source: 'MainView', event: 'Loaded Models (MCP)' } });
+            context.setLoadingStatus(prev => ({ ...prev, models: false }));
 		},
 		modelChanged: (payload) => {
 			if (typeof payload === 'string') {
@@ -73,12 +88,14 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 				context.setProfiles(payload.profiles || []);
 				context.setActiveProfileId(typeof payload.activeProfileId === 'string' ? payload.activeProfileId : null);
 			}
+            console.log('[MainView] Loaded Profiles (A2A)');
+            context.vscodeService.postMessage({ command: 'debugLog', payload: { source: 'MainView', event: 'Loaded Profiles (A2A)' } });
+            context.setLoadingStatus(prev => ({ ...prev, profiles: false }));
 		},
 		historyList: (payload) => {
 			if (payload) {
-				const { sessions: sess, activeId } = payload;
+				const { sessions: sess } = payload;
 				if (Array.isArray(sess)) context.setSessions(sess);
-				if (typeof activeId === 'string') context.setActiveSessionId(activeId);
 			}
 		},
 		loadHistory: (payload) => {

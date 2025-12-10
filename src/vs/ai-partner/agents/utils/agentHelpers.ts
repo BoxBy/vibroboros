@@ -74,13 +74,14 @@ export interface AgenticLoopOptions {
     maxTurns?: number;
     logger?: DeveloperLogService;
     toolHandler?: (toolName: string, args: any) => Promise<{ handled: boolean; result?: any; stopLoop?: boolean }>;
+    onStreamingData?: (chunk: string) => void;
 }
 
 /**
  * Executes a multi-turn agentic loop with tool execution support.
  */
 export async function runAgenticLoop(options: AgenticLoopOptions): Promise<string> {
-    const { llmService, provider, messages, apiKey, endpoint, tools, model, mcpClient, maxTurns = 5, logger, toolHandler } = options;
+    const { llmService, provider, messages, apiKey, endpoint, tools, model, mcpClient, maxTurns = 5, logger, toolHandler, onStreamingData } = options;
     let turnCount = 0;
 
     while (turnCount < maxTurns) {
@@ -88,7 +89,7 @@ export async function runAgenticLoop(options: AgenticLoopOptions): Promise<strin
         if (logger) logger.log(`[AgenticLoop] Turn ${turnCount}/${maxTurns}`);
 
         const resp = await llmService.requestLLMCompletion(
-            provider, messages, apiKey, endpoint, tools, model, undefined, 60000
+            provider, messages, apiKey, endpoint, tools, model, onStreamingData, 60000
         );
         const msg = resp.choices?.[0]?.message;
         const content = (msg?.content ?? (resp as any)?.choices?.[0]?.text ?? '').toString();

@@ -21,6 +21,7 @@ import { SecurityAnalysisAgent } from "./agents/SecurityAnalysisAgent";
 import { TaskDecompositionAgent } from "./agents/TaskDecompositionAgent";
 import { TestGenerationAgent } from "./agents/TestGenerationAgent";
 import { CodeEditAgent } from "./agents/CodeEditAgent";
+import { BugFixAgent } from "./agents/specialized/BugFixAgent";
 
 // 누락된 로컬 타입 임포트
 import { A2AMessage } from "./interfaces/A2AMessage";
@@ -43,6 +44,7 @@ const createAgentFactory = (dispatch: (message: A2AMessage<any>) => Promise<void
     './agents/SecurityAnalysisAgent.ts': (card: AgentCard) => new SecurityAnalysisAgent(card),
     './agents/TaskDecompositionAgent.ts': (card: AgentCard) => new TaskDecompositionAgent(card),
     './agents/TestGenerationAgent.ts': (card: AgentCard) => new TestGenerationAgent(card),
+    './agents/specialized/BugFixAgent.ts': (card: AgentCard) => new BugFixAgent(card, workspaceState),
 });
 
 const DEFAULT_AGENT_CONFIGS: any[] = [
@@ -56,7 +58,8 @@ const DEFAULT_AGENT_CONFIGS: any[] = [
     { path: './agents/SecurityAnalysisAgent.ts', card: { name: 'SecurityAnalysisAgent', description: 'Analyzes code for security vulnerabilities.', capabilities: {} as any } },
     { path: './agents/CodeAnalysisAgent.ts', card: { name: 'CodeAnalysisAgent', description: 'Performs static analysis on code.', capabilities: {} as any } },
     { path: './agents/TaskDecompositionAgent.ts', card: { name: 'TaskDecompositionAgent', description: 'Breaks tasks into steps.', capabilities: {} as any } },
-    { path: './agents/BrainstormAgent.ts', card: { name: 'BrainstormAgent', description: 'Brainstorms ideas and approaches.', capabilities: {} as any } }
+    { path: './agents/BrainstormAgent.ts', card: { name: 'BrainstormAgent', description: 'Brainstorms ideas and approaches.', capabilities: {} as any } },
+    { path: './agents/specialized/BugFixAgent.ts', card: { name: 'BugFixAgent', description: 'Analyzes and fixes bugs in the codebase.', capabilities: {} as any } }
 ];
 
 export const startA2AServer = async (context: vscode.ExtensionContext, _agentBaseUrl: string, dispatch: (message: A2AMessage<any>) => Promise<void>, mcpServer: Server, llmService: LLMService, authService: AuthService, configService: ConfigService, diagnostics: vscode.DiagnosticCollection, devLogService: DeveloperLogService, orchestratorAgent?: any) => {

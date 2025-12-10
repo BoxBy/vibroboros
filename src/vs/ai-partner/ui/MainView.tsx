@@ -383,7 +383,8 @@ const handleNewChat = () => {
     setIsThinking(false);
     setActiveSessionId(''); // Clear active session ID
     dropIncomingRef.current = true;
-    vscodeService.postMessage({ command: 'newChat' });
+    // Don't create new session yet - wait for user to send first message
+    // Session will be created in handleSendMessage when sendingFromWelcome is true
 };
 
 	const handleShowHistory = () => {
@@ -496,7 +497,7 @@ const handleNewChat = () => {
 	const renderCentralContent = () => {
 		if (view === 'settings') return <SettingsPage />;
 		if (error) return <ErrorDisplay error={error} />;
-		if (view === 'welcome') {
+		if (view === 'welcome' || messages.length === 0) {
 			const recent = [...sessions].reverse().slice(0, 2); // 최근 2개
 			return <WelcomeScreen onSendMessage={handleSendMessage} recentSessions={recent} onPickSession={handleSelectSession} />;
 		}
@@ -673,17 +674,14 @@ const handleNewChat = () => {
                             {/* Recent History (compact) above input. Exclude active and empty sessions */}
                             {(() => {
                                 if (view !== 'welcome' && (messages || []).length > 0) return null;
-                                let list = (sessions || [])
-                                    .filter(s => s.id !== activeSessionId && (s.messageCount || 0) > 0)
-                                    .slice(-2)
-                                    .reverse();
-                                // Fallback: if none match (e.g., only active or empty sessions), show latest 1-2 excluding active
-                                if (list.length === 0) {
-                                    list = (sessions || [])
-                                        .filter(s => s.id !== activeSessionId)
-                                        .slice(-2)
-                                        .reverse();
+                                // Show latest 2 sessions excluding active session
+                                let list = (sessions || []);
+                                // Only exclude active session if we are actually in a chat view (meaning we are looking at one).
+                                // If we are in Welcome view, we should show the most recent ones regardless.
+                                if (view === 'chat' && activeSessionId) {
+                                    list = list.filter(s => s.id !== activeSessionId);
                                 }
+                                list = list.slice(-2).reverse();
                                 if (list.length === 0) return null;
                                 return (
                                     <div style={{ margin: '0 0 6px 0' }}>

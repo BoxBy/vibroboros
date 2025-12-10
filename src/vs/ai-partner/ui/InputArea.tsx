@@ -110,9 +110,11 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                     const pick = suggestions[activeSuggestionIndex];
                     handlePickSuggestion(pick.command);
                 }
+                return; // Don't send message when selecting suggestion
             } else if (event.key === 'Escape') {
                 setShowSuggestions(false);
             }
+            return; // Don't process other keys when suggestions are shown
         }
 
         if (event.key === 'Enter' && !event.shiftKey) {

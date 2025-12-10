@@ -6,15 +6,13 @@ import { startA2AServer } from './a2a_server';
 import { AIPartnerViewProvider } from './AIPartnerViewProvider';
 import { createMCPServer } from './server/MCPServer';
 // Prefer SDK's built-in in-memory transport for robust in-process MCP wiring
-let InMemoryTransport: any;
-try { InMemoryTransport = require('@modelcontextprotocol/sdk/inMemory').InMemoryTransport; } catch {}
-try { if (!InMemoryTransport) { InMemoryTransport = require('@modelcontextprotocol/sdk/dist/cjs/inMemory').InMemoryTransport; } } catch {}
+// Use static import for InMemoryTransport to ensure proper bundling
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createInProcessDuplex } from './mcp_in_process_duplex';
 import * as mcpClientModule from '@modelcontextprotocol/sdk/client';
 // Use dynamic require for stdio transport to avoid TS type resolution issues across SDK versions
-let StdioClientTransport: any;
-try { StdioClientTransport = require('@modelcontextprotocol/sdk/client/stdio').StdioClientTransport; } catch {}
-try { if (!StdioClientTransport) { StdioClientTransport = require('@modelcontextprotocol/sdk/dist/cjs/client/stdio').StdioClientTransport; } } catch {}
+// Use static import for stdio transport to ensure proper bundling
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { A2AClient } from '@a2a-js/sdk/client';
 import { setMcpClient } from './mcp_client_provider';
 import { getMcpClient } from './mcp_client_provider';
@@ -57,6 +55,17 @@ async function createCheckpoint(label: string) {
 }
 
 function defaultContentForFile(filePath: string): string {
+    const fileName = path.basename(filePath);
+    if (fileName === 'mcp-servers.json') {
+        return '{\n  "mcpServers": {}\n}\n';
+    }
+    if (fileName === 'a2a-servers.json') {
+        return '[]\n';
+    }
+    if (fileName === 'AGENT.md') {
+        return '# Orchestrator Agent Prompt\n\nDefine your custom instructions here.\n';
+    }
+
     const ext = (path.extname(filePath) || '').toLowerCase();
     switch (ext) {
         case '.py':
@@ -78,59 +87,7 @@ function defaultContentForFile(filePath: string): string {
     }
 }
 
-function parseContextMacros(text: string): { cleaned: string; attachments: any[] } {
-    let cleaned = text;
-    const out: any[] = [];
-    const lines = text.split(/\r?\n/);
-    const kept: string[] = [];
-    for (const line of lines) {
-        const m = line.trim();
-        if (m.startsWith('@url')) {
-            const url = m.replace('@url', '').trim();
-            if (url) {
-                out.push({ type: 'mcp', label: `url:${url}`, content: url });
-            }
-            continue;
-        }
-        if (m.startsWith('@problems')) {
-            try {
-                const diags = vscode.languages.getDiagnostics();
-                const parts: string[] = [];
-                for (const [uri, arr] of diags) {
-                    if ((arr || []).length === 0) { continue; }
-                    const short = uri.fsPath.split(path.sep).slice(-2).join(path.sep);
-                    arr.slice(0, 50).forEach(d => parts.push(`${short}:${d.range.start.line + 1}:${d.message}`));
-                    if (parts.length > 500) { break; }
-                }
-                out.push({ type: 'mcp', label: 'problems', content: parts.join('\n') });
-            } catch {}
-            continue;
-        }
-        if (m.startsWith('@file ')) {
-            const p = m.slice(6).trim();
-            if (p) {
-                try {
-                    const u = vscode.Uri.file(path.isAbsolute(p) ? p : path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', p));
-                    out.push({ type: 'file', uri: u.toString(), label: path.basename(u.fsPath) });
-                } catch {}
-            }
-            continue;
-        }
-        if (m.startsWith('@folder ')) {
-            const p = m.slice(8).trim();
-            if (p) {
-                try {
-                    const u = vscode.Uri.file(path.isAbsolute(p) ? p : path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', p));
-                    out.push({ type: 'folder', uri: u.toString(), label: path.basename(u.fsPath) });
-                } catch {}
-            }
-            continue;
-        }
-        kept.push(line);
-    }
-    cleaned = kept.join('\n').trim();
-    return { cleaned, attachments: out };
-}
+
 
 function getWebviewContent(
     originalFilePath: string,
@@ -300,6 +257,12 @@ export async function activate(context: vscode.ExtensionContext) {
             const mcpConfig = JSON.parse(mcpConfigRaw);
             if (mcpConfig && mcpConfig.mcpServers && typeof mcpConfig.mcpServers === 'object') {
                 for (const [serverId, cfg] of Object.entries<any>(mcpConfig.mcpServers)) {
+                    // Check for enabled/active flag (default to true)
+                    if (cfg.enabled === false || cfg.active === false) {
+                        console.log(`[viper] Skipping inactive MCP server '${serverId}'.`);
+                        continue;
+                    }
+
                     try {
                         if (!StdioClientTransport) { throw new Error('Stdio transport not available in SDK'); }
                         const transport = new StdioClientTransport({
@@ -433,6 +396,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 for (const it of a2aCfg) {
                     const name: string | undefined = it?.card?.name;
                     const url: string | undefined = it?.card?.url;
+                    const description: string | undefined = it?.card?.description;
                     if (typeof name === 'string' && typeof url === 'string' && url.startsWith('http')) {
                         const rec = name.replace(/Agent$/, '').toLowerCase();
                         a2aOverrides.set(rec, url.endsWith('/card') ? url : `${url.replace(/\/$/, '')}/card`);
@@ -469,10 +433,24 @@ export async function activate(context: vscode.ExtensionContext) {
                     return;
                 }
 
-                // Prefer external override if present
-                const useLocal = localAgentNames.has(recipientName);
-                const cardUrl = useLocal ? `${agentBaseUrl}/agent/${recipientName}/card` : (a2aOverrides.get(recipientName) || `${agentBaseUrl}/agent/${recipientName}/card`);
-                const routeNote = `[Dispatch] Route decision for '${recipientName}': ${useLocal ? 'local' : (a2aOverrides.has(recipientName) ? 'override' : 'local-default')} -> ${cardUrl}`;
+                // Check for dynamic overrides from Settings (Active Profile)
+                const activeProfile = configService.getActiveProfile();
+                const settingsOverride = activeProfile?.agentOverrides?.find((o: any) => o.agentName === message.recipient);
+                
+                let dynamicOverrideUrl = '';
+                if (settingsOverride?.useExternal && settingsOverride?.externalUrl) {
+                    dynamicOverrideUrl = settingsOverride.externalUrl;
+                    if (!dynamicOverrideUrl.endsWith('/card')) { 
+                         dynamicOverrideUrl = dynamicOverrideUrl.endsWith('/') ? `${dynamicOverrideUrl}card` : `${dynamicOverrideUrl}/card`;
+                    }
+                }
+
+                // Prefer external override if present (Dynamic > Static JSON > Local)
+                const useLocal = !dynamicOverrideUrl && localAgentNames.has(recipientName);
+                const cardUrl = dynamicOverrideUrl || (useLocal ? `${agentBaseUrl}/agent/${recipientName}/card` : (a2aOverrides.get(recipientName) || `${agentBaseUrl}/agent/${recipientName}/card`));
+                
+                const decisionType = dynamicOverrideUrl ? 'dynamic-override' : (useLocal ? 'local' : (a2aOverrides.has(recipientName) ? 'static-override' : 'local-default'));
+                const routeNote = `[Dispatch] Route decision for '${recipientName}': ${decisionType} -> ${cardUrl}`;
                 devLogService.log(routeNote);
                 try { console.log(routeNote); } catch {}
                 let client = a2aClientCache.get(recipientName);
@@ -664,6 +642,30 @@ export async function activate(context: vscode.ExtensionContext) {
                         command: 'insertAttachment',
                         payload: [{ type: 'file', uri: uri.toString(), label: path.basename(uri.fsPath) }]
                     });
+                } else if (message.command === 'openFile') {
+                    const relativePath = message.filePath;
+                    if (relativePath && typeof relativePath === 'string') {
+                        try {
+                            const wsFolders = vscode.workspace.workspaceFolders;
+                            const rootPath = wsFolders && wsFolders.length > 0 ? wsFolders[0].uri.fsPath : '';
+                            if (rootPath) {
+                                const absolutePath = path.join(rootPath, relativePath);
+                                // Ensure directory exists
+                                await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+                                // Check existence, create if missing
+                                try {
+                                    await fs.access(absolutePath);
+                                } catch {
+                                    const content = defaultContentForFile(absolutePath);
+                                    await fs.writeFile(absolutePath, content, 'utf-8');
+                                }
+                                const doc = await vscode.workspace.openTextDocument(absolutePath);
+                                await vscode.window.showTextDocument(doc);
+                            }
+                        } catch (e: any) {
+                            vscode.window.showErrorMessage('Failed to open file: ' + (e?.message || e));
+                        }
+                    }
                 } else {
                     orchestrator.handleUIMessage(message);
                 }

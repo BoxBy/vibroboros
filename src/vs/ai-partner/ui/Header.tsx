@@ -15,9 +15,10 @@ interface HeaderProps {
     activeProfileId?: string | null;
     onChangeProfile?: (profileId: string) => void;
     usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
+    isLoading?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onNewChat, onShowHistory, onShowSettings, isAutonomousMode, onToggleAutonomousMode, model, models = [], modelTooltip, onChangeModel, profiles = [], activeProfileId, onChangeProfile, usage }) => {
+export const Header: React.FC<HeaderProps> = ({ onNewChat, onShowHistory, onShowSettings, isAutonomousMode, onToggleAutonomousMode, model, models = [], modelTooltip, onChangeModel, profiles = [], activeProfileId, onChangeProfile, usage, isLoading }) => {
     const [showProfilePopup, setShowProfilePopup] = useState(false);
     const [showModelPopup, setShowModelPopup] = useState(false);
     const [modelDraft, setModelDraft] = useState(model ?? '');
@@ -58,7 +59,10 @@ export const Header: React.FC<HeaderProps> = ({ onNewChat, onShowHistory, onShow
             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <h1 className="header-title" style={{ marginRight: 8 }}>Viper</h1>
+                        <h1 className="header-title" style={{ marginRight: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            Viper
+                            {isLoading && <span className="codicon codicon-loading codicon-modifier-spin" style={{ fontSize: '14px' }} />}
+                        </h1>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 2 }}>
                         <div ref={profileAnchorRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); setShowModelPopup(false); setShowProfilePopup(v => !v); }}>
