@@ -1,3 +1,8 @@
+import { STATIC_MODEL_REGISTRY, DEFAULT_MODEL_INFO, ModelInfo } from '../constants/ModelRegistry';
+import { getEncoding } from 'js-tiktoken';
+import { ModelContextService } from './ModelContextService';
+import { LiteLLMService } from './LiteLLMService';
+
 export type LlmMessageContent =
     | string
     | null
@@ -65,12 +70,430 @@ export class LLMService {
         this.usageTotals.prompt_tokens += p;
         this.usageTotals.completion_tokens += c;
         this.usageTotals.total_tokens += t;
+        this.usageTotals.total_tokens += t;
     }
 
     /**
-     * Resolve an OpenAI-compatible endpoint given a base or full URL.
-     * Tries multiple common paths and caches the first non-404 responder.
+     * Cache for model info to reduce repeated lookups/API calls
      */
+    private modelInfoCache: Map<string, ModelInfo> = new Map();
+
+    /**
+     * Retrieves detailed information about a model (context window, output tokens, capabilities).
+     * 1. Checks STATIC_MODEL_REGISTRY.
+     * 2. Checks internal cache.
+     * 3. If dynamic provider (Ollama/Google/OpenRouter), fetches from API.
+     * 4. Returns safe defaults if all else fails.
+     */
+    public async getModelInfo(provider: LLMProvider, model: string, apiKey?: string, endpoint?: string): Promise<ModelInfo> {
+        // 0. Check User Override (Highest Priority)
+        const configService = require('../config_service').ConfigService.getInstance();
+        const userOverride = configService.getMaxContextOverride();
+        if (typeof userOverride === 'number' && userOverride > 0) {
+            // If override is present, use it. We still need basic info (id, provider).
+            // We can try to get static info for other fields if available, otherwise defaults.
+            const baseInfo = STATIC_MODEL_REGISTRY[model] || { ...DEFAULT_MODEL_INFO, id: model, provider };
+            return {
+                ...baseInfo,
+                maxContextTokens: userOverride
+            };
+        }
+
+        // 1. Check Static Registry & Cache
+        if (STATIC_MODEL_REGISTRY[model]) {
+            return STATIC_MODEL_REGISTRY[model];
+        }
+        const cacheKey = `${provider}:${model}`;
+        if (this.modelInfoCache.has(cacheKey)) {
+            return this.modelInfoCache.get(cacheKey)!;
+        }
+
+        let info: ModelInfo | null = null;
+
+        try {
+            // 2. LiteLLM DB "Cheat Key" (High Reliability, No 503s)
+            // Checks GitHub Raw JSON for model specs.
+            if (!info) {
+                const liteContext = await LiteLLMService.getContextLength(model);
+                if (liteContext) {
+                    info = {
+                        id: model,
+                        maxContextTokens: liteContext,
+                        maxOutputTokens: 4096, // LiteLLM DB usually separates input/output, but we used input as priority. 
+                        // If we want output too, we can update LiteLLMService to return both.
+                        // For now, heuristic default or we can improved LiteLLMService later.
+                        provider: provider as any,
+                        supportsReasoning: model.includes('o1') || model.includes('reasoning'),
+                        multimodal: model.includes('gpt-4') || model.includes('claude-3') || model.includes('gemini')
+                    };
+                    // console.log(`[LLMService] Found ${model} in LiteLLM DB: ${liteContext} tokens`);
+                }
+            }
+
+            // 3. Dynamic Fetching (API Fallback)
+            if (!info) {
+                if (provider === 'ollama') {
+                    info = await this.fetchOllamaModelInfo(model, endpoint);
+                } else if (provider === 'google') {
+                    info = await this.fetchGoogleModelInfo(model, apiKey);
+                } else if (provider === 'openrouter') {
+                    info = await this.fetchOpenRouterModelInfo(model, apiKey);
+                } else if (provider === 'groq') {
+                    info = await this.fetchGroqModelInfo(model, apiKey);
+                } else if (provider === 'openai' || provider === 'anthropic' || provider === 'xai') {
+                    // Phase 8: Universal Lookup via OpenRouter Metadata
+                    const dynamicContext = await ModelContextService.getMaxContextLength(provider, model);
+                    if (dynamicContext && dynamicContext > 4096) {
+                        info = {
+                            id: model,
+                            maxContextTokens: dynamicContext,
+                            maxOutputTokens: (provider === 'anthropic' || model.includes('o1')) ? 8192 : 4096, 
+                            provider: provider as any,
+                            supportsReasoning: model.includes('o1') || model.includes('reasoning'),
+                            multimodal: model.includes('gpt-4') || model.includes('claude-3') || model.includes('o1')
+                        };
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn(`[LLMService] Failed to fetch dynamic model info for ${model}:`, error);
+        }
+
+        // 3. Fallback / Default
+        const finalInfo = info || { 
+            ...DEFAULT_MODEL_INFO, 
+            id: model, 
+            provider: provider as any 
+        };
+
+        this.modelInfoCache.set(cacheKey, finalInfo);
+        return finalInfo;
+    }
+
+    private async fetchOllamaModelInfo(model: string, endpoint?: string): Promise<ModelInfo | null> {
+        try {
+            const baseUrl = endpoint || 'http://localhost:11434';
+            const url = `${baseUrl.replace(/\/$/, '')}/api/show`;
+            const response = await fetch(url, {
+                method: 'POST',
+                body: JSON.stringify({ name: model })
+            });
+            
+            if (!response.ok) {
+                console.warn(`[LLMService] Ollama api/show failed for ${model}: Status ${response.status}`);
+                return null;
+            }
+            
+            const data = await response.json();
+            console.log(`[LLMService] Ollama api/show for ${model}:`, JSON.stringify(data.model_info));
+
+            // User-provided logic for robust parsing
+            const info = data.model_info || {};
+            const params = data.parameters || '';
+            const architecture = info['general.architecture'];
+
+            // 1. Try architecture-specific key (e.g., "deepseek2.context_length")
+            if (architecture && info[`${architecture}.context_length`]) {
+                const ctx = parseInt(info[`${architecture}.context_length`]);
+                // console.log(`[LLMService] Found context via architecture (${architecture}): ${ctx}`);
+                return {
+                    id: model,
+                    maxContextTokens: ctx,
+                    maxOutputTokens: 4096,
+                    provider: 'ollama'
+                };
+            }
+
+            // 2. Scan for ANY key ending in .context_length or exact "context_length"
+            const contextKey = Object.keys(info).find(k => k.endsWith('.context_length') || k === 'context_length');
+            if (contextKey) {
+                 const ctx = parseInt(info[contextKey]);
+                 // console.log(`[LLMService] Found context via suffix scan (${contextKey}): ${ctx}`);
+                 return {
+                    id: model,
+                    maxContextTokens: ctx,
+                    maxOutputTokens: 4096,
+                    provider: 'ollama'
+                };
+            }
+            
+            // 3. Try parsing parameters string if model_info failed
+            let context = 0;
+            if (params) {
+                const match = params.match(/num_ctx\s+(\d+)/);
+                if (match) {
+                    context = parseInt(match[1]);
+                }
+            }
+
+            // 3. Fallback to 4096 if nothing found
+            if (!context) context = 4096;
+
+            return {
+                id: model,
+                maxContextTokens: context,
+                maxOutputTokens: 4096, // Conservative default for Ollama
+                provider: 'ollama'
+            };
+        } catch (e) {
+            console.warn('[LLMService] Failed to fetch Ollama model info:', e);
+            return null;
+        }
+    }
+
+    private async fetchGoogleModelInfo(model: string, apiKey?: string): Promise<ModelInfo | null> {
+        if (!apiKey) return null;
+        // Google uses a GET request to models endpoint
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}?key=${apiKey}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        // usage: outputTokenLimit, inputTokenLimit
+        return {
+            id: model,
+            maxContextTokens: data.inputTokenLimit || 1000000,
+            maxOutputTokens: data.outputTokenLimit || 8192,
+            provider: 'google',
+            multimodal: true // Most Gemini models are multimodal
+        };
+    }
+
+    private async fetchOpenRouterModelInfo(model: string, apiKey?: string): Promise<ModelInfo | null> {
+        try {
+            const response = await fetch('https://openrouter.ai/api/v1/models', {
+                method: 'GET',
+                headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : undefined
+            });
+
+            if (!response.ok) return null;
+
+            const json = await response.json();
+            const data = json.data as Array<any>;
+            
+            const match = data.find((m: any) => m.id === model);
+            if (match) {
+                return {
+                    id: model,
+                    maxContextTokens: match.context_length || 4096,
+                    maxOutputTokens: match.per_request_limits?.output || 4096,
+                    provider: 'openrouter',
+                    multimodal: false
+                };
+            }
+            return null;
+        } catch (e) {
+            console.warn('[LLMService] Failed to fetch OpenRouter models:', e);
+            return null;
+        }
+    }
+
+    private async fetchGroqModelInfo(model: string, apiKey?: string): Promise<ModelInfo | null> {
+        if (!apiKey) return null;
+        try {
+            const response = await fetch('https://api.groq.com/openai/v1/models', {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${apiKey}` }
+            });
+
+            if (!response.ok) return null;
+
+            const json = await response.json();
+            const data = json.data as Array<any>;
+            
+            const match = data.find((m: any) => m.id === model);
+            if (match) {
+                // Groq API returns 'context_window'
+                return {
+                    id: model,
+                    maxContextTokens: match.context_window || 8192,
+                    maxOutputTokens: 8192, // Groq doesn't strictly explicitly limit output in same field usually, safe default
+                    provider: 'groq'
+                };
+            }
+            return null;
+        } catch (e) {
+            console.warn('[LLMService] Failed to fetch Groq models:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Resolves the effective reasoning effort parameters based on model capabilities.
+     * Handles fallbacks (e.g. Medium -> High for Gemini 3.0) and type conversions (Enum -> Budget).
+     */
+    /**
+     * Estimates or calculates token count for a string or message list.
+     * Uses js-tiktoken for accurate counts on OpenAI/Anthropic/generic models.
+     */
+    public countTokens(content: string | LlmMessage[], _modelId: string = 'gpt-4o'): number {
+        try {
+            // Encode using tiktoken
+            // 'o200k_base' for GPT-4o, 'cl100k_base' for others usually safe default for code
+            const enc = getEncoding('cl100k_base'); 
+            
+            if (typeof content === 'string') {
+                return enc.encode(content).length;
+            } else {
+                // Approximate chat message overhead (tokens per message, role, etc.)
+                let total = 0;
+                for (const msg of content) {
+                    let text = '';
+                    if (typeof msg.content === 'string') {
+                        text = msg.content;
+                    } else if (Array.isArray(msg.content)) {
+                        text = msg.content.map(c => c.type === 'text' ? c.text : '').join('');
+                    }
+                    total += enc.encode(text).length + 4; // +4 for role/message overhead
+                }
+                return total;
+            }
+        } catch (e) {
+            // Fallback heuristic: char / 3.5
+            const str = typeof content === 'string' ? content : JSON.stringify(content);
+            return Math.ceil(str.length / 3.5);
+        }
+    }
+
+    /**
+     * Intelligently truncates the conversation history to fit within the model's context window.
+     * Strategy:
+     * 1. ALWAYS Keep System Prompt & Last User Message.
+     * 2. Reserve output budget.
+     * 3. Include recent history (reverse chronological) until limit is reached.
+     */
+    public async truncateContext(
+        provider: LLMProvider,
+        modelId: string,
+        messages: LlmMessage[],
+        systemPrompt?: string,
+        safetyBuffer: number = 0.9 // Use 90% of available context
+    ): Promise<LlmMessage[]> {
+        const modelInfo = await this.getModelInfo(provider, modelId);
+        
+        // Calculate Limits
+        const maxContext = modelInfo.maxContextTokens;
+        const maxOutput = modelInfo.maxOutputTokens;
+        
+        // Budget available for INPUT (Context - reserved output)
+        // We reserve space for output to prevent mid-sentence cutoffs
+        const reservedOutput = maxOutput; 
+        const effectiveLimit = Math.floor((maxContext - reservedOutput) * safetyBuffer);
+
+        // 1. Mandatory Components
+        let currentTokens = 0;
+        const mandatoryMessages: LlmMessage[] = [];
+        
+        // System Prompt
+        if (systemPrompt) {
+            const sysTokens = this.countTokens(systemPrompt, modelId);
+            currentTokens += sysTokens;
+            // Note: System prompt is usually added separately in request body, 
+            // but we count it against the limit here.
+        }
+
+        // Last User Message (The current query)
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg && lastMsg.role === 'user') {
+             const lastMsgTokens = this.countTokens([lastMsg], modelId);
+             mandatoryMessages.push(lastMsg);
+             currentTokens += lastMsgTokens;
+        }
+
+        // If mandatory alone exceeds limit, we can't do much but warn/truncate last msg (omitted for now)
+        if (currentTokens >= effectiveLimit) {
+            console.warn(`[LLMService] Warning: System prompt + Last message exceeds context limit (${currentTokens}/${effectiveLimit})`);
+            return mandatoryMessages;
+        }
+
+        // 2. Add Recent History (Reverse Chronological)
+        const historyMessages: LlmMessage[] = [];
+        const availableTokens = effectiveLimit - currentTokens;
+        let historyUsage = 0;
+
+        // Iterate backwards from second-to-last message
+        for (let i = messages.length - 2; i >= 0; i--) {
+            const msg = messages[i];
+            
+            // Skip system messages in history if we handle system prompt separately
+            // (Assumes messages[i] is history. If input `messages` includes system prompt at 0, handle that)
+            if (msg.role === 'system') continue; 
+
+            const msgTokens = this.countTokens([msg], modelId);
+            
+            if (historyUsage + msgTokens <= availableTokens) {
+                historyMessages.unshift(msg); // Add to front to restore order later
+                historyUsage += msgTokens;
+            } else {
+                // Limit reached, stop adding history
+                break;
+            }
+        }
+
+        // Reconstruct final list: History + Last Message
+        return [...historyMessages, ...mandatoryMessages];
+    }
+    
+    public resolveReasoningParameters(
+        modelInfo: ModelInfo, 
+        effort: 'low' | 'medium' | 'high' | number | undefined
+    ): { paramName: string, paramValue: any, warning?: string } | null {
+        if (!effort || !modelInfo.supportsReasoning) return null;
+
+        // 1. Handle Integer Input (Custom Budget)
+        if (typeof effort === 'number') {
+            if (modelInfo.reasoningType === 'budget') {
+                return { paramName: 'budget_tokens', paramValue: effort };
+            }
+            // Fallback for non-budget models: Map number to Level
+            // Heuristic: < 10k = Low, < 50k = Medium, > 50k = High
+            let fallbackLevel = 'high';
+            if (effort < 10000) fallbackLevel = 'low';
+            else if (effort < 50000) fallbackLevel = 'medium';
+            
+            return { 
+                paramName: modelInfo.reasoningType === 'level' ? 'thinkingLevel' : 'reasoning_effort',
+                paramValue: fallbackLevel,
+                warning: `Model does not support integer budget. Using '${fallbackLevel}' instead.`
+            };
+        }
+
+        // 2. Handle Enum Input ('low', 'medium', 'high')
+        
+        // Anthropic (Budget)
+        if (modelInfo.reasoningType === 'budget') {
+            const maxOut = modelInfo.maxOutputTokens || 64000;
+            let budget = 0;
+            switch(effort) {
+                case 'low': budget = Math.max(1024, Math.floor(maxOut * 0.2)); break;
+                case 'medium': budget = Math.max(4096, Math.floor(maxOut * 0.5)); break;
+                case 'high': budget = Math.max(8192, Math.floor(maxOut * 0.8)); break;
+            }
+            return { paramName: 'budget_tokens', paramValue: budget };
+        }
+
+        // Google (ThinkingLevel)
+        if (modelInfo.reasoningType === 'level') {
+            // Gemini 3.0 supports only Low / High (no Medium)
+            if (effort === 'medium' && modelInfo.id.includes('gemini-3')) {
+               return { 
+                   paramName: 'thinkingLevel', 
+                   paramValue: 'high', // Fallback Strategy: Upgrade to High
+                   warning: `Gemini 3.0 does not support 'medium'. Upgraded to 'high'.`
+               };
+            }
+            // Map directly
+            return { paramName: 'thinkingLevel', paramValue: effort };
+        }
+
+        // OpenAI / xAI / Groq (ReasoningEffort)
+        if (modelInfo.reasoningType === 'effort') {
+            return { paramName: 'reasoning_effort', paramValue: effort };
+        }
+
+        return null;
+    }
     private async resolveOpenAICompatibleEndpoint(baseOrFull: string, headers: HeadersInit, body: any, timeout: number): Promise<string> {
         const url = (baseOrFull || '').trim();
         if (!url) { return ''; }
@@ -399,6 +822,12 @@ export class LLMService {
                                         fetchOnce(url),
                                         new Promise((_, reject) => setTimeout(() => reject(new Error(`Request timed out after ${perAttemptTimeoutMs}ms`)), perAttemptTimeoutMs))
                                     ]) as Response;
+                                    
+                                    // Treat 429, 500, 502, 503, 504 as retryable errors
+                                    if ([429, 500, 502, 503, 504].includes(resp.status)) {
+                                        throw new Error(`Server returned status ${resp.status}`);
+                                    }
+
                                     if (resp.status === 404) { continue; }
                                     if (isOpenAICompatible) {
                                         const baseKey = requestEndpoint.replace(/\/+$/, '');
@@ -408,8 +837,17 @@ export class LLMService {
                                         }
                                     }
                                     return resp;
-                                } catch {
-                                    continue;
+                                } catch (e: any) {
+                                     // Propagate cancellation
+                                     if (e.name === 'AbortError') throw e;
+                                     // If it's a server status error, we want to retry (loop continues)
+                                     if (e.message && e.message.includes('Server returned status')) {
+                                         // Check max retries logic below
+                                         if (attempt + 1 >= maxRetries) throw e; 
+                                         // Otherwise continue to catch block
+                                         throw e;
+                                     }
+                                     continue;
                                 }
                             }
                             return await Promise.race([
@@ -422,8 +860,9 @@ export class LLMService {
                             attempt++;
                             const isTimeout = error.message?.includes('timed out');
                             const isNetworkError = error.message?.includes('Failed to fetch') || error.name === 'TypeError';
+                            const isServerError = error.message?.includes('Server returned status');
                             
-                            if (attempt < maxRetries && (isTimeout || isNetworkError)) {
+                            if (attempt < maxRetries && (isTimeout || isNetworkError || isServerError)) {
                                 // Exponential backoff with cap: 2s, 4s, 8s, 10s, 10s...
                                 const delay = Math.min(Math.pow(2, attempt) * 1000, 10000);
                                 console.warn(`[LLMService] Request failed (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms... Error: ${error.message}`);
@@ -497,15 +936,30 @@ export class LLMService {
                 } else {
                     // console.log(`[LLMService] Parsing non-streaming response for provider: ${provider}`);
                     const data = await response.json();
+                    
+                    // Root Cause Fix: If the caller requested streaming (onChunk provided) but we fell back to 
+                    // non-streaming (e.g. due to provider limitations or network fallbacks), we MUST 
+                    // simulate streaming by calling onChunk with the full content. 
+                    // Otherwise, callers like OrchestratorAgent will hang waiting for chunks.
+                    if (onChunk) {
+                        const content = data.choices?.[0]?.message?.content || '';
+                        if (content) {
+                           onChunk(content);
+                        } else if (provider === 'google') {
+                             const googleContent = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                             if (googleContent) onChunk(googleContent);
+                        } else if (provider === 'ollama' && data.message?.content) {
+                             onChunk(data.message.content);
+                        }
+                    }
+
                     // console.log(`[LLMService] Parsed response data. Has message: ${!!data.message}, has choices: ${!!data.choices}`);
                     
                     if (provider === 'google') {
                         const googleContent = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                        // try { console.log(`[LLMService] Response preview (google): ${googleContent.slice(0, 600)}`); } catch {}
                         return { choices: [{ message: { role: 'assistant', content: googleContent } }] };
                     }
                     if (provider === 'ollama') {
-                        // console.log(`[LLMService] Processing Ollama response. data.message: ${!!data.message}, data.message.content: ${!!data.message?.content}, data.message.tool_calls: ${!!data.message?.tool_calls}`);
                         // Ollama can return tool_calls with empty content, which is valid
                         if (!data.message) {
                             const errorMessage = 'Ollama LLM did not return a valid message. The response might be empty or malformed.';
@@ -519,14 +973,6 @@ export class LLMService {
                             return { choices: [{ message: { role: 'assistant', content: errorMessage } }] };
                         }
                         const resp = { choices: [{ message: data.message }] } as any;
-                        try { 
-                            // const contentPreview = data.message?.content ? String(data.message.content).slice(0, 600) : '';
-                            // const toolCallsInfo = data.message?.tool_calls ? ` [${data.message.tool_calls.length} tool_calls]` : '';
-                            // console.log(`[LLMService] Response preview (ollama): ${contentPreview}${toolCallsInfo}`); 
-                            // console.log(`[LLMService] data.message structure: content type=${typeof data.message?.content}, content length=${String(data.message?.content || '').length}, has tool_calls=${!!data.message?.tool_calls}, tool_calls count=${data.message?.tool_calls?.length || 0}`);
-                        } catch {}
-                        // console.log(`[LLMService] Returning Ollama response. choices length: ${resp.choices?.length || 0}`);
-                        // console.log(`[LLMService] resp.choices[0].message structure: content type=${typeof resp.choices[0]?.message?.content}, content length=${String(resp.choices[0]?.message?.content || '').length}, has tool_calls=${!!resp.choices[0]?.message?.tool_calls}`);
                         this.recordUsage(resp.usage);
                         return resp;
                     } else if (!data.choices || data.choices.length === 0) {
@@ -535,8 +981,6 @@ export class LLMService {
                         return { choices: [{ message: { role: 'assistant', content: errorMessage } }] };
                     }
                     this.recordUsage(data.usage);
-                    // try { console.log(`[LLMService] Response preview: ${String(data.choices?.[0]?.message?.content || '').slice(0, 600)}`); } catch {}
-                    // console.log(`[LLMService] Returning response. choices length: ${data.choices?.length || 0}`);
                     return data;
                 }
 

@@ -10,18 +10,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { ConfigService } from "./config_service";
 
 // Import all agent classes
-import { CodeAnalysisAgent } from "./agents/CodeAnalysisAgent";
+// Deprecated agents removed
+import { TaskDecompositionAgent } from "./agents/TaskDecompositionAgent";
+import { TestGenerationAgent } from "./agents/TestGenerationAgent";
+import { CodeEditAgent } from "./agents/CodeEditAgent";
+import { BugFixAgent } from "./agents/specialized/BugFixAgent";
 import { ContextManagementAgent } from "./agents/ContextManagementAgent";
 import { DocumentationGenerationAgent } from "./agents/DocumentationGenerationAgent";
 import { BrainstormAgent } from "./agents/BrainstormAgent";
 import { OrchestratorAgent } from "./agents/OrchestratorAgent";
 import { ReadmeGenerationAgent } from "./agents/ReadmeGenerationAgent";
-import { RefactoringSuggestionAgent } from "./agents/RefactoringSuggestionAgent";
-import { SecurityAnalysisAgent } from "./agents/SecurityAnalysisAgent";
-import { TaskDecompositionAgent } from "./agents/TaskDecompositionAgent";
-import { TestGenerationAgent } from "./agents/TestGenerationAgent";
-import { CodeEditAgent } from "./agents/CodeEditAgent";
-import { BugFixAgent } from "./agents/specialized/BugFixAgent";
 
 // 누락된 로컬 타입 임포트
 import { A2AMessage } from "./interfaces/A2AMessage";
@@ -33,18 +31,17 @@ import { AgentCard } from '@a2a-js/sdk';
 
 // Factory map to construct agents with correct dependencies
 const createAgentFactory = (dispatch: (message: A2AMessage<any>) => Promise<void>, mcpServer: Server, llmService: LLMService, authService: AuthService, configService: ConfigService, workspaceState: vscode.Memento, diagnostics: vscode.DiagnosticCollection, devLogService: DeveloperLogService) => ({
-    './agents/CodeAnalysisAgent.ts': (card: AgentCard) => new CodeAnalysisAgent(card, workspaceState),
+    // './agents/CodeAnalysisAgent.ts' removed
     './agents/CodeEditAgent.ts': (card: AgentCard) => new CodeEditAgent(card),
     './agents/ContextManagementAgent.ts': (card: AgentCard) => new ContextManagementAgent(card),
     './agents/DocumentationGenerationAgent.ts': (card: AgentCard) => new DocumentationGenerationAgent(card),
     './agents/BrainstormAgent.ts': (card: AgentCard) => new BrainstormAgent(card, workspaceState),
     './agents/OrchestratorAgent.ts': (card: AgentCard) => new OrchestratorAgent(dispatch, mcpServer, llmService, authService, configService, workspaceState, diagnostics, devLogService),
     './agents/ReadmeGenerationAgent.ts': (card: AgentCard) => new ReadmeGenerationAgent(card),
-    './agents/RefactoringSuggestionAgent.ts': (card: AgentCard) => new RefactoringSuggestionAgent(card),
-    './agents/SecurityAnalysisAgent.ts': (card: AgentCard) => new SecurityAnalysisAgent(card),
+    // Deprecated factories removed
     './agents/TaskDecompositionAgent.ts': (card: AgentCard) => new TaskDecompositionAgent(card),
     './agents/TestGenerationAgent.ts': (card: AgentCard) => new TestGenerationAgent(card),
-    './agents/specialized/BugFixAgent.ts': (card: AgentCard) => new BugFixAgent(card, workspaceState),
+    './agents/specialized/BugFixAgent.ts': (card: AgentCard) => new BugFixAgent(card),
 });
 
 const DEFAULT_AGENT_CONFIGS: any[] = [
@@ -52,11 +49,8 @@ const DEFAULT_AGENT_CONFIGS: any[] = [
     { path: './agents/ContextManagementAgent.ts', card: { name: 'ContextManagementAgent', description: 'Gathers codebase context and performs symbol searches for user queries.', capabilities: {} as any } },
     { path: './agents/CodeEditAgent.ts', card: { name: 'CodeEditAgent', description: 'Creates, modifies files, and adds inline documentation comments/docstrings while preserving original code. Do NOT use for external documentation files.', capabilities: {} as any } },
     { path: './agents/DocumentationGenerationAgent.ts', card: { name: 'DocumentationGenerationAgent', description: 'Generates external documentation files (Markdown, docs/ folder). NOT for inline comments.', capabilities: {} as any } },
-    { path: './agents/RefactoringSuggestionAgent.ts', card: { name: 'RefactoringSuggestionAgent', description: 'Suggests code refactorings.', capabilities: {} as any } },
-    { path: './agents/TestGenerationAgent.ts', card: { name: 'TestGenerationAgent', description: 'Generates unit and integration tests.', capabilities: {} as any } },
     { path: './agents/ReadmeGenerationAgent.ts', card: { name: 'ReadmeGenerationAgent', description: 'Generates or refreshes README.md from project context.', capabilities: {} as any } },
-    { path: './agents/SecurityAnalysisAgent.ts', card: { name: 'SecurityAnalysisAgent', description: 'Analyzes code for security vulnerabilities.', capabilities: {} as any } },
-    { path: './agents/CodeAnalysisAgent.ts', card: { name: 'CodeAnalysisAgent', description: 'Performs static analysis on code.', capabilities: {} as any } },
+    // Deprecated configs removed
     { path: './agents/TaskDecompositionAgent.ts', card: { name: 'TaskDecompositionAgent', description: 'Breaks tasks into steps.', capabilities: {} as any } },
     { path: './agents/BrainstormAgent.ts', card: { name: 'BrainstormAgent', description: 'Brainstorms ideas and approaches.', capabilities: {} as any } },
     { path: './agents/specialized/BugFixAgent.ts', card: { name: 'BugFixAgent', description: 'Analyzes and fixes bugs in the codebase.', capabilities: {} as any } }

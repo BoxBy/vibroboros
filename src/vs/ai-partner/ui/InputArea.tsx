@@ -8,9 +8,11 @@ interface InputAreaProps {
     attachments?: Array<{ type: 'file' | 'folder' | 'code' | 'mcp' | 'browser'; uri?: string; label: string; content?: string }>;
     onRemoveAttachment?: (label: string) => void;
     onClearAttachments?: () => void;
+    onStop?: () => void;
+    isProcessing?: boolean;
 }
 
-export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, commands, attachments = [], onRemoveAttachment, onClearAttachments }) => {
+export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, commands, attachments = [], onRemoveAttachment, onClearAttachments, onStop }) => {
 	const [message, setMessage] = useState('');
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -31,6 +33,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
         { command: '@mcp', description: 'Attach MCP resource' },
         { command: '@browser', description: 'Attach browser target/URL' },
     ];
+    const [isDragging, setIsDragging] = useState(false);
 
 	const handleSend = () => {
 		if (message.trim() && !disabled) {
@@ -200,7 +203,38 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
 
 	return (
         <div className="input-container">
-            <div className="input-box-wrapper">
+            <div 
+                className={`input-box-wrapper ${isDragging ? 'dragging' : ''}`}
+                onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                }}
+                onDragLeave={(e) => {
+                    e.preventDefault();
+                    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                    setIsDragging(false);
+                }}
+                onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    
+                    const files = Array.from(e.dataTransfer.files);
+                    if (files.length > 0) {
+                        files.forEach(file => {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                                const base64 = ev.target?.result as string;
+                                const isImage = file.type.startsWith('image/');
+                                vscodeService.postMessage({
+                                    command: 'insertAttachment',
+                                    payload: [{ type: 'file', label: file.name, content: isImage ? base64 : undefined, uri: isImage ? undefined : `file://${(file as any).path || file.name}` }]
+                                });
+                            };
+                            reader.readAsDataURL(file);
+                        });
+                    }
+                }}
+            >
                 {attachments.length > 0 && (
                     <div className="attachment-list">
                         {attachments.map(a => {
@@ -375,9 +409,24 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                         rows={1}
                         disabled={disabled}
                     />
-                    <button onClick={handleSend} title="Send" disabled={disabled || !message.trim()}>
+                    <button 
+                        onClick={handleSend} 
+                        title="Send" 
+                        disabled={disabled || !message.trim()} 
+                        style={{ display: (disabled && onStop) ? 'none' : 'flex' }}
+                        className="input-action-btn primary"
+                    >
                         <span className="codicon codicon-send" />
                     </button>
+                    {disabled && onStop && (
+                        <button 
+                            onClick={(e) => { e.preventDefault(); onStop(); }} 
+                            title="Stop Generating"
+                            className="input-action-btn stop"
+                        >
+                            <span className="codicon codicon-debug-stop" />
+                        </button>
+                    )}
                 </div>
             </div>
             {showSuggestions && suggestions.length > 0 && (

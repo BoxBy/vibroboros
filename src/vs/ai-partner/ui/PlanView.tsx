@@ -109,7 +109,39 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, isAutonomousMode }) =>
                 <>
                     <ul className="plan-steps" style={{ maxHeight: '200px', overflowY: 'auto' }}>
                         {visiblePlan.map((step, index) => (
-                            <li key={index} className={`plan-step ${step.status}`}>
+                            <li 
+                                key={index} 
+                                className={`plan-step ${step.status}`}
+                                draggable={isAutonomousMode && step.status === 'pending'} // Only allow dragging pending steps in autonomous mode (or edit mode)
+                                onDragStart={(e) => {
+                                    e.dataTransfer.setData('text/plain', index.toString());
+                                    e.dataTransfer.effectAllowed = 'move';
+                                }}
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'move';
+                                }}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                                    const toIndex = index;
+                                    if (fromIndex === toIndex) return;
+
+                                    // Create new array with swapped items
+                                    const newPlan = [...plan];
+                                    const [movedItem] = newPlan.splice(fromIndex, 1);
+                                    newPlan.splice(toIndex, 0, movedItem);
+                                    
+                                    // Send update to extension
+                                    // Note: We need to extract just descriptions or full objects? 
+                                    // The updatePlanFromUI command expects list of descriptions usually.
+                                    const steps = newPlan.map(s => s.description);
+                                    vscodeService.postMessage({ command: 'updatePlanFromUI', payload: { steps } });
+                                }}
+                                style={{
+                                    cursor: (isAutonomousMode && step.status === 'pending') ? 'grab' : 'default'
+                                }}
+                            >
                                 <div className="plan-step-icon">{getStatusIcon(step.status)}</div>
                                 <span className="plan-step-text" style={{ textDecoration: step.status === 'completed' ? 'line-through' : 'none', color: step.status === 'error' ? 'var(--vscode-errorForeground)' : 'inherit' }}>
                                     {step.description}

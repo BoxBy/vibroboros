@@ -1,57 +1,75 @@
+import { SystemPromptFactory } from '../services/SystemPromptFactory';
 import * as vscode from 'vscode';
-import { getTaskTypePrompt } from '../prompts/sections/TaskClassification';
-import { getConversationalPrompt } from '../prompts/sections/Conversational';
-import { getPlanPrompt } from '../prompts/sections/Planning';
-import { 
-	CREATE_EXECUTION_PLAN_SCHEMA, 
-	ExecutionPlan, 
-	ExecutionStep,
-	PlanningAnalysis 
-} from '../prompts/schemas/PlanningSchema';
-import { getRoutingPrompt } from '../prompts/sections/Routing';
-import { getPostActionsSelectionPrompt } from '../prompts/sections/PostActions';
-import { getPlanCompletionSummaryPrompt } from '../prompts/sections/Summary';
+
+
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 import { A2AMessage } from '../interfaces/A2AMessage';
+import { AgentCard } from '@a2a-js/sdk';
+import { RequestContext, ExecutionEventBus } from '@a2a-js/sdk/server';
+import { BaseAgent } from './core/BaseAgent';
+
 import * as mcpServerModule from '@modelcontextprotocol/sdk/server';
 import { LLMService, LlmMessage } from '../services/LLMService';
+import { SemanticModelService } from '../services/SemanticModelService';
+import { MemoryService } from '../services/MemoryService';
 import { AuthService } from '../auth_service';
 import { ConfigService } from '../config_service';
 import { DeveloperLogService } from '../services/DeveloperLogService';
 import * as diff from 'diff';
+import { UIMessageFactory } from '../messaging/UIMessageFactory';
 import { getMcpClient } from '../mcp_client_provider';
 import { ExecuteCommandTool } from '../tools/ExecuteCommandTool';
+
 import { v4 as uuidv4 } from 'uuid';
 import { AgentNames } from './utils/AgentConstants';
 import { getCoreLLMTools } from '../services/LLMTools';
 import { CheckpointService, AgentState } from '../services/CheckpointService';
 import { ContextService } from '../services/ContextService';
 import { messages as AgentMessages } from '../messages';
+import { SessionManager } from '../services/SessionManager';
+// import { IntentRouter } from '../core/IntentRouter'; // Removed
+import { StandardLLMClient } from '../core/StandardLLMClient';
+
+export interface RuntimeExecutionStep {
+    id: string;
+    description: string;
+    status: 'pending' | 'in-progress' | 'completed' | 'error';
+    executionId?: string;
+    retryCount?: number;
+    phase?: string;
+    targetAgent?: string;
+}
+
 
 // --- Type Definitions ---
-type ChatMessage = { 
-    author: 'user' | 'agent'; 
-    content: any[]; 
-    thought?: string; 
-    senderName?: string; 
-    timestamp?: string; 
-    kind?: 'progress' | 'normal' | 'uroboros-proposal' | 'task' | 'codeEditFile'; 
+interface ChatMessage {
+    author: 'user' | 'agent';
+    content: any[];
+    thought?: string;
+    senderName?: string;
+    timestamp?: string;
+    kind?: 'progress' | 'normal' | 'uroboros-proposal' | 'task' | 'codeEditFile';
+    contextId?: string;
     messageId?: string;
+    hidden?: boolean;
+    // ... other props used in logic
+    userMessage?: string;
+    summary?: string;
+    lintSummary?: string;
     buttons?: Array<{ label: string; command: string; payload?: any; style?: 'primary' | 'secondary' | 'danger' }>;
-};
+    filePath?: string;
+    title?: string;
+    suggestionType?: string;
+}
 
 const SLASH_COMMANDS = [
     { command: '/test health', description: 'Run a health check on all specialist agents.' },
     { command: '/test diff', description: 'Test the diff UI.' },
-    { command: '/test process', description: 'Test the thinking process UI.' },
-    { command: '/test command', description: 'Test the command execution confirmation UI.' },
-    { command: '/test usage', description: 'Show estimated main context tokens and actual used tokens.' },
-    { command: '/mcp', description: 'Check MCP status (Not implemented).' },
-    { command: '/a2a', description: 'Check A2A status (Not implemented).' },
-    { command: '/remember', description: 'Save a piece of information to the agent\'s memory.' },
+    { command: '/test mcp', description: 'List available MCP tools.' },
+    { command: '/clear', description: 'Clear the current session chat history.' },
     { command: '/help', description: 'Show this list of available commands.' }
 ];
 
@@ -59,208 +77,375 @@ const SLASH_COMMANDS = [
  * @class OrchestratorAgent
  * @description The master agent that coordinates all other agents and services.
  */
-export class OrchestratorAgent {
+export class OrchestratorAgent extends BaseAgent {
 	private static readonly AGENT_ID = 'OrchestratorAgent';
-	private static readonly SESSIONS_INDEX_KEY = 'aiPartnerChatSessionsIndex';
-	private static readonly ACTIVE_SESSION_ID_KEY = 'aiPartnerActiveChatSessionId';
-    private static readonly LAST_SOURCE_FILE_KEY = 'aiPartnerLastSourceFilePath';
-    private static readonly SPECIALIST_AGENTS: { name: string; description: string; }[] = [];
+    private static instance: OrchestratorAgent;
+
+    // --- Static Keys ---
+    public static readonly SPECIALIST_AGENTS: { name: string; description: string }[] = [
+        { name: 'CodeEditAgent', description: 'Coding & Implementation' },
+        { name: 'TaskDecompositionAgent', description: 'Task Breakdown' },
+        { name: 'BrainstormAgent', description: 'Planning & Architecture' },
+        { name: 'TestGenerationAgent', description: 'Testing' },
+        { name: 'DocumentationGenerationAgent', description: 'Documentation' },
+        { name: 'BugFixAgent', description: 'Deep Debugging & Root Cause' },
+        { name: 'ReadmeGenerationAgent', description: 'README Management' },
+        { name: 'ContextManagementAgent', description: 'Context Optimization' }
+    ]; 
+    private static readonly SESSIONS_INDEX_KEY = 'orchestrator.sessions.index';
+    private static readonly ACTIVE_SESSION_ID_KEY = 'orchestrator.sessions.activeId';
     
-    // synchronous debounce for user queries to prevent race-condition duplicates
-    private recentQueryDebounce = new Set<string>();
-
-	private readonly _onDidPostMessage = new vscode.EventEmitter<any>();
-    public readonly onDidPostMessage = this._onDidPostMessage.event;
-
-    private postMessageToSession(sessionId: string, command: string, payload: any) {
-        this._onDidPostMessage.fire({ command, payload, sessionId });
-    }
-
-	private dispatch: (message: A2AMessage<any>) => Promise<void>;
-	private mcpServer: mcpServerModule.Server;
-    private llmService: LLMService;
-	private authService: AuthService;
-	private configService: ConfigService;
-	private state: vscode.Memento;
-	private diagnosticCollection: vscode.DiagnosticCollection;
-	private developerLogService: DeveloperLogService;
+    // --- Services ---
+    private authService: AuthService;
+    private mcpServer: mcpServerModule.Server;
+    // BaseAgent has llmService, configService, etc. but Orchestrator declares them private. 
+    // BaseAgent declares them protected. 
+    // Typescript might complain if they are redefined with different visibility.
+    // BaseAgent: protected llmService: LLMService;
+    // Orchestrator: private llmService: LLMService; -> This is valid if Orchestrator overrides usage, but cleaner to remove re-declaration if possible.
+    // However, BaseAgent's llmService is set in constructor?
+    // Let's assume re-declaring as private shadows it, or we should use the inherited one.
+    // To be safe, I'll comment out the duplicate declarations if they exist in BaseAgent, OR just assign them in constructor to 'this'.
+    // BaseAgent has: protected llmService: LLMService; protected configService: ConfigService; protected developerLogService: DeveloperLogService; protected logger: Logger;
+    
+    // BaseAgent shadowing: llmService, configService, developerLogService are protected in BaseAgent.
+    
     private checkpointService: CheckpointService;
+    private sessionManager: SessionManager;
     private contextService: ContextService;
-    private chatHistory: ChatMessage[] = [];
-    private llmConversationHistory: LlmMessage[] = [];
-    private alwaysAcceptSuggestions: Set<string> = new Set();
-	private pendingPlan: any[] | null = null;
-	private isAcceptAlwaysActive: boolean = false;
-    private pendingUroborosProposal: { userText: string } | null = null;
-	private currentPlan: { id: string; description: string; status: string; executionId?: string }[] = [];
-	private planKind: 'main' | 'post' | '' = '';
-	private hasExecutedCoreFollowups: boolean = false;
-	private lastPlanSummary: string = '';
-	private _specialistAgentDescriptions: string = '';
-    private isAwaitingPlanConfirmation: boolean = false;
-    private autonomousMode: boolean = false;
-    private activeSessionId: string = ''; // New member
 
-    private lastAttachmentFilePaths: string[] = [];
-    private lastImageAttachments: Array<{ url: string; label: string }> = [];
-    // Guard against unintended automatic re-dispatch
+    
+    // --- Core Logic ---
+    // private intentRouter: IntentRouter; // Removed
+    private state: vscode.Memento;
+    private diagnosticCollection: vscode.DiagnosticCollection;
+
+    // --- State ---
+    private planId: string = uuidv4();
+    private currentPlan: RuntimeExecutionStep[] = [];
+    private currentStepIndex: number = -1;
+    private isAwaitingPlanConfirmation: boolean = false;
+    private pendingPlan: RuntimeExecutionStep[] | null = null;
+    
+    // --- Execution Tracking & Flags ---
+    private lastContextFilePath: string = '';
+    private lastAppliedFilePath: string = '';
+    private lastSourceFilePath: string = '';
+    private suppressPostActionsSuggestions: boolean = false;
+    private pendingPostActions: string[] = [];
+    private isAwaitingPostActionsConfirmation: boolean = false;
+    private lastPlanSummary: string = '';
+    private retriedSteps: Set<string> = new Set();
+    private deferredPostActions: string[] = [];
+    private llmConversationHistory: LlmMessage[] = []; // Context for LLM
+    private isSendingPlanSummary: boolean = false;
+    private producedArtifacts: Map<string, 'created' | 'updated'> = new Map();
+    private isCompletingPlan: boolean = false;
+    private isCancellationRequested: boolean = false;
+    private autonomousMode: boolean = false; 
+    private recentlyAppliedFiles: Map<string, number> = new Map();
     private lastUserInputAt: number = 0;
+
+    // --- Session & History ---
+    private activeSessionId: string = "default-session";
+    private handledExecutions: Set<string> = new Set();
+    protected outputFormat: 'json' | 'text' = 'text'; // Orchestrator handles its own JSON parsing/planning logic
+    
+    private chatHistory: ChatMessage[] = []; 
+    
+    // --- Preferences ---
+    private isAcceptAlwaysActive: boolean = false;
+    private alwaysAcceptSuggestions: Set<string> = new Set();
+    private sessionSuppressComplexityPrompt: boolean = false;
+    
+    // --- Uroboros (Legacy/Fallback) ---
+    private pendingUroborosProposal: { userText: string; steps?: string[] } | null = null;
+    private declinedUroborosQueries: Set<string> = new Set();
+    
+    // --- Execution Details ---
+    private planKind: string = '';
+    private hasExecutedCoreFollowups: boolean = false;
+    private currentExecutionId: string = ''; 
+
+    // --- Message Dispatch & Events ---
+    private readonly _onDidPostMessage = new vscode.EventEmitter<any>();
+    public readonly onDidPostMessage = this._onDidPostMessage.event;
+    private dispatch: (message: A2AMessage<any>) => Promise<void>;
+
+    // --- State helpers ---
+    private lastUserQuery: string = '';
+    private brainstormContextId: string = '';
+    private stickyAgentName: string = '';
+    private stickyExpiresAt: number = 0;
+    private lastImageAttachments: any[] = [];
+    private lastAttachmentFilePaths: string[] = [];
     private lastDispatchedStep: string = '';
     private lastDispatchedAt: number = 0;
-    private lastAppliedFilePath: string = '';
-    private lastSourceFilePath?: string; // Track last known source file for smart swapping
-    private lastContextFilePath: string | undefined = ''; // Persistent file context across plans
-    private recentlyAppliedFiles: Map<string, number> = new Map();
-    // Correlation for robust idempotency (no time guards)
-    private planId: string = '';
-    private currentStepIndex: number = -1;
-    private currentExecutionId: string = '';
-    private handledExecutions: Set<string> = new Set();
-    private retriedSteps: Set<string> = new Set();
-    private producedArtifacts: Map<string, 'created' | 'updated'> = new Map();
-    private deferredPostActions: string[] = [];
-    private isAwaitingPostActionsConfirmation: boolean = false;
-    private pendingPostActions: string[] = [];
-    private suppressPostActionsSuggestions: boolean = false;
-    private isSendingPlanSummary: boolean = false;
-    // Sticky routing: while an agent requires user input (e.g., BrainstormAgent), route user messages back
-    private stickyAgentName: string = '';
-    private lastUserQuery: string = '';  // Store original user query for BrainstormAgent
-    private stickyExpiresAt: number = 0;
-    // Brainstorm interactive conversation context
-    private brainstormContextId: string = '';
-	// Track recent structured messages (propose-task, propose-plan) to suppress duplicate status messages
-	private recentStructuredMessages: Map<string, { timestamp: number; sender: string }> = new Map();
-
-	// Complexity prompt suppression (session-scoped)
-	private sessionSuppressComplexityPrompt: boolean = false;
-	// Track declined Uroboros proposals for specific queries to avoid re-proposing
-	private declinedUroborosQueries: Set<string> = new Set();
-	// External A2A agents loaded from a2a-servers.json
-	private externalAgents: Map<string, { name: string; description: string; url: string }> = new Map();
-    private isCompletingPlan: boolean = false;
+    private recentStructuredMessages: any[] = [];
+    private recentQueryDebounce: Set<string> = new Set();
+    
+    // --- External Agents ---
 
 
-	constructor(
+    constructor(
 		dispatch: (message: A2AMessage<any>) => Promise<void>,
 		mcpServer: mcpServerModule.Server,
-		llmService: LLMService,
+		protected llmService: LLMService,
 		authService: AuthService,
-		configService: ConfigService,
+		protected configService: ConfigService,
 		state: vscode.Memento,
 		diagnosticCollection: vscode.DiagnosticCollection,
-		developerLogService: DeveloperLogService,
+		protected developerLogService: DeveloperLogService,
 		externalAgents?: Map<string, { name: string; description: string; url: string }>
 	) {
-		this.dispatch = dispatch;
+        super({ 
+            name: 'OrchestratorAgent', 
+            description: 'The master agent that coordinates all other agents and services.' 
+        });
+        // Intercept dispatch to catch 'unknown' agents globally
+        this.dispatch = async (message: any) => {
+            if (message.recipient === 'unknown' || message.recipient?.toLowerCase() === 'unknown') {
+                this.developerLogService.log(`[OrchestratorAgent] HARD INTERCEPT: Invalid target 'unknown'. Redirecting to BrainstormAgent.`);
+                message.recipient = 'BrainstormAgent';
+            }
+            return dispatch(message);
+        };
 		this.mcpServer = mcpServer;
 		this.llmService = llmService;
 		this.authService = authService;
 		this.configService = configService;
 		this.state = state;
 		this.diagnosticCollection = diagnosticCollection;
-		this.diagnosticCollection = diagnosticCollection;
 		this.developerLogService = developerLogService;
         this.checkpointService = new CheckpointService();
         this.contextService = new ContextService();
-		this.externalAgents = externalAgents || new Map();  // Initialize external agents
-		// this.commentGenerationAgent = new CommentGenerationAgent(this.dispatch, this.mcpServer, this.llmService);
-        // console.log('[OrchestratorAgent] constructor this.state:', this.state);
+        this.sessionManager = new SessionManager(state);
+        
+        // --- External Agents ---
+        if (externalAgents) {
+            this.externalAgents = externalAgents;
+        }
+        
+        OrchestratorAgent.instance = this;
 	}
 
+    public static getInstance(llmService?: LLMService, configService?: ConfigService, viewProvider?: any, context?: vscode.ExtensionContext): OrchestratorAgent {
+        if (!OrchestratorAgent.instance) {
+            throw new Error('OrchestratorAgent not initialized. It must be created via extension activation first.');
+        }
+        return OrchestratorAgent.instance;
+    }
+
+    // --- Prompt Generation ---
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
+        console.log('[OrchestratorAgent] getSystemPrompt: Starting...');
+        // Use SystemPromptFactory with 'router' role.
+        let prompt = await SystemPromptFactory.generate('router', OrchestratorAgent.AGENT_ID, 3); // Default complexity 3 (Caution)
+        console.log('[OrchestratorAgent] getSystemPrompt: SystemPromptFactory returned.');
+        
+        // Inject Chat History
+        const historyText = this.getFormattedHistory();
+        console.log('[OrchestratorAgent] getSystemPrompt: History formatted.');
+        
+        prompt = prompt.replace('[...System injects recent Conversation History here...]', historyText);
+        console.log('[OrchestratorAgent] getSystemPrompt: Returning prompt.');
+        
+        return prompt;
+    }
+
+    protected async onLoopComplete(messages: any[]): Promise<void> {
+        // Filter for Tool Calls and Tool Results (Intermediate steps usually lost)
+        const trace = messages.filter(m => 
+            m.role === 'tool' || 
+            (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0)
+        );
+
+        for (const msg of trace) {
+            await this.addMessageToHistory({
+                author: 'agent',
+                senderName: 'System',
+                kind: 'tool_trace',
+                content: [{ type: 'text', text: JSON.stringify(msg) }],
+                timestamp: new Date().toISOString()
+            } as any);
+        }
+    }
+
+    private getFormattedHistory(): string {
+        if (!this.chatHistory || this.chatHistory.length === 0) {
+            return "No previous history.";
+        }
+        
+        // Take last 10 turns to save context window
+        const recent = this.chatHistory.slice(-15); // Increased context slightly
+        return recent.map(msg => {
+            const sender = msg.senderName || (msg.author === 'user' ? 'User' : 'Viper');
+            
+            // Handle Tool Traces (Hidden Memory)
+            if (msg.kind === 'tool_trace') {
+                try {
+                    const contentStr = Array.isArray(msg.content) ? msg.content[0].text : String(msg.content);
+                    const raw = JSON.parse(contentStr);
+                    
+                    if (raw.role === 'tool') {
+                        // Truncate tool output to save tokens, but keep enough to verify success
+                        const output = raw.content.length > 200 ? raw.content.substring(0, 200) + '...' : raw.content;
+                        return `[Tool Result] ${raw.name || 'Unknown'}: ${output}`;
+                    }
+                    if (raw.role === 'assistant' && raw.tool_calls) {
+                        const calls = raw.tool_calls.map((t: any) => `${t.function.name}(${t.function.arguments})`).join(', ');
+                        return `[Tool Call] ${calls}`;
+                    }
+                } catch (e) { return ''; }
+            }
+
+            // Simplified text extraction for normal messages
+            let text = '';
+            if (Array.isArray(msg.content)) {
+                text = msg.content.map(c => c.text || JSON.stringify(c)).join(' ');
+            } else {
+                text = String(msg.content);
+            }
+            // Truncate very long messages
+            if (text.length > 500) text = text.substring(0, 500) + '... (truncated)';
+            
+            return `**${sender}**: ${text}`;
+        }).filter(line => line.trim() !== '').join('\n\n');
+    }
+
+    /**
+     * Dual-Channel A2A Dispatch
+     * Sends complexity via METADATA (primary) and TEXT (fallback).
+     */
+    private async sendDualChannelMessage(targetAgent: string, text: string, complexity: number, contextId?: string, correlation?: any): Promise<void> {
+        if (!targetAgent || targetAgent.toLowerCase() === 'unknown') {
+            this.developerLogService.log(`[Orchestrator] Invalid target agent '${targetAgent}'. Fallback to BrainstormAgent.`);
+            targetAgent = 'BrainstormAgent';
+            text = `[Redirection from Invalid Target] ${text}`;
+        }
+
+        const { v4: uuidv4 } = require('uuid');
+        
+        // 1. Fallback Text Append
+        const fallbackInstruction = `\n\n[SYSTEM INSTRUCTION: This task is assigned Complexity Level ${complexity}. Execute accordingly.]`;
+        const contentWithFallback = text + fallbackInstruction;
+
+        // 2. Metadata Payload
+        const messageVal = {
+            messageId: uuidv4(),
+            sender: OrchestratorAgent.AGENT_ID,
+            recipient: targetAgent,
+            timestamp: new Date().toISOString(),
+            contextId: contextId || uuidv4(),
+            parts: [
+                { kind: 'text', text: contentWithFallback },
+                { 
+                    kind: 'data', 
+                    mimeType: 'application/vnd.a2a+json', 
+                    data: {
+                        task: text, // Raw task
+                        complexity: complexity, // Primary Channel
+                        correlation: correlation
+                    }
+                }
+            ]
+        };
+        
+        await this.dispatch(messageVal as any);
+    }
+
     public async initialize(registeredAgentConfigs: { name: string; description: string; }[]): Promise<void> {
-        await this.loadOrInitializeSession();
-        // const agents = await this.getSpecialistAgents(); // No longer needed as agents are passed in
-        if (OrchestratorAgent.SPECIALIST_AGENTS.length === 0) { // Prevent duplicates on re-initialization
+        await this.sessionManager.initialize();
+        
+        // Sync Orchestrator local state proxies with SessionManager
+        this.syncWithSessionManager();
+
+        this.sessionManager.on('stateChanged', () => this.syncWithSessionManager());
+        this.sessionManager.on('sessionChanged', () => this.handleSessionChangeProxy());
+        
+        if (OrchestratorAgent.SPECIALIST_AGENTS.length === 0) {
             OrchestratorAgent.SPECIALIST_AGENTS.push(...registeredAgentConfigs.filter(a => a.name !== OrchestratorAgent.AGENT_ID));
         }
         this._specialistAgentDescriptions = OrchestratorAgent.SPECIALIST_AGENTS.map(agent => `- ${agent.name}: ${agent.description}`).join('\n');
     }
 
+    private syncWithSessionManager() {
+        const state = this.sessionManager.getState();
+        if (state) {
+            this.activeSessionId = state.id;
+            this.chatHistory = state.messages;
+            this.llmConversationHistory = state.llmHistory;
+        }
+    }
 
-	private async loadOrInitializeSession(): Promise<void> {
-        // console.log('[OrchestratorAgent] loadOrInitializeSession, this.state:', this.state);
-		let activeId = this.state.get<string>(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, '');
-		let sessions = this.state.get<any[]>(OrchestratorAgent.SESSIONS_INDEX_KEY, []) || [];
-        // console.log('[OrchestratorAgent] loadOrInitializeSession: before init', { activeId, sessionsLen: sessions.length });
+    private async sendFullSettingsToUI(): Promise<void> {
+        try {
+            const provider = this.configService.getLlmProvider();
+            const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
+            const profiles = this.configService.getLlmProfiles();
+            const activeProfileId = this.configService.getActiveProfileId();
 
-		if (sessions.length === 0) {
-			// No sessions at all -> create the first one
-			const now = new Date();
-			activeId = `session-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
-			const meta = { id: activeId, title: `Chat ${now.toLocaleString()}`, createdAt: now.toISOString(), messageCount: 0 };
-			sessions.push(meta);
-			await this.state.update(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, activeId);
-			await this.state.update(OrchestratorAgent.SESSIONS_INDEX_KEY, sessions);
-			this.chatHistory = [];
-			this.llmConversationHistory = [];
-			await this.state.update(this.getSessionChatHistoryKey(activeId), this.chatHistory);
-			await this.state.update(this.getSessionLlmHistoryKey(activeId), this.llmConversationHistory);
-			this.activeSessionId = activeId; // Assign to class member
-			// console.log('[OrchestratorAgent] loadOrInitializeSession: created first session', { activeId });
-		} else if (!activeId || !sessions.find(s => s.id === activeId)) {
-			// Sessions exist but activeId is missing or invalid -> pick the most recent existing session
-			activeId = sessions[sessions.length - 1].id;
-			await this.state.update(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, activeId);
-			this.activeSessionId = activeId;
-			// console.log('[OrchestratorAgent] loadOrInitializeSession: selected existing latest session as active', { activeId });
-		} else {
-			this.activeSessionId = activeId; // Assign to class member for existing session
-			// console.log('[OrchestratorAgent] loadOrInitializeSession: using existing active session', { activeId });
-		}
+            this._onDidPostMessage.fire({ 
+                command: 'llmSettingsResponse', 
+                payload: { llmProvider: provider, model: model } 
+            });
 
-		this.chatHistory = this.state.get<ChatMessage[]>(this.getSessionChatHistoryKey(activeId), []);
-        this.llmConversationHistory = this.state.get<LlmMessage[]>(this.getSessionLlmHistoryKey(activeId), []);
-        this.lastSourceFilePath = this.state.get<string>(OrchestratorAgent.LAST_SOURCE_FILE_KEY, undefined);
-        this.alwaysAcceptSuggestions = new Set();
-		this.isAcceptAlwaysActive = false;
-	}
+            this._onDidPostMessage.fire({
+                command: 'setAutonomousMode',
+                payload: { enabled: this.autonomousMode }
+            });
 
-    public async handleSessionChange(): Promise<void> {
+            this._onDidPostMessage.fire({
+                command: 'profilesResponse',
+                payload: { profiles, activeProfileId }
+            });
+        } catch (error) {
+            console.error('[OrchestratorAgent] Error sending settings to UI:', error);
+        }
+    }
+
+    // Proxy method to maintain compatibility with existing logic, but triggered by SessionManager events
+    private async handleSessionChangeProxy(): Promise<void> {
         await this.sendFullSettingsToUI();
-        let sessions = this.state.get<any[]>(OrchestratorAgent.SESSIONS_INDEX_KEY, []) || [];
-        // Sanitize sessions
-        sessions = sessions.filter(s => s && typeof s.id === 'string' && typeof s.title === 'string').map(s => ({
-            ...s,
-            createdAt: (s.createdAt && !isNaN(new Date(s.createdAt).getTime())) ? s.createdAt : new Date().toISOString(),
-            messageCount: typeof s.messageCount === 'number' ? s.messageCount : 0
-        }));
+        const sessions = this.sessionManager.getSessions();
+        const activeId = this.sessionManager.getActiveSessionId();
         
-        const activeId = this.state.get<string>(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, '');
         this._onDidPostMessage.fire({ command: 'historyList', payload: { sessions, activeId } });
         
-        // Sanitize chat history
-        // Sanitize chat history strictly to prevent UI crashes
-        const safeHistory = (this.chatHistory || []).map(msg => {
-            if (!msg || typeof msg !== 'object') return null;
-            
-            // Ensure content is array
+        // Sanitize chat history (kept from original logic for safety)
+        const safeHistory = this.safeSanitizeHistory(this.chatHistory);
+        this._onDidPostMessage.fire({ command: 'loadHistory', payload: safeHistory });
+    }
+
+    private safeSanitizeHistory(history: ChatMessage[]): any[] {
+         return (history || []).map(msg => {
+            if (!msg || typeof msg !== 'object') { return null; }
             let content = Array.isArray(msg.content) ? msg.content : [];
-            
-            // Sanitize content items
             content = content.map((c: any) => {
-                if (!c || typeof c !== 'object') return null;
+                if (!c || typeof c !== 'object') { return null; }
                 if (c.type === 'text') {
                     return { ...c, text: typeof c.text === 'string' ? c.text : '' };
                 }
-                // Pass through other types (e.g. image_url) but ensure they are objects
                 return c;
             }).filter((c: any) => c !== null);
 
             return {
                 ...msg,
+                messageId: msg.messageId,
                 senderName: typeof msg.senderName === 'string' ? msg.senderName : (msg.author === 'user' ? 'User' : 'Viper'),
                 author: typeof msg.author === 'string' ? msg.author : 'agent',
                 content: content,
                 timestamp: (msg.timestamp && !isNaN(new Date(msg.timestamp).getTime())) ? msg.timestamp : new Date().toISOString(),
                 kind: typeof msg.kind === 'string' ? msg.kind : undefined,
-                filePath: typeof msg.filePath === 'string' ? msg.filePath : undefined
+                filePath: typeof msg.filePath === 'string' ? msg.filePath : undefined,
+                title: typeof msg.title === 'string' ? msg.title : undefined,
+                suggestionType: typeof msg.suggestionType === 'string' ? msg.suggestionType : undefined,
+                lintSummary: typeof msg.lintSummary === 'string' ? msg.lintSummary : undefined
             };
         }).filter(msg => msg !== null);
-
-        this._onDidPostMessage.fire({ command: 'loadHistory', payload: safeHistory });
-        // console.log('[OrchestratorAgent] Fired loadHistory with safeHistory length:', safeHistory.length);
     }
+
+    // handleSessionChange logic moved to handleSessionChangeProxy and SessionManager
 
     private processProgressLog(msg: string, sender: string, sessionId: string = this.activeSessionId): void {
         // SDK standard: status-update messages are always shown as progress logs
@@ -270,7 +455,16 @@ export class OrchestratorAgent {
         }
 
         // Show as progress log
-        this.postMessageToSession(sessionId, 'progressLog', { text: msg });
+        let displayMsg = msg;
+        if (!displayMsg.includes('[MCP]') && sender && sender !== 'OrchestratorAgent' && sender !== 'System') {
+            // Strip 'Agent' suffix if present (e.g. CodeEditAgent -> CodeEdit)
+            const senderName = sender.replace(/Agent$/, '');
+            // Only prepend if not already prefixed
+            if (!displayMsg.startsWith(`[${senderName}]`)) {
+                displayMsg = `[${senderName}] ${displayMsg}`;
+            }
+        }
+        this.postMessageToSession(sessionId, 'progressLog', { text: displayMsg });
 
         // Persist progress log to chat history so it survives reloads
         const historyMsg: ChatMessage = {
@@ -296,35 +490,46 @@ export class OrchestratorAgent {
 
 
 
+    public async acceptMessage(message: { type: string; from: string; text: string; contextId?: string; attachments?: any[]; messageId?: string }): Promise<void> {
+        // console.log(`[OrchestratorAgent] acceptMessage:`, message);
+        if (message.contextId === 'new-chat-session') {
+            await this.handleUIMessage({ 
+                command: 'newChat', 
+                initialQuery: message.text,
+                messageId: message.messageId // Pass explicit ID if available
+            });
+        } else {
+             // Treat as normal chat message
+             // FIX: Map to 'userQuery' command which handleUIMessage expects, and use 'query' instead of 'text'
+             await this.handleUIMessage({ 
+                 command: 'userQuery', 
+                 query: message.text, 
+                 attachments: message.attachments,
+                 messageId: message.messageId || uuidv4() // Use provided ID or generate new
+             });
+        }
+    }
+
     public async handleUIMessage(message: any): Promise<void> {
         // console.log(`[${OrchestratorAgent.AGENT_ID}] Received message from ViewProvider:`, message);
 
-					switch (message.command) {
-            case 'loadInitialData':
-                // Send current settings and history to UI on initial load
-                await this.handleSessionChange();
-                break;
-            case 'requestHistory':
-                // Explicit history reload request from UI
-                await this.handleSessionChange();
-                break;
+        try {
+            switch (message.command) {
+                case 'loadInitialData':
+                    // Send current settings and history to UI on initial load
+                    await this.handleSessionChangeProxy();
+                    break;
+                case 'requestHistory':
+                    // Explicit history reload request from UI
+                    await this.handleSessionChangeProxy();
+                    break;
             case 'newChat': {
                 try {
-                    const now = new Date();
-                    const newId = `session-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
-                    const sessions = this.state.get<any[]>(OrchestratorAgent.SESSIONS_INDEX_KEY, []) || [];
-                    const meta = { id: newId, title: `Chat ${now.toLocaleString()}`, createdAt: now.toISOString(), messageCount: 0 };
-                    sessions.push(meta);
-                    await this.state.update(OrchestratorAgent.SESSIONS_INDEX_KEY, sessions);
-                    await this.state.update(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, newId);
-                    this.activeSessionId = newId;
-                    // Reset histories for the new session
-                    this.chatHistory = [];
-                    this.llmConversationHistory = [];
-                    this.sessionSuppressComplexityPrompt = false; // 새 세션에서는 제안 활성화
-                    this.declinedUroborosQueries.clear(); // 새 세션에서는 거절 기록 초기화
+                    await this.sessionManager.createNewSession();
+                    this.sessionSuppressComplexityPrompt = false;
+                    this.declinedUroborosQueries.clear();
                     
-                    // [Bug Fix] Reset all execution state to prevent zombie context leaking into new session
+                    // Reset Execution State
                     this.currentPlan = [];
                     this.pendingPlan = null;
                     this.planKind = '';
@@ -332,7 +537,7 @@ export class OrchestratorAgent {
                     this.lastPlanSummary = '';
                     this.isAwaitingPlanConfirmation = false;
                     this.isAwaitingPostActionsConfirmation = false;
-                    this.pendingPostActions = null;
+                    this.pendingPostActions = [];
                     this.autonomousMode = false;
                     this.pendingUroborosProposal = null;
                     this.lastAttachmentFilePaths = [];
@@ -340,22 +545,26 @@ export class OrchestratorAgent {
                     this.isAcceptAlwaysActive = false;
                     this.alwaysAcceptSuggestions.clear();
                     
-                    // Reset ContextService state
                     if (this.contextService) {
                         this.contextService.resetContext();
                     }
 
-                    await this.state.update(this.getSessionChatHistoryKey(newId), this.chatHistory);
-                    await this.state.update(this.getSessionLlmHistoryKey(newId), this.llmConversationHistory);
                     if (message.initialQuery) {
                         const query = message.initialQuery.trim();
                         if (query) {
-                            // Hand off handling (and persistence) to the main handler
                             await this.handleChatAndSpecialistCommands(query, message.messageId);
+                             // Force update title based on initial query
+                             // Ensure we have latest state before summarizing
+                             try {
+                                const state = this.sessionManager.getState();
+                                if (state) { this.chatHistory = state.messages; }
+                                await this.updateSessionTitleSummary();
+                             } catch (err) {
+                                this.developerLogService.log(`[OrchestratorAgent] Failed to update title: ${err}`);
+                             }
                         }
                     }
-                    await this.handleSessionChange();
-                    this.developerLogService.log(`[OrchestratorAgent] Created new chat session ${newId}.`);
+                    this.developerLogService.log(`[OrchestratorAgent] Created new chat session via SessionManager.`);
                 } catch (e: any) {
                     this.developerLogService.log(`[OrchestratorAgent] Failed to create new chat session: ${e?.message || e}`);
                 }
@@ -365,17 +574,14 @@ export class OrchestratorAgent {
                 try {
                     const targetId = typeof message.sessionId === 'string' ? message.sessionId : '';
                     if (!targetId) { break; }
-                    const sessions = this.state.get<any[]>(OrchestratorAgent.SESSIONS_INDEX_KEY, []) || [];
-                    if (!sessions.find(s => s.id === targetId)) { break; }
-                    await this.state.update(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, targetId);
-                    this.activeSessionId = targetId;
-                    this.chatHistory = this.state.get<ChatMessage[]>(this.getSessionChatHistoryKey(targetId), []);
-                    this.llmConversationHistory = this.state.get<LlmMessage[]>(this.getSessionLlmHistoryKey(targetId), []);
+                    
+                    await this.sessionManager.switchSession(targetId);
+                    
                     this.alwaysAcceptSuggestions = new Set();
                     this.isAcceptAlwaysActive = false;
-                    this.sessionSuppressComplexityPrompt = false; // 세션 전환 시 리셋 (또는 세션별로 저장할 수도 있음)
-                    this.declinedUroborosQueries.clear(); // 세션 전환 시 거절 기록 초기화
-                    await this.handleSessionChange();
+                    this.sessionSuppressComplexityPrompt = false;
+                    this.declinedUroborosQueries.clear();
+                    
                     this.developerLogService.log(`[OrchestratorAgent] Switched active chat session to ${targetId}.`);
                 } catch (e: any) {
                     this.developerLogService.log(`[OrchestratorAgent] Failed to switch chat session: ${e?.message || e}`);
@@ -385,54 +591,102 @@ export class OrchestratorAgent {
             case 'deleteChat': {
                 try {
                     const targetId = typeof message.sessionId === 'string' ? message.sessionId : this.activeSessionId;
-                    const sessions = this.state.get<any[]>(OrchestratorAgent.SESSIONS_INDEX_KEY, []) || [];
-                    const updatedSessions = sessions.filter(s => s.id !== targetId);
+                    await this.sessionManager.deleteSession(targetId);
                     
-                    // Delete session metadata
-                    await this.state.update(OrchestratorAgent.SESSIONS_INDEX_KEY, updatedSessions);
+                    const sessions = this.sessionManager.getSessions();
+                    const activeId = this.sessionManager.getActiveSessionId();
                     
-                    // Delete session histories
-                    await this.state.update(this.getSessionChatHistoryKey(targetId), undefined);
-                    await this.state.update(this.getSessionLlmHistoryKey(targetId), undefined);
-                    
-                    // If deleted session was active, switch to another session or clear
-                    let newActiveId = this.activeSessionId;
-                    if (targetId === this.activeSessionId) {
-                        if (updatedSessions.length > 0) {
-                            // Switch to the most recent session
-                            newActiveId = updatedSessions[updatedSessions.length - 1].id;
-                            await this.state.update(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, newActiveId);
-                            this.activeSessionId = newActiveId;
-                            this.chatHistory = this.state.get<ChatMessage[]>(this.getSessionChatHistoryKey(newActiveId), []);
-                            this.llmConversationHistory = this.state.get<LlmMessage[]>(this.getSessionLlmHistoryKey(newActiveId), []);
-                        } else {
-                            // 🔧 FIX: No sessions left - DON'T create a new one, just clear everything
-                            newActiveId = '';
-                            await this.state.update(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, '');
-                            this.activeSessionId = '';
-                            this.chatHistory = [];
-                            this.llmConversationHistory = [];
-                            
-                            // 🔧 FIX: Notify UI to show Welcome screen
-                            this._onDidPostMessage.fire({ command: 'clearChat' });
-                        }
-                    }
-
-                    // 🔧 FIX: Always notify UI with updated session list
                     this._onDidPostMessage.fire({ 
                         command: 'historyList', 
-                        payload: { sessions: updatedSessions, activeId: newActiveId } 
+                        payload: { sessions, activeId } 
                     });
                     
-                    // Only call handleSessionChange if we switched to another existing session
-                    if (newActiveId && updatedSessions.length > 0) {
-                        await this.handleSessionChange();
+                    if (activeId) {
+                         await this.handleSessionChangeProxy();
+                    } else {
+                        // All sessions deleted
+                        this.chatHistory = [];
+                        this.llmConversationHistory = [];
+                        this._onDidPostMessage.fire({ command: 'clearChat' });
                     }
-                    
-                    this.developerLogService.log(`[viper][OrchestratorAgent] Deleted chat session ${targetId}. Sessions left: ${updatedSessions.length}. New active: ${newActiveId || 'none'}.`);
 
+                    this.developerLogService.log(`[viper][OrchestratorAgent] Deleted chat session ${targetId}.`);
                 } catch (e: any) {
                     this.developerLogService.log(`[viper][OrchestratorAgent] Failed to delete chat session: ${e?.message || e}`);
+                }
+                break;
+            }
+            case 'stop': {
+                this.developerLogService.log('[OrchestratorAgent] Received STOP command from UI');
+                this.isCancellationRequested = true;
+                this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: '🛑 Stop requested by user...' } });
+                break;
+            }
+            case 'rollbackTo': {
+                try {
+                    const { messageId, timestamp } = message.payload;
+                    this.developerLogService.log(`[OrchestratorAgent] Received ROLLBACK-TO command. Target ID: ${messageId}, TS: ${timestamp}`);
+                    this.isCancellationRequested = true;
+
+                    // 1. Find message index in history
+                    const history = this.chatHistory;
+                    let targetIndex = -1;
+                    
+                    if (messageId) {
+                        targetIndex = history.findIndex(m => m.messageId === messageId);
+                    } else if (timestamp) {
+                        targetIndex = history.findIndex(m => m.timestamp === timestamp);
+                    }
+
+                    if (targetIndex !== -1) {
+                         // 2. Truncate History
+                         const keptHistory = history.slice(0, targetIndex + 1);
+                         const targetMessage = history[targetIndex];
+                         this.chatHistory = keptHistory;
+                         
+                         // 3. Truncate LLM Conversation History
+                         if (targetMessage.author === 'user') {
+                             const userText = targetMessage.content[0].text;
+                             const llmIndex = this.llmConversationHistory.findIndex(m => m.role === 'user' && m.content === userText); 
+                             if (llmIndex !== -1) {
+                                  this.llmConversationHistory = this.llmConversationHistory.slice(0, llmIndex + 1);
+                             }
+                         }
+
+                         // 4. Reset Plan State
+                         this.currentPlan = []; 
+                         this.currentStepIndex = -1;
+                         this.currentExecutionId = '';
+                         this.pendingPlan = null;
+                         this.isAwaitingPlanConfirmation = false;
+                         
+                         // 5. Update State Persistence
+                         if (this.activeSessionId) {
+                             await this.sessionManager.overwriteMessages(this.activeSessionId, keptHistory);
+                             // Force sync LLM History (hack: sessionManager reads state directly for safety, we update the object)
+                             const state = this.sessionManager.getState();
+                             if (state) {
+                                state.llmHistory = this.llmConversationHistory;
+                                state.tasks = [];
+                             }
+                             // Note: overwriteMessages triggers saveCurrentState, so LLM history will be saved if attached to state object
+                         }
+                         
+                         // 6. Notify UI
+                         this._onDidPostMessage.fire({ 
+                            command: 'historyList', 
+                            payload: { sessions: this.sessionManager.getSessions(), activeId: this.sessionManager.getActiveSessionId() } 
+                         });
+                         
+                        await this.handleSessionChangeProxy(); 
+                         
+                         this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: `⏪ Time Travel successful. Context reset to selected message.` } });
+
+                    } else {
+                        this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: '⚠️ Could not find target message for rollback.' } });
+                    }
+                } catch (e: any) {
+                     this.developerLogService.log(`Rollback failed: ${e?.message}`);
                 }
                 break;
             }
@@ -479,7 +733,17 @@ export class OrchestratorAgent {
                     // SDK Standard: Plan이 없는 경우에도 correlation 설정
                     if (!this.planId) { this.planId = uuidv4(); }
                     if (!this.currentExecutionId) { this.currentExecutionId = uuidv4(); }
-                    await this.routeAndDelegate(userText);
+                    // Unified Execution Flow
+                    const ctx: any = { 
+                        userMessage: userText, 
+                        request: { 
+                            message: { 
+                                senderName: 'User', 
+                                parts: [{ kind: 'text', text: userText }] 
+                            } 
+                        } 
+                    };
+                    await this.execute(ctx, { publish: (m: any) => this.dispatch(m), subscribe: () => {} } as any);
                 }
                 break;
             }
@@ -507,6 +771,7 @@ export class OrchestratorAgent {
                     console.warn('[OrchestratorAgent] Failed to apply updatePlanFromUI:', e);
                 }
                 break;
+
             case 'viewReady':
                 this._onDidPostMessage.fire({ command: 'slashCommandsResponse', payload: SLASH_COMMANDS });
                 if (this.chatHistory.length === 0) {
@@ -859,6 +1124,15 @@ export class OrchestratorAgent {
                 this.developerLogService.log(`[OrchestratorAgent] Unhandled UI message type: ${message.command}`);
                 break;
         }
+    } catch (error: any) {
+        this.developerLogService.log(`[OrchestratorAgent] Error handling UI message: ${error?.message || error}`);
+        console.error('[OrchestratorAgent] Error handling UI message:', error);
+        this._onDidPostMessage.fire({ 
+            command: 'error', 
+            payload: { message: `Internal error: ${error?.message || 'Unknown error'}` } 
+        });
+        this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Error', final: true } });
+    }
 
         // After handling the UI message, if a plan has just completed successfully, delegate to the unified
         // summary routine so TASK-style summary and follow-up suggestions are produced.
@@ -890,1340 +1164,58 @@ export class OrchestratorAgent {
         const correlation = { planId: this.planId, workflowId: this.planId, stepId, executionId: this.currentExecutionId, runId: this.currentExecutionId, sessionId: this.activeSessionId } as any;
         if (!this.brainstormContextId) { this.brainstormContextId = uuidv4(); }
 
-        await this.dispatch({
-            messageId: uuidv4(),
-            sender: AgentNames.ORCHESTRATOR,
-            recipient: AgentNames.BRAINSTORM,
-            timestamp: new Date().toISOString(),
-            contextId: this.brainstormContextId,
-            parts: [
-                { kind: 'text', text: userText },
-                { kind: 'data', mimeType: 'application/vnd.a2a+json', data: {
-                    task: userText,
-                    query: userText,
-                    correlation
-                }}
-            ]
-        } as any);
-    }
-
-    public async handleA2AMessage(message: A2AMessage<any>): Promise<void> {
-        this.developerLogService.log(`[OrchestratorAgent] Received A2A message from ${message.sender}: ${message.type}`);
-
-        try {
-            try {
-                const corr = (message as any)?.payload?.correlation;
-                const payloadPreview = (() => { try { return JSON.stringify((message as any)?.payload).slice(0, 600); } catch { return ''; } })();
-                console.log('[OrchestratorAgent] A2A received', {
-                    sender: message.sender,
-                    type: message.type,
-                    hasPayload: !!(message as any)?.payload,
-                    payloadPreview,
-                    correlation: corr ? { planId: corr.planId || corr.workflowId, stepId: corr.stepId, exec: corr.executionId || corr.runId, sessionId: corr.sessionId } : undefined
-                });
-            } catch {}
-            // Sticky session routing: if correlation includes a sessionId, ensure we are operating on that session
-            try {
-                const targetSessionId = (message as any)?.payload?.correlation?.sessionId;
-                if (typeof targetSessionId === 'string' && targetSessionId && targetSessionId !== this.activeSessionId) {
-                    await this.state.update(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, targetSessionId);
-                    this.activeSessionId = targetSessionId;
-                    // Load histories of the target session before appending any messages
-                    this.chatHistory = this.state.get<ChatMessage[]>(this.getSessionChatHistoryKey(targetSessionId), []);
-                    this.llmConversationHistory = this.state.get<LlmMessage[]>(this.getSessionLlmHistoryKey(targetSessionId), []);
-                    this.alwaysAcceptSuggestions = new Set();
-                    this.isAcceptAlwaysActive = false;
-                    await this.handleSessionChange();
-                    this.developerLogService.log(`[OrchestratorAgent] Switched active session to ${targetSessionId} per correlation.`);
-                }
-            } catch {}
-
-            let blockedByConfirmation = false; // do not advance/finish plan until user accepts/declines
-
-            switch (message.type) {
-                case 'status-update': {
-                    // SDK standard: status-update from eventBus.publish({ kind: 'status-update', ... })
-                    const statusState = message.payload?.state || 'working';
-                    const statusMessage = message.payload?.message || '';
-                    const isFinal = message.payload?.final || false;
-                    const sender = message.sender || 'Unknown';
-
-                    if (statusMessage) {
-                        if (statusState === 'streaming-chunk') {
-                            // console.log(`[OrchestratorAgent] Received streaming chunk: ${statusMessage.length} chars`);
-                            this.processProgressLogChunk(statusMessage, sender);
-                        } else {
-                            // status-update는 항상 progress log로 표시 (bubble 아님)
-                            this.processProgressLog(statusMessage, sender);
-                        }
-
-                        // final 상태이고 completed면 plan step 업데이트
-                        if (isFinal && statusState === 'completed') {
-                            const currentStepIndex = this.currentPlan.findIndex(step => step.status === 'in-progress');
-                            if (currentStepIndex !== -1) {
-                                this.currentPlan[currentStepIndex].status = 'completed';
-                                this._onDidPostMessage.fire({
-                                    command: 'updatePlanStep',
-                                    payload: { index: currentStepIndex, status: 'completed' }
-                                });
-                            }
-                        } else if (isFinal && statusState === 'failed') {
-                            const currentStepIndex = this.currentPlan.findIndex(step => step.status === 'in-progress');
-                            if (currentStepIndex !== -1) {
-                                this.currentPlan[currentStepIndex].status = 'error';
-                                this._onDidPostMessage.fire({
-                                    command: 'updatePlanStep',
-                                    payload: { index: currentStepIndex, status: 'error' }
-                                });
-                            }
-                        }
-                    }
-                    break;
-                }
-
-                // Legacy 'log' type removed - use 'status-update' (SDK standard) instead
-
-                case 'propose-task': {
-                    // Handle TASK.md content display (SDK compliant)
-                    const tasks: string[] = Array.isArray(message.payload?.tasks) ? message.payload.tasks : [];
-                    const filePath: string = message.payload?.filePath || 'TASK.md';
-
-                    if (tasks && tasks.length > 0) {
-                        // Record that we've sent a structured message from this sender
-                        const sender = message.sender || 'TaskDecompositionAgent';
-                        const key = `propose-task:${sender}`;
-                        this.recentStructuredMessages.set(key, { timestamp: Date.now(), sender });
-
-                        // Display tasks in UI as TASK bubble
-                        const taskList = tasks.map((task, i) => {
-                            const trimmed = (task || '').trim();
-                            const hasLeadingBullet = /^\s*(?:\d+\.\s+|[-*•]\s+)/.test(trimmed);
-                            return hasLeadingBullet ? trimmed : `${i + 1}. ${trimmed}`;
-                        }).join('\n');
-                        const taskMessage = `**TASK List** (from ${filePath}):\n\n${taskList}`;
-                        const senderName = sender;
-
-                        const chatMsg: ChatMessage = {
-                            author: 'agent',
-                            content: [{ type: 'text', text: taskMessage }],
-                            senderName,
-                            timestamp: new Date().toISOString(),
-                            kind: 'task' as any
-                        };
-                        await this.addMessageToHistory(chatMsg);
-                        this._onDidPostMessage.fire({
-                            command: 'response',
-                            payload: {
-                                text: taskMessage,
-                                senderName: chatMsg.senderName,
-                                timestamp: chatMsg.timestamp,
-                                kind: 'task'  // ← TASK bubble로 표시
-                            }
-                        });
-
-                        // Also log completion
-                        this._onDidPostMessage.fire({
-                            command: 'progressLog',
-                            payload: { text: `TASK List created with ${tasks.length} items` }
-                        });
-                    }
-
-                    // Mark current step as completed and advance to next step
-                    const currentStepIndex = this.currentPlan.findIndex(step => step.status === 'in-progress');
-                    if (currentStepIndex !== -1) {
-                        this.currentPlan[currentStepIndex].status = 'completed';
-                        this._onDidPostMessage.fire({
-                            command: 'updatePlanStep',
-                            payload: { index: currentStepIndex, status: 'completed' }
-                        });
-                    }
-
-                    // Advance to next step if available
-                    const pendingIdx = this.currentPlan.findIndex(step => step.status === 'pending');
-                    const hasInProgress = this.currentPlan.some(step => step.status === 'in-progress');
-                    if (!hasInProgress && pendingIdx !== -1) {
-                        await this.executePlan();
-                    }
-                    break;
-                }
-
-                case 'propose-plan': {
-                    // Clear sticky routing on plan proposal (Brainstorm finalized)
-                    this.stickyAgentName = '';
-                    this.stickyExpiresAt = 0;
-                    this.brainstormContextId = '';
-                    const steps: string[] = Array.isArray(message.payload?.steps) ? message.payload.steps : [];
-                    const plan: string = message.payload?.plan || '';  // 추상적 시스템 설계 문서
-                    const filePath: string = message.payload?.filePath || 'PLAN.md';
-                    const finalized: boolean = !!message.payload?.finalized;
-                    try { console.log(`[OrchestratorAgent] propose-plan received: steps=${steps.length} plan=${plan ? 'yes' : 'no'} finalized=${finalized}`); } catch {}
-
-                    // Record that we've sent a structured message from this sender
-                    const sender = message.sender || 'BrainstormAgent';
-                    const key = `propose-plan:${sender}`;
-                    this.recentStructuredMessages.set(key, { timestamp: Date.now(), sender });
-
-                    // Display PLAN document in UI if provided
-                    if (plan && plan.length > 0) {
-                        const senderName = message.sender || 'BrainstormAgent';
-                        const planMessage: ChatMessage = {
-                            author: 'agent',
-                            content: [{ type: 'text', text: `**System Design** (from ${filePath}):\n\n${plan}` }],
-                            senderName,
-                            timestamp: new Date().toISOString(),
-                            kind: 'plan' as any
-                        };
-                        await this.addMessageToHistory(planMessage);
-                        this._onDidPostMessage.fire({
-                            command: 'response',
-                            payload: {
-                                text: `**System Design** (from ${filePath}):\n\n${plan}`,
-                                senderName: planMessage.senderName,
-                                timestamp: planMessage.timestamp,
-                                kind: 'plan'
-                            }
-                        });
-                    }
-
-                    // Build execution plan from proposed steps
-                    if (steps && steps.length > 0) {
-                        this.planId = uuidv4();
-                        const deferRegex = /(documentationgenerationagent|readmegenerationagent|testgenerationagent)\s*:/i;
-                        const main = steps.filter(s => typeof s === 'string' && !deferRegex.test(String(s)));
-                        const deferred = steps.filter(s => typeof s === 'string' && deferRegex.test(String(s)));
-                        this.deferredPostActions = deferred;
-                        this.pendingPostActions = [];
-                        this.isAwaitingPostActionsConfirmation = false;
-                        this.suppressPostActionsSuggestions = false;
-                        this.producedArtifacts.clear();
-                        this.currentPlan = main.map((desc: string, i: number) => ({ id: `${this.planId}:${i + 1}`, description: desc, status: 'pending' }));
-                        this.currentStepIndex = -1;
-                        this.currentExecutionId = '';
-                        this.handledExecutions.clear();
-                        // Show plan after brainstorming
-                        try { this._onDidPostMessage.fire({ command: 'displayPlan', payload: { plan: this.currentPlan } }); } catch {}
-                        try { console.log(`[OrchestratorAgent] displayPlan -> ${this.currentPlan.length} steps`); } catch {}
-                        // Uroboros 모드라도 finalized면 바로 진행
-                        if (!this.autonomousMode || finalized) {
-                            try { console.log('[OrchestratorAgent] Auto-executing proposed plan'); } catch {}
-                            await this.executePlan();
-                        } else {
-                            // Ask for approval in Uroboros mode (non-finalized)
-                            const planDetails = this.currentPlan.map((step, index) => `${index + 1}. ${step.description}`).join('\n');
-                            const fullResponseMessage = `I have created the following plan. Please review it and confirm to proceed:\n${planDetails}`;
-                            const planCreatedMessage: ChatMessage = { author: 'agent', content: [{ type: 'text', text: fullResponseMessage }], senderName: OrchestratorAgent.AGENT_ID, timestamp: new Date().toISOString() };
-                            await this.addMessageToHistory(planCreatedMessage);
-                            this._onDidPostMessage.fire({ command: 'response', payload: { text: fullResponseMessage, senderName: planCreatedMessage.senderName, timestamp: planCreatedMessage.timestamp }});
-                            this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'I have created a plan. Shall I proceed? Please reply with yes/ok to continue.' } });
-                            this.pendingPlan = this.currentPlan.map(step => ({ ...step }));
-                            this.isAwaitingPlanConfirmation = true;
-                            await this.requestPlanConfirmation();
-                        }
-                    } else {
-                        // No steps proposed; mark brainstorm step completed if any and continue
-                        const idx = this.currentPlan.findIndex(step => step.status === 'in-progress');
-                        if (idx !== -1) {
-                            this.currentPlan[idx].status = 'completed' as any;
-                            this._onDidPostMessage.fire({ command: 'updatePlanStep', payload: { index: idx, status: 'completed' } });
-
-                            // Update TASK.md via TaskDecompositionAgent
-                            await this.updateTaskMd(idx, this.currentPlan[idx].description);
-                        }
-                        try { console.log('[OrchestratorAgent] No steps in propose-plan; continuing executePlan'); } catch {}
-                        await this.executePlan();
-                    }
-                    break;
-                }
-
-                case 'request-clarification': {
-                    // Handle Reverse Query (Agent -> User)
-                    const question = message.payload?.question || '';
-                    const context = message.payload?.context || '';
-                    const options = message.payload?.options || [];
-                    const sender = message.sender || 'Unknown Agent';
-
-                    if (question) {
-                        this.developerLogService.log(`[OrchestratorAgent] Clarification requested by ${sender}: ${question}`);
-
-                        // 1. Display the question to the user
-                        const chatMsg: ChatMessage = {
-                            author: 'agent',
-                            content: [{ type: 'text', text: `**${sender} asks:** ${question}\n\n${context ? `*Context: ${context}*` : ''}${options.length > 0 ? `\n\nOptions:\n${options.map((o: string, i: number) => `${i + 1}. ${o}`).join('\n')}` : ''}` }],
-                            senderName: sender,
-                            timestamp: new Date().toISOString(),
-                            kind: 'text' // Standard text bubble for questions
-                        };
-                        await this.addMessageToHistory(chatMsg);
-                        this._onDidPostMessage.fire({
-                            command: 'response',
-                            payload: {
-                                text: chatMsg.content[0].text,
-                                senderName: chatMsg.senderName,
-                                timestamp: chatMsg.timestamp
-                            }
-                        });
-
-                        // 2. Set sticky routing so user's reply goes back to this agent
-                        this.stickyAgentName = sender;
-                        this.stickyExpiresAt = Date.now() + (1000 * 60 * 5); // 5 minutes expiry
-                        this.brainstormContextId = message.contextId || ''; // Preserve context if available
-
-                        // 3. Pause the plan (or keep it in-progress but blocked)
-                        // We don't mark the step as completed. We just wait for user input.
-                        // The user's reply will trigger `handleUserMessage`, which should respect `stickyAgentName`.
-                        
-                        this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: `Waiting for user clarification for ${sender}...` } });
-                    }
-                    break;
-                }
-                case 'response': {
-                    const text = message.payload?.text || message.payload?.content || 'Task completed.';
-                    const sender = message.sender || 'Agent';
-
-                    const chatMsg: ChatMessage = {
-                        author: 'agent',
-                        content: [{ type: 'text', text }],
-                        senderName: sender,
-                        timestamp: new Date().toISOString()
-                    };
-                    await this.addMessageToHistory(chatMsg);
-                    this._onDidPostMessage.fire({
-                        command: 'response',
-                        payload: {
-                            text: chatMsg.content[0].text,
-                            senderName: chatMsg.senderName,
-                            timestamp: chatMsg.timestamp
-                        }
-                    });
-
-                    const currentStepIndex = this.currentPlan.findIndex(step => step.status === 'in-progress');
-                    if (currentStepIndex !== -1) {
-                        this.currentPlan[currentStepIndex].status = 'completed';
-                        this._onDidPostMessage.fire({ command: 'updatePlanStep', payload: { index: currentStepIndex, status: 'completed' } });
-                        this.developerLogService.log(`[OrchestratorAgent] Step ${currentStepIndex + 1} completed (generic response from ${sender}).`);
-                        await this.updateTaskMd(currentStepIndex, this.currentPlan[currentStepIndex].description);
-                        await this.executePlan();
-                    }
-                    break;
-                }
-
-                case 'response-code-execution': {
-                    const { filePath, content, success, error, needsConfirmation, suggestionType, correlation, originalContent } = message.payload;
-                    // Correlation validation for idempotency (accept aliases: workflowId/runId)
-                    // SDK Standard: Plan이 없는 경우에도 correlation 검증 (stepId는 빈 문자열 허용)
-                    const expectedStepId = (this.currentStepIndex >= 0 && this.currentStepIndex < this.currentPlan.length) ? this.currentPlan[this.currentStepIndex].id : '';
-                    const cidPlan = correlation?.planId || correlation?.workflowId;
-                    const cidExec = correlation?.executionId || correlation?.runId;
-                    this.developerLogService.log(`[OrchestratorAgent] Correlation check: expected planId=${this.planId} stepId=${expectedStepId} execId=${this.currentExecutionId}; received planId=${cidPlan} stepId=${correlation?.stepId} execId=${cidExec} from=${message.sender}`);
-                    // Plan이 없는 경우: planId와 executionId만 검증, stepId는 빈 문자열 허용
-                    const hasPlan = this.currentPlan.length > 0;
-                    const isValid = !!correlation &&
-                        cidPlan === this.planId &&
-                        cidExec === this.currentExecutionId &&
-                        (hasPlan ? correlation.stepId === expectedStepId : (correlation.stepId === expectedStepId || correlation.stepId === '' || !correlation.stepId));
-                    if (!isValid) {
-                        this.developerLogService.log(`[OrchestratorAgent] Ignoring A2A response with mismatched correlation. expected(planId=${this.planId}, stepId=${expectedStepId}, execId=${this.currentExecutionId}) received(planId=${cidPlan}, stepId=${correlation?.stepId}, execId=${cidExec}) sender=${message.sender}`);
-                        return;
-                    }
-                    if (this.handledExecutions.has(cidExec)) {
-                        this.developerLogService.log(`[OrchestratorAgent] Duplicate A2A response ignored for executionId=${cidExec}.`);
-                        return;
-                    }
-                    this.handledExecutions.add(cidExec);
-
-                    // Error Handling & Auto-Retry
-                    if (!success || message.payload.status === 'error') {
-                        const errorMsg = error || message.payload.errorMessage || 'Unknown error';
-                        this.developerLogService.log(`[OrchestratorAgent] Agent execution failed: ${errorMsg}. Attempting auto-retry via LLM.`);
-                        
-                        // Add error to history so LLM knows context, but DO NOT show as chat bubble (User Preference)
-                        // Instead, just log it to progress log
-                        this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: `Agent execution failed: ${errorMsg}. Attempting to fix...` } });
-                        
-                        // Still add to LLM history silently for context
-                        this.llmConversationHistory.push({ role: 'assistant', content: `Agent execution failed: ${errorMsg}` });
-                        this.pruneLlmHistoryIfNeeded();
-
-                        // Ask LLM for a fix
-                        const currentStep = this.currentPlan[this.currentStepIndex];
-                        const originalTask = currentStep ? currentStep.description : 'Unknown task';
-                        
-                        const retryPrompt = `System: You are Viper, an expert coding partner.
-The previous agent execution (${message.sender}) failed with the following error: "${errorMsg}".
-
-Original Task: "${originalTask}"
-
-Please analyze the error and provide a corrected instruction or payload to retry the task.
-If the error was "No filePath provided", please infer the file path from context or ask the user.
-Return ONLY the corrected instruction text to be routed to the agent.`;
-
-                        try {
-                            const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
-                            const apiKeys = await this.configService.getApiKeys();
-                            const endpoint = this.configService.getEndpoint();
-                            const provider = this.configService.getLlmProvider();
-
-                            const lang = (vscode.env.language || 'en').toLowerCase();
-                            const sys = `Speak only in ${lang}.`;
-
-                            const retryResponse = await this.llmService.requestLLMCompletion(
-                                provider,
-                                [{ role: 'system', content: sys }, { role: 'user', content: retryPrompt }],
-                                apiKeys[0] || '',
-                                endpoint,
-                                [],
-                                model,
-                                undefined,
-                                60000
-                            );
-
-                            const fixText = (retryResponse.choices?.[0]?.message?.content || '').trim();
-                            if (fixText) {
-                                await this.routeAndDelegate(fixText);
-                            } else {
-                                this.developerLogService.log(`[OrchestratorAgent] Failed to generate auto-retry fix.`);
-                            }
-                        } catch (e: any) {
-                            this.developerLogService.log(`[OrchestratorAgent] Auto-retry failed: ${e?.message || e}`);
-                        }
-                        return;
-                    }
-
-                    this.developerLogService.log(`[OrchestratorAgent] Accepted A2A response for executionId=${cidExec}, stepId=${expectedStepId}, sender=${message.sender}`);
-                    let responseText: string | undefined = undefined;
-
-                    // 파일은 무조건 먼저 생성/수정하고, Create New File 카드와 diff list에 표시
-                    const isCommand = (suggestionType === 'command-execution');
-
-                    if (!isCommand && filePath && content) {
-                        // 1. Checkpoint: Create snapshot before file modification (if enabled)
-                        if (this.configService.getCheckpointsEnabled()) {
-                            try {
-                                const folders = vscode.workspace.workspaceFolders;
-                                if (folders && folders.length > 0) {
-                                    const root = folders[0].uri.fsPath;
-                                    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-                                    const checkpointDir = path.join(root, '.viper', 'checkpoints', `${stamp}-before-${path.basename(filePath)}`);
-                                    await fs.mkdir(checkpointDir, { recursive: true });
-                                    const exclude = new Set(['.git', '.viper', 'node_modules']);
-                                    const copyRecursive = async (src: string, dst: string) => {
-                                        const entries = await fs.readdir(src, { withFileTypes: true });
-                                        for (const ent of entries) {
-                                            if (exclude.has(ent.name)) { continue; }
-                                            const s = path.join(src, ent.name);
-                                            const d = path.join(dst, ent.name);
-                                            if (ent.isDirectory()) {
-                                                await fs.mkdir(d, { recursive: true });
-                                                await copyRecursive(s, d);
-                                            } else if (ent.isFile()) {
-                                                const data = await fs.readFile(s);
-                                                await fs.writeFile(d, data);
-                                            }
-                                        }
-                                    };
-                                    await copyRecursive(root, checkpointDir);
-                                    this.developerLogService.log(`[OrchestratorAgent] Checkpoint created: ${checkpointDir}`);
-                                    this._onDidPostMessage.fire({
-                                        command: 'progressLog',
-                                        payload: { text: `Checkpoint created: ${path.basename(filePath)}` }
-                                    });
-                                }
-                            } catch (e: any) {
-                                this.developerLogService.log(`[OrchestratorAgent] Checkpoint creation failed: ${e?.message || e}`);
-                                this._onDidPostMessage.fire({
-                                    command: 'progressLog',
-                                    payload: { text: `Checkpoint creation failed: ${e?.message || 'Unknown error'}` }
-                                });
-                            }
-                        }
-
-                        // Check existence BEFORE writing to determine action correctly
-                        let fileExists = false;
-                        try {
-                            await fs.access(filePath);
-                            fileExists = true;
-                        } catch {}
-
-                        // 2. 파일 먼저 작성
-                        const mcpClient = getMcpClient();
-                        const dir = path.dirname(filePath);
-                        try { await fs.mkdir(dir, { recursive: true }); } catch {}
-                        
-                        try {
-                            // Add timeout to MCP call to prevent hangs
-                            const timeoutMs = 5000; // 5 seconds timeout
-                            await Promise.race([
-                                mcpClient.callTool({ name: 'FileWriteTool', arguments: { filePath, content } } as any),
-                                new Promise((_, reject) => setTimeout(() => reject(new Error('FileWriteTool timed out')), timeoutMs))
-                            ]);
-                        } catch (e: any) {
-                            this.developerLogService.log(`[OrchestratorAgent] FileWriteTool failed or timed out: ${e?.message}. Falling back to fs.writeFile.`);
-                            try {
-                                await fs.writeFile(filePath, content);
-                            } catch (fsError: any) {
-                                this.developerLogService.log(`[OrchestratorAgent] fs.writeFile failed: ${fsError?.message}`);
-                                throw fsError; // Re-throw if both fail
-                            }
-                        }
-                        console.log(`[OrchestratorAgent] File created/updated: ${filePath}`);
-
-                        // 3. Linter: Run linter and auto-fix errors (if enabled)
-                        let lintSummary = '0 lint errors';
-                        try {
-                            const lintTimeoutMs = 15000; // 15 seconds timeout for linting
-                            const lintResult = await Promise.race([
-                                mcpClient.callTool({
-                                    name: 'LintTool',
-                                    arguments: { paths: [filePath], fix: true }
-                                } as any),
-                                new Promise((_, reject) => setTimeout(() => reject(new Error('LintTool timed out')), lintTimeoutMs))
-                            ]);
-
-                            if (lintResult) {
-                                const errorCount = (lintResult as any).errorCount || 0;
-                                const warningCount = (lintResult as any).warningCount || 0;
-
-                                if (errorCount > 0 || warningCount > 0) {
-                                    lintSummary = `${errorCount} error${errorCount !== 1 ? 's' : ''}, ${warningCount} warning${warningCount !== 1 ? 's' : ''}`;
-                                    this.developerLogService.log(`[OrchestratorAgent] Linter found ${errorCount} error(s), ${warningCount} warning(s) in ${filePath}`);
-                                    this._onDidPostMessage.fire({
-                                        command: 'progressLog',
-                                        payload: { text: `Linter: ${lintSummary} in ${path.basename(filePath)}` }
-                                    });
-
-                                    // If auto-fix was applied, re-read the file to get fixed content
-                                    if ((lintResult as any).output && errorCount === 0) {
-                                        // Auto-fix succeeded, update lint summary
-                                        lintSummary = '0 lint errors (auto-fixed)';
-                                        const fixedContent = await fs.readFile(filePath, 'utf-8');
-                                        // Update the diff view with fixed content if needed
-                                        this._onDidPostMessage.fire({
-                                            command: 'updateFileCard',
-                                            payload: { filePath, content: fixedContent, lintSummary }
-                                        });
-                                    }
-                                } else {
-                                    lintSummary = '0 lint errors';
-                                }
-                            }
-                        } catch (e: any) {
-                            // Linter failure is non-critical
-                            this.developerLogService.log(`[OrchestratorAgent] Linter check failed (non-critical): ${e?.message || e}`);
-                            lintSummary = 'Linter unavailable';
-                        }
-
-                        // artifact 기록
-                        const action = fileExists ? 'updated' : 'created';
-                        try { this.recordArtifact(filePath, action); } catch {}
-
-                        // progress log 표시 (bubble 없이만)
-                        const okText = `[${message.sender}] ${fileExists ? 'Updating' : 'Creating'} file: ${path.basename(filePath)}...`;
-                        this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: okText } });
-
-                        // 파일이 생성되었으므로 createFileCard 표시
-                        const timestamp = new Date().toISOString();
-                        const inferredType = suggestionType || (fileExists ? 'edit-file' : 'create-file');
-                        
-                        // Calculate relative path for display
-                        const ws = vscode.workspace.workspaceFolders;
-                        const root = ws?.[0]?.uri?.fsPath || '';
-                        const relativePath = root ? path.relative(root, filePath) : path.basename(filePath);
-                        
-                        const title = fileExists ? `Update File: ${relativePath}` : `Create New File: ${relativePath}`;
-
-                        this._onDidPostMessage.fire({
-                            command: 'createFileCard',
-                            payload: {
-                                filePath,
-                                relativePath,
-                                title,
-                                suggestionType: inferredType,
-                                senderName: message.sender,
-                                timestamp,
-                                lintSummary,
-                                description: fileExists ? 'File updated' : 'File created'
-                            }
-                        });
-
-                        // DO NOT call addMessageToHistory immediately - it may trigger loadHistory and clear the UI
-                        // Instead, delay it to ensure createFileCard is rendered first
-                        setTimeout(async () => {
-                            try {
-                                const fileCardMessage: ChatMessage = {
-                                    author: 'agent',
-                                    content: [{ type: 'text', text: '' }],
-                                    senderName: message.sender,
-                                    timestamp,
-                                    kind: 'codeEditFile',
-                                    filePath,
-                                    title,
-                                    suggestionType: inferredType,
-                                    lintSummary
-                                } as any;
-                                await this.addMessageToHistory(fileCardMessage);
-                            } catch (err) {
-                                console.warn('[OrchestratorAgent] Failed to record createFileCard history entry', err);
-                            }
-                        }, 1000); // Delay to ensure createFileCard is rendered first
-                    }
-
-                    // SDK Standard: 파일 생성은 needsConfirmation과 무관하게 항상 즉시 생성됨
-                    // 파일 생성 후 즉시 step 완료 처리 (plan이 있는 경우)
-                    if (success && !isCommand && filePath && content) {
-                        // File already created above, now mark step as completed if plan exists
-                        const currentStepIndex = this.currentPlan.findIndex(step => step.status === 'in-progress');
-                        if (currentStepIndex !== -1) {
-                            // Plan이 있고 현재 step이 in-progress인 경우
-                            this.currentPlan[currentStepIndex].status = 'completed';
-                            this._onDidPostMessage.fire({
-                                command: 'updatePlanStep',
-                                payload: { index: currentStepIndex, status: 'completed' }
-                            });
-                            this.developerLogService.log(`[OrchestratorAgent] Step ${currentStepIndex + 1} completed (file created).`);
-
-                            // Update TASK.md via TaskDecompositionAgent
-                            await this.updateTaskMd(currentStepIndex, this.currentPlan[currentStepIndex].description);
-
-                            // Advance plan immediately after step completion
-                            // Advance plan immediately after step completion
-                            // Always delegate to executePlan to handle next step or completion summary
-                            await this.executePlan();
-
-                        } else {
-                            // Plan이 없거나 현재 step이 in-progress가 아닌 경우 (direct dispatch)
-                            // SDK Standard: Plan이 없는 경우 항상 요약 생성
-                            if (this.currentPlan.length === 0 && filePath) {
-                                this.developerLogService.log(`[OrchestratorAgent] File created successfully (no plan). Generating summary.`);
-                                await this.sendDirectActionSummary(filePath || '', message.sender || 'unknown');
-                            } else if (currentStepIndex === -1 && this.currentPlan.length > 0) {
-                                // Plan이 있지만 현재 step이 in-progress가 아닌 경우 (이상 상황)
-                                this.developerLogService.log(`[OrchestratorAgent] Warning: File created but no in-progress step found. Plan length: ${this.currentPlan.length}`);
-                            }
-                        }
-                    }
-
-                    // Command는 needsConfirmation과 무관하게 diff만 표시 (파일 생성 아님)
-                    if (isCommand && needsConfirmation) {
-                        const originalCode = '';
-                        const modifiedCode = content || '';
-                        const patch = diff.createPatch('run:command', originalCode, modifiedCode);
-                        let diffHtml = '<pre><code>';
-                        patch.split('\n').forEach(line => {
-                            if (line.startsWith('+')) { diffHtml += `<span style="color: green;">${line}</span>\n`; }
-                            else if (line.startsWith('-')) { diffHtml += `<span style="color: red;">${line}</span>\n`; }
-                            else { diffHtml += `${line}\n`; }
-                        });
-                        diffHtml += '</code></pre>';
-                        const confirmationMessage: ChatMessage = {
-                            author: 'agent',
-                            content: [{ type: 'diff', diffHtml, originalCode, modifiedCode, title: 'Run Command', filePath: 'run:command', suggestionType: 'command-execution' }],
-                            senderName: message.sender,
-                            timestamp: new Date().toISOString()
-                        };
-                        await this.addMessageToHistory(confirmationMessage);
-                        this._onDidPostMessage.fire({
-                            command: 'displayDiffInChatBubble',
-                            payload: { diffHtml, originalCode, modifiedCode, title: 'Run Command', filePath: 'run:command', suggestionType: 'command-execution', senderName: message.sender, timestamp: confirmationMessage.timestamp }
-                        });
-                    }
-
-                    // 파일 생성은 이미 완료되었으므로 diff list에만 추가 (chat bubble에는 diff 표시 안 함)
-                    if (!isCommand && filePath && content) {
-                        // 파일은 이미 생성되었으므로 diff 정보만 계산하여 diff list에 추가
-                        let originalCode = '';
-                        let diffTargetExists = false;
-                        try {
-                            originalCode = await fs.readFile(filePath, 'utf-8');
-                            diffTargetExists = true;
-                        } catch {}
-                        const modifiedCode = content || '';
-
-                        // jsdiff의 diffLines를 사용하여 정확한 라인 수 계산
-                        const changes = diff.diffLines(originalCode, modifiedCode);
-                        let addedLines = 0;
-                        let removedLines = 0;
-
-                        changes.forEach(change => {
-                            if (change.added) {
-                                const lines = change.value.split('\n').filter(line => line.length > 0 || change.value.endsWith('\n'));
-                                addedLines += lines.length;
-                            } else if (change.removed) {
-                                const lines = change.value.split('\n').filter(line => line.length > 0 || change.value.endsWith('\n'));
-                                removedLines += lines.length;
-                            }
-                        });
-
-                        // new file인 경우 모든 라인을 추가로 계산
-                        if (!diffTargetExists && modifiedCode) {
-                            const lines = modifiedCode.split('\n');
-                            // 마지막 빈 줄 제외
-                            const nonEmptyLines = lines.filter((line: string, idx: number) => idx < lines.length - 1 || line.trim().length > 0);
-                            addedLines = nonEmptyLines.length > 0 ? nonEmptyLines.length : (lines.length > 0 ? 1 : 0);
-                        }
-
-                        // diff HTML 생성 (patch 형식)
-                        const patch = diff.createPatch(filePath, originalCode, modifiedCode);
-                        let diffHtml = '<pre><code>';
-                        const patchLines = patch.split('\n');
-                        let inHunk = false;
-
-                        patchLines.forEach(line => {
-                            if (line.startsWith('@@')) {
-                                inHunk = true;
-                                diffHtml += `${line}\n`;
-                                return;
-                            }
-                            if (!inHunk) {
-                                if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('diff') || line.startsWith('index')) {
-                                    return;
-                                }
-                            }
-                            if (inHunk) {
-                                if (line.startsWith('+') && !line.startsWith('+++')) {
-                                    diffHtml += `<span style="color: green;">${line}</span>\n`;
-                                }
-                                else if (line.startsWith('-') && !line.startsWith('---')) {
-                                    diffHtml += `<span style="color: red;">${line}</span>\n`;
-                                }
-                                else {
-                                    diffHtml += `${line}\n`;
-                                }
-                            }
-                        });
-
-                        if (!diffTargetExists && diffHtml === '<pre><code>') {
-                            modifiedCode.split('\n').forEach((line: string) => {
-                                diffHtml += `<span style="color: green;">+${line}</span>\n`;
-                            });
-                        }
-                        diffHtml += '</code></pre>';
-                        const inferredType = suggestionType || (diffTargetExists ? 'edit-file' : 'create-file');
-                        const title = diffTargetExists ? `Edit File: ${path.basename(filePath)}` : `Create New File: ${path.basename(filePath)}`;
-
-                        // Diff list에만 추가 (chat bubble에는 표시 안 함)
-                        this._onDidPostMessage.fire({
-                            command: 'addDiff',
-                            payload: {
-                                filePath,
-                                originalCode,
-                                modifiedCode,
-                                title,
-                                suggestionType: inferredType,
-                                diffHtml,
-                                addedLines,
-                                removedLines
-                            }
-                        });
-                    }
-                    break;
-                }
-
-                case 'response-context': {
-                    const { response, correlation } = message.payload;
-                    const sender = message.sender || 'Agent';
-
-                    // Correlation validation
-                    const expectedStepId = (this.currentStepIndex >= 0 && this.currentStepIndex < this.currentPlan.length) ? this.currentPlan[this.currentStepIndex].id : '';
-                    const cidPlan = correlation?.planId || correlation?.workflowId;
-                    const cidExec = correlation?.executionId || correlation?.runId;
-                    
-                    // Plan이 없는 경우: planId와 executionId만 검증, stepId는 빈 문자열 허용
-                    const hasPlan = this.currentPlan.length > 0;
-                    const isValid = !!correlation &&
-                        cidPlan === this.planId &&
-                        cidExec === this.currentExecutionId &&
-                        (hasPlan ? correlation.stepId === expectedStepId : (correlation.stepId === expectedStepId || correlation.stepId === '' || !correlation.stepId));
-
-                    if (!isValid) {
-                        this.developerLogService.log(`[OrchestratorAgent] Ignoring response-context with mismatched correlation. expected(planId=${this.planId}, stepId=${expectedStepId}, execId=${this.currentExecutionId}) received(planId=${cidPlan}, stepId=${correlation?.stepId}, execId=${cidExec}) sender=${message.sender}`);
-                        return;
-                    }
-                    if (this.handledExecutions.has(cidExec)) {
-                        this.developerLogService.log(`[OrchestratorAgent] Duplicate response-context ignored for executionId=${cidExec}.`);
-                        return;
-                    }
-                    this.handledExecutions.add(cidExec);
-
-                    // Log the context response
-                    const { userFacingText, thought } = this.parseThoughtAndUserFacingText(response);
-                    // If thought exists, use it as the primary log message (it's usually a better summary than raw output)
-                    // If no thought, fall back to userFacingText
-                    const logContent = thought ? `Thinking: ${thought}` : userFacingText;
-                    const logText = `✅ ${sender}: ${logContent}`;
-                    
-                    this.developerLogService.log(`[OrchestratorAgent] Received context from ${sender}: ${logText.slice(0, 100)}...`);
-                    this._onDidPostMessage.fire({
-                        command: 'progressLog',
-                        payload: { text: logText.slice(0, 300) + (logText.length > 300 ? '...' : '') }
-                    });
-
-                    // Mark step as completed
-                    const currentStepIndex = this.currentPlan.findIndex(step => step.status === 'in-progress');
-                    if (currentStepIndex !== -1) {
-                        this.currentPlan[currentStepIndex].status = 'completed';
-                        this._onDidPostMessage.fire({
-                            command: 'updatePlanStep',
-                            payload: { index: currentStepIndex, status: 'completed' }
-                        });
-                        
-                        // Update TASK.md
-                        await this.updateTaskMd(currentStepIndex, this.currentPlan[currentStepIndex].description);
-
-                        // Advance plan
-                        const nextStepIndex = this.currentPlan.findIndex(step => step.status === 'pending');
-                        if (nextStepIndex !== -1) {
-                            await this.executePlan();
-                        } else if (this.currentPlan.every(step => step.status === 'completed' || step.status === 'error')) {
-                            const hasErrors = this.currentPlan.some(step => step.status === 'error');
-                            this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: hasErrors ? 'Plan finished with errors.' : 'Plan finished.' } });
-                            await this.sendPlanCompletionSummary(hasErrors);
-                            await this.updateSessionTitleSummary?.();
-                            this.currentPlan = [];
-                            this.producedArtifacts.clear();
-                        }
-                    } else {
-                         // Direct dispatch case (no plan) - just log
-                         this.developerLogService.log(`[OrchestratorAgent] Context received (no active plan step).`);
-                    }
-                    break;
-                }
-
-                case 'response-clarification': {
-                    // Handle clarification requests from agents
-                    const question = message.payload?.question || 'The agent requested clarification.';
-                    const options = message.payload?.options;
-                    const context = message.payload?.context;
-                    const sender = message.sender || 'Agent';
-
-                    // Log the clarification request
-                    this._onDidPostMessage.fire({
-                        command: 'progressLog',
-                        payload: { text: `❓ ${sender} is asking for clarification: ${question}` }
-                    });
-
-                    // Create a clarification message bubble
-                    const clarificationMsg: ChatMessage = {
-                        author: 'agent',
-                        content: [{ type: 'text', text: `**${sender}** needs clarification:\n\n${question}${options ? '\n\nOptions:\n' + options.map((o: string) => `- ${o}`).join('\n') : ''}` }],
-                        senderName: sender,
-                        timestamp: new Date().toISOString()
-                    } as any;
-                    (clarificationMsg as any).requiresUserInput = true; // IMPORTANT: This stops the spinner and shows input box
-
-                    await this.addMessageToHistory(clarificationMsg);
-                    this._onDidPostMessage.fire({
-                        command: 'response',
-                        payload: {
-                            text: clarificationMsg.content[0].text,
-                            senderName: clarificationMsg.senderName,
-                            timestamp: clarificationMsg.timestamp,
-                            requiresUserInput: true // Explicitly signal UI to unlock input
-                        }
-                    });
-
-                    // Pause plan execution until user responds
-                    this.stickyAgentName = sender;
-                    this.stickyExpiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
-                    const currentStepIdx = this.currentPlan.findIndex(step => step.status === 'in-progress');
-                    if (currentStepIdx !== -1) {
-                        this.currentPlan[currentStepIdx].status = 'pending';
-                        this._onDidPostMessage.fire({ command: 'updatePlanStep', payload: { index: currentStepIdx, status: 'pending' } });
-                    }
-                    blockedByConfirmation = true;
-                    break;
-                }
-
-
-
-                case 'error': {
-                    // Handle errors from agents (e.g., MCP tool failures)
-                    const errorText = message.payload?.error || 'An error occurred during execution.';
-                    const sender = message.sender || 'Agent';
-                    const correlation = message.payload?.correlation;
-
-                    // Track retry count for current step
-                    if (this.currentStepIndex >= 0 && this.currentStepIndex < this.currentPlan.length) {
-                        const currentStep = this.currentPlan[this.currentStepIndex];
-                        const retryCount = (currentStep as any).retryCount || 0;
-                        const maxRetries = 2; // Maximum 2 retries per step
-
-                        if (retryCount < maxRetries) {
-                            // Attempt to recover from error by asking LLM for a fix
-                            try {
-                                console.log(`[OrchestratorAgent] Attempting auto-recovery for step ${this.currentStepIndex + 1}, retry ${retryCount + 1}/${maxRetries}`);
-
-                                // Show recovery attempt to user
-                                this._onDidPostMessage.fire({
-                                    command: 'progressLog',
-                                    payload: { text: `🔄 Attempting to recover from error (retry ${retryCount + 1}/${maxRetries})...` }
-                                });
-
-                                // Check for timeout errors
-                                if (errorText.toLowerCase().includes('timed out') || errorText.toLowerCase().includes('timeout')) {
-                                    console.log(`[OrchestratorAgent] Timeout detected. Retrying original step without LLM modification.`);
-                                    this._onDidPostMessage.fire({
-                                        command: 'progressLog',
-                                        payload: { text: `🔄 Timeout detected. Retrying original step (retry ${retryCount + 1}/${maxRetries})...` }
-                                    });
-                                    
-                                    // Retry with original step description
-                                    currentStep.retryCount = (retryCount + 1);
-                                    // Re-execute plan (which will pick up the in-progress step)
-                                    await this.executePlan();
-                                    break;
-                                }
-
-                                // Ask LLM to analyze the error and suggest a fix
-                                const recoveryPrompt = `An error occurred while executing the following step:
-
-**Original User Request:** ${this.lastUserQuery || 'N/A'}
-**Step:** ${currentStep.description}
-**Error:** ${errorText}
-
-**Task:** Analyze the error and provide a corrected version of the step that will avoid this error.
-- If the error indicates the task is already done or redundant, return "SKIP".
-- If the error is about file paths, suggest using workspace-relative paths (e.g. "src/file.ts" instead of "d:/...").
-- If the error is about permissions, suggest alternative approaches.
-- Keep the corrected step concise and actionable.
-
-**CRITICAL:** Output ONLY the corrected step description (or "SKIP") as a single line of text. Do NOT include any conversational text, explanations, or markdown formatting.`;
-
-                                const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
-                                const apiKeys = await this.configService.getApiKeys();
-                                const apiKey = apiKeys[0] || '';
-                                const endpoint = this.configService.getEndpoint();
-                                const provider = this.configService.getLlmProvider();
-
-                                const lang = (vscode.env.language || 'en').toLowerCase();
-                                const sys = `Speak only in ${lang}.`;
-
-                                const recoveryResponse = await this.llmService.requestLLMCompletion(
-                                    provider,
-                                    [{ role: 'system', content: sys }, { role: 'user', content: recoveryPrompt }],
-                                    apiKey,
-                                    endpoint,
-                                    [],
-                                    model,
-                                    undefined,
-                                    15000 // 15 second timeout
-                                );
-
-                                const correctedStep = typeof recoveryResponse.choices[0]?.message?.content === 'string' 
-                                    ? recoveryResponse.choices[0]?.message?.content?.trim() 
-                                    : '';
-
-                                if (correctedStep && correctedStep.length > 1) {
-                                    if (correctedStep === 'SKIP') {
-                                        // Mark as completed (skipped)
-                                        currentStep.status = 'completed';
-                                        this._onDidPostMessage.fire({
-                                            command: 'updatePlanStep',
-                                            payload: { index: this.currentStepIndex, status: 'completed' }
-                                        });
-                                        this._onDidPostMessage.fire({
-                                            command: 'progressLog',
-                                            payload: { text: `⚠️ Skipped redundant step: ${currentStep.description}` }
-                                        });
-                                        // Advance to next step
-                                        const nextStepIndex = this.currentPlan.findIndex(step => step.status === 'pending');
-                                        if (nextStepIndex !== -1) {
-                                            await this.executePlan();
-                                        } else {
-                                            // Plan finished
-                                            this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Plan finished (with skipped steps).' } });
-                                            await this.sendPlanCompletionSummary(false);
-                                            await this.updateSessionTitleSummary?.();
-                                            this.currentPlan = [];
-                                            this.producedArtifacts.clear();
-                                        }
-                                        break;
-                                    }
-
-                                    // Update step description with corrected version
-                                    currentStep.description = correctedStep;
-                                    currentStep.status = 'pending' as any;
-                                    (currentStep as any).retryCount = retryCount + 1;
-
-                                    // Reset currentStepIndex to retry this step
-                                    this.currentStepIndex--;
-
-                                    this._onDidPostMessage.fire({
-                                        command: 'updatePlanStep',
-                                        payload: { index: this.currentStepIndex + 1, status: 'pending', description: correctedStep }
-                                    });
-
-                                    this._onDidPostMessage.fire({
-                                        command: 'progressLog',
-                                        payload: { text: `✅ Recovery plan: ${correctedStep}` }
-                                    });
-
-                                    console.log(`[OrchestratorAgent] Recovery step generated:`, correctedStep);
-                                    break; // Exit error case, will retry via executePlan
-                                }
-                            } catch (recoveryError: any) {
-                                console.error('[OrchestratorAgent] Auto-recovery failed:', recoveryError?.message || recoveryError);
-                            }
-                        }
-
-                        // If recovery failed or max retries reached, mark as error
-                        currentStep.status = 'error' as any;
-                        this._onDidPostMessage.fire({
-                            command: 'updatePlanStep',
-                            payload: { index: this.currentStepIndex, status: 'error' }
-                        });
-                    }
-
-                    // Show error to user (only if not already shown by agent)
-                    // Agent가 이미 error를 publish했으므로 여기서는 progress log만 표시
-                    this._onDidPostMessage.fire({
-                        command: 'progressLog',
-                        payload: { text: `❌ Error from ${sender}: ${errorText}` }
-                    });
-
-                    // Skip adding to history and response - agent already published error
-                    // const errorMessage: ChatMessage = {
-                    //     author: 'agent',
-                    //     content: [{ type: 'text', text: `❌ **Error from ${sender}:**\n\n${errorText}\n\n*Max retries reached. Continuing with next step.*` }],
-                    //     senderName: sender,
-                    //     timestamp: new Date().toISOString()
-                    // } as any;
-                    // await this.addMessageToHistory(errorMessage);
-                    // await this.saveCurrentChatHistory();
-
-                    // this._onDidPostMessage.fire({
-                    //     command: 'response',
-                    //     payload: {
-                    //         text: errorMessage.content[0].text,
-                    //         senderName: errorMessage.senderName,
-                    //         timestamp: errorMessage.timestamp
-                    //     }
-                    // });
-                    break; // Skip duplicate error display
-
-                    console.error(`[OrchestratorAgent] Error from ${sender} (max retries reached):`, errorText);
-                    break;
-                }
-
-
-
-                default:
-                    this.developerLogService.log(`[OrchestratorAgent] Unhandled A2A message type: ${message.type}`);
-                    break;
-            }
-
-            // After handling the response, only advance when no step is currently in-progress
-            // This check runs after ALL message types (response-code-execution, response-context, etc.)
-            const pendingIdx = this.currentPlan.findIndex(step => step.status === 'pending');
-            const hasInProgress = this.currentPlan.some(step => step.status === 'in-progress');
-            const completedCount = this.currentPlan.filter(step => step.status === 'completed' || step.status === 'error').length;
-
-            if (!blockedByConfirmation && this.currentPlan.length > 0) {
-                if (!hasInProgress && pendingIdx !== -1) {
-                    // There are pending steps, execute next one
-                    await this.executePlan();
-                } else if (!hasInProgress && pendingIdx === -1 && completedCount === this.currentPlan.length) {
-                    // Plan complete: all steps are done (completed or error), no pending or in-progress
-                    if (!this.isSendingPlanSummary) {
-                        this.isSendingPlanSummary = true;
-                        const hasErrors = this.currentPlan.some(step => step.status === 'error');
-                        const statusText = hasErrors ? 'Plan finished with errors.' : 'Plan finished.';
-                        this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: statusText } });
-                        await this.sendPlanCompletionSummary(hasErrors);
-                        this.currentPlan = []; // Clear the completed plan
-                        this.producedArtifacts.clear();
-                        // Reset confirmation flags so future queries don't get treated as confirmations
-                        this.isAwaitingPlanConfirmation = false;
-                        this.pendingPlan = null;
-                        this.isSendingPlanSummary = false;
-                    }
-                }
-            }
-
-        } catch (error: any) {
-            console.error('[OrchestratorAgent] Error handling A2A message:', error);
-            this.developerLogService.log(`ERROR: Failed to handle A2A message from ${message.sender}. ${error.message}`);
-
-            // Mark current step as error if there is one
-            const currentStepIndex = this.currentPlan.findIndex(step => step.status === 'in-progress');
-            if (currentStepIndex !== -1) {
-                this.currentPlan[currentStepIndex].status = 'error';
-                this._onDidPostMessage.fire({ command: 'updatePlanStep', payload: { index: currentStepIndex, status: 'error' } });
-            }
-
-            // Try to continue with next step or finish plan
-            const nextStepIndex = this.currentPlan.findIndex(step => step.status === 'pending');
-            if (nextStepIndex !== -1) {
-                this.developerLogService.log(`Continuing to next step after A2A message error.`);
-                await this.executePlan();
-            } else if (this.currentPlan.length > 0) {
-                // No more steps, finish plan
-                const hasErrors = this.currentPlan.some(step => step.status === 'error');
-                const statusText = hasErrors ? 'Plan finished with errors.' : 'Plan finished.';
-                this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: statusText } });
-                this.parseAndSendFinalResponse(hasErrors ? 'Plan completed with some errors. Please review the steps.' : 'All steps completed successfully.');
-                this.currentPlan = [];
-            }
-        }
-    }
-
-    private async handlePostActionsConfirmation(userText: string): Promise<boolean> {
-        try {
-            if (!this.isAwaitingPostActionsConfirmation || !Array.isArray(this.pendingPostActions) || this.pendingPostActions.length === 0) {
-                return false;
-            }
-
-            const followUps = this.pendingPostActions.slice();
-            const trimmed = (userText ?? '').trim();
-            if (!trimmed) {
-                // Empty reply: let higher-level chat logic handle it
-                return false;
-            }
-
-            const selection = await this.interpretPostActionsSelection(trimmed, followUps);
-            if (!selection) {
-                return false;
-            }
-
-            // SDK Standard: 새로운 작업이면 후속 작업 선택을 취소하고 일반 처리로 진행
-            if (selection.isNewTask === true) {
-                this.developerLogService.log(`User input interpreted as new task, canceling follow-up selection.`);
-                this.isAwaitingPostActionsConfirmation = false;
-                this.pendingPostActions = [];
-                return false; // 일반 처리로 진행
-            }
-
-            let { runAll, skipAll, indices } = selection;
-
-            // If user clearly wants to skip or result is effectively empty, treat as skip-all
-            if (skipAll || (!runAll && indices.length === 0)) {
-                this.isAwaitingPostActionsConfirmation = false;
-                this.pendingPostActions = [];
-                this.suppressPostActionsSuggestions = true;
-
-                const text = 'Understood. I will skip the follow-up tasks.';
-                const msg: ChatMessage = {
-                    author: 'agent',
-                    content: [{ type: 'text', text }],
-                    senderName: OrchestratorAgent.AGENT_ID,
-                    timestamp: new Date().toISOString()
-                };
-                await this.addMessageToHistory(msg);
-                this._onDidPostMessage.fire({ command: 'response', payload: { text, senderName: msg.senderName, timestamp: msg.timestamp } });
-                return true;
-            }
-
-            if (runAll) {
-                indices = followUps.map((_, i) => i + 1);
-            }
-
-            const zeroBased = indices
-                .map(i => i - 1)
-                .filter(i => i >= 0 && i < followUps.length);
-
-            if (zeroBased.length === 0) {
-                return false;
-            }
-
-            const selected = zeroBased.map(i => followUps[i]);
-
-            // Initialize a mini-plan for the selected follow-up steps
-            this.planId = uuidv4();
-            this.deferredPostActions = [];
-            this.pendingPostActions = [];
-            this.isAwaitingPostActionsConfirmation = false;
-            this.suppressPostActionsSuggestions = true;
-            this.producedArtifacts.clear();
-            this.currentPlan = selected.map((desc: string, i: number) => ({
-                id: `${this.planId}:${i + 1}`,
-                description: desc,
-                status: 'pending'
-            }));
-            this.currentStepIndex = -1;
-            this.currentExecutionId = '';
-            this.handledExecutions.clear();
-
-            // Dynamic UI Text: Generate a natural language confirmation message
-            // Dynamic UI Text: Generate a natural language confirmation message
-            const list = followUps.map(f => `- ${f}`).join('\n');
-            const prompt = `You are Viper, an AI coding assistant.
-The user has selected the following follow-up tasks to execute:
-${list}
-
-Generate a short, natural, and encouraging confirmation message to tell the user that you are starting these tasks.
-- Do NOT use "I will now run..." or "Starting...". Be more conversational.
-- Example: "Got it! I'm on it. Let's tackle these tasks."
-- Example: "Understood. I'll get started on these right away."
-- Keep it under 20 words.
-- Output ONLY the message text.`;
-
-            let text = 'Starting selected tasks...';
-            try {
-                const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
-                const apiKeys = await this.configService.getApiKeys();
-                const endpoint = this.configService.getEndpoint();
-                const provider = this.configService.getLlmProvider();
-                const timeout = 10000; // 10s timeout for quick UI response
-
-                const lang = (vscode.env.language || 'en').toLowerCase();
-                const sys = `Speak only in ${lang}.`;
-
-                const resp = await this.llmService.requestLLMCompletion(
-                    provider,
-                    [{ role: 'system', content: sys }, { role: 'user', content: prompt }],
-                    apiKeys[0] || '',
-                    endpoint,
-                    [],
-                    model,
-                    undefined,
-                    timeout
-                );
-                const generated = (resp.choices?.[0]?.message?.content ?? (resp as any).choices?.[0]?.text ?? '').trim();
-                if (generated) {
-                    text = `${generated}\n\n${followUps.map((f, i) => `${i + 1}. ${f}`).join('\n')}`;
-                } else {
-                    text = `I will now run the selected follow-up tasks:\n${followUps.map((f, i) => `${i + 1}. ${f}`).join('\n')}`;
-                }
-            } catch (e) {
-                // Fallback if LLM fails
-                text = `I will now run the selected follow-up tasks:\n${followUps.map((f, i) => `${i + 1}. ${f}`).join('\n')}`;
-            }
-
-            const msg: ChatMessage = {
-                author: 'agent',
-                content: [{ type: 'text', text }],
-                senderName: OrchestratorAgent.AGENT_ID,
-                timestamp: new Date().toISOString()
-            };
-            await this.addMessageToHistory(msg);
-            this._onDidPostMessage.fire({ command: 'response', payload: { text, senderName: msg.senderName, timestamp: msg.timestamp, keepThinking: true } });
-
-            await this.executePlan();
-            return true;
-        } catch (e: any) {
-            this.developerLogService.log(`[OrchestratorAgent] Error in handlePostActionsConfirmation: ${e?.message || String(e)}`);
-            return false;
-        }
-    }
-
-    private async interpretPostActionsSelection(userText: string, followUps: string[]): Promise<{ isNewTask?: boolean; runAll: boolean; skipAll: boolean; indices: number[] } | null> {
-        const userLanguage = vscode.env.language || 'en';
-        const prompt = getPostActionsSelectionPrompt(userLanguage, userText, followUps, this.llmConversationHistory);
-
-        const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
-        const apiKeys = await this.configService.getApiKeys();
-        const endpoint = this.configService.getEndpoint();
-        const provider = this.configService.getLlmProvider();
-        const timeout = this.configService.getRequestTimeout(OrchestratorAgent.AGENT_ID);
-
-        const selectionSchema = {
-            type: 'object',
-            properties: {
-                is_new_task: { type: 'boolean' },
-                is_followup_selection: { type: 'boolean' },
-                run_all: { type: 'boolean' },
-                skip_all: { type: 'boolean' },
-                selected_indices: {
-                    type: 'array',
-                    items: { type: 'integer', minimum: 1 }
-                },
-                reason: { type: 'string' }
-            },
-            required: ['is_new_task', 'is_followup_selection', 'run_all', 'skip_all', 'selected_indices', 'reason'],
-            additionalProperties: true
+        // Guided Routing: Delegate to Agentic Router for Uroboros Mode
+        this.developerLogService.log(`Transitioning to Uroboros Mode. Delegating to Agentic Router for smart dispatch.`);
+
+        // Construct RequestContext
+        const contextId = this.brainstormContextId || uuidv4();
+        const requestContext: RequestContext = {
+            contextId,
+            sender: 'User',
+            originator: 'User',
+            metadata: { sessionId: this.activeSessionId },
+            message: {
+                messageId: uuidv4(),
+                sender: 'User',
+                recipient: OrchestratorAgent.AGENT_ID, // Processed by Orchestrator's standard loop
+                timestamp: new Date().toISOString(),
+                kind: 'message',
+                role: 'user',
+                contextId,
+                parts: [{ kind: 'text', text: userText }]
+            } as any
         } as any;
 
-        let raw = '';
+        // Construct EventBus (Minimal)
+        const eventBus: ExecutionEventBus = {
+             publish: async (event: any) => {
+                 if (event?.type === 'progress' && event?.data) {
+                     this.processProgressLog(event.data, 'OrchestratorAgent');
+                 }
+             }
+        } as any;
+
         try {
-            const resp = await this.llmService.requestLLMCompletion(
-                provider,
-                [{ role: 'user', content: prompt }],
-                apiKeys[0] || '',
-                endpoint,
-                [],
-                model,
-                undefined,
-                timeout,
-                { structured: { mode: 'json_schema', schema: selectionSchema, schemaName: 'PostActionSelection' } }
-            );
-            raw = (resp as any)?.choices?.[0]?.message?.content ?? (resp as any)?.choices?.[0]?.text ?? '';
-            raw = (raw || '').toString().trim();
+            await this.execute(requestContext, eventBus);
         } catch (e: any) {
-            this.developerLogService.log(`[OrchestratorAgent] Failed LLM post-actions selection: ${e?.message || String(e)}`);
+            this.developerLogService.log(`[OrchestratorAgent] Uroboros Routing/Execute failed: ${e?.message || e}`);
+             // Safe Fallback
+             await this.dispatch({
+                messageId: uuidv4(),
+                sender: AgentNames.ORCHESTRATOR,
+                recipient: AgentNames.BRAINSTORM,
+                timestamp: new Date().toISOString(),
+                contextId: this.brainstormContextId,
+                parts: [
+                    { kind: 'text', text: userText },
+                    { kind: 'data', mimeType: 'application/vnd.a2a+json', data: {
+                        task: userText,
+                        query: userText,
+                        correlation
+                    }}
+                ]
+            } as any);
         }
-
-        if (!raw) {
-            return null;
-        }
-
-        // Strip any thought/meta wrapper before JSON parsing
-        const parsedView = this.parseThoughtAndUserFacingText(raw || null);
-        let candidate = (parsedView.userFacingText || raw || '').toString().trim();
-
-        let selection: any = null;
-        // 1) Direct JSON
-        try {
-            if (candidate) {
-                selection = JSON.parse(candidate);
-            }
-        } catch {}
-        // 2) JSON inside code block
-        if (!selection) {
-            try {
-                const match = candidate.match(/```[a-zA-Z0-9]*\n([\s\S]*?)```/);
-                const within = match ? match[1] : candidate;
-                if (within) {
-                    selection = JSON.parse(within);
-                }
-            } catch {}
-        }
-        // 3) Slice between first '{' and last '}'
-        if (!selection) {
-            try {
-                const first = candidate.indexOf('{');
-                const last = candidate.lastIndexOf('}');
-                if (first !== -1 && last !== -1 && last > first) {
-                    const slice = candidate.slice(first, last + 1);
-                    selection = JSON.parse(slice);
-                }
-            } catch {}
-        }
-
-        if (!selection || typeof selection !== 'object') {
-            return null;
-        }
-
-        // SDK Standard: 새로운 작업인지 확인
-        const isNewTask = selection.is_new_task === true && selection.is_followup_selection !== true;
-        if (isNewTask) {
-            return { isNewTask: true, runAll: false, skipAll: false, indices: [] };
-        }
-
-        const runAll = !!selection.run_all;
-        const skipAll = !!selection.skip_all;
-        const indices: number[] = Array.isArray(selection.selected_indices)
-            ? selection.selected_indices.filter((n: any) => Number.isInteger(n) && n >= 1)
-            : [];
-
-        return { isNewTask: false, runAll, skipAll, indices };
-    }
-
-    private async sendFullSettingsToUI() {
-        const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
-        const endpoint = this.configService.getEndpoint();
-        const provider = this.configService.getLlmProvider();
-        const developerMode = this.configService.getDeveloperMode();
-        const apiKeys = await this.configService.getApiKeys();
-        this._onDidPostMessage.fire({
-            command: 'settingsUpdate',
-            payload: {
-                model: model,
-                endpoint: endpoint,
-                provider: provider,
-                apiKeyPresent: apiKeys.length > 0,
-                alwaysAcceptSuggestions: this.isAcceptAlwaysActive,
-                developerMode: developerMode
-            }
-        });
     }
 
     private processedMessageIds: Set<string> = new Set();
@@ -2272,13 +1264,15 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
             this.developerLogService.log(`[OrchestratorAgent] checkConfirmationIntent failed: ${error}`);
             // Fallback to strict regex for safety if LLM fails
             if (/^(y|yes|ok|sure|agree|accept|please|go|do|start|confirm|네|그래|좋아|응|확인|진행|ㅇㅇ)/i.test(userText)) return 'confirm';
-            if (/^(n|no|cancel|stop|wait|deny|reject|아니|싫어|취소|이전|멈춰|ㄴㄴ)/i.test(userText)) return 'deny';
+            if (/^(n|no|stop|wait|deny|reject|아니|싫어|취소|이전|멈춰|ㄴㄴ)/i.test(userText)) return 'deny';
             return 'uncertain';
         }
     }
 
 
     private async handleChatAndSpecialistCommands(userText: string, messageId?: string): Promise<void> { // Make it async
+        console.log(`[OrchestratorAgent] handleChatAndSpecialistCommands called with text: "${userText.slice(0, 50)}..."`);
+        this.developerLogService.log(`[OrchestratorAgent] handleChatAndSpecialistCommands called with text: "${userText.slice(0, 50)}..."`);
         if (messageId && this.processedMessageIds.has(messageId)) {
             console.log(`[OrchestratorAgent] Skipping already processed message ID: ${messageId}`);
             return;
@@ -2290,19 +1284,53 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         const sessionId = this.activeSessionId; // Capture session ID at start
         if (!userText) { return; }
 
+    // Handle slash commands
+    if (userText.startsWith('/')) {
+        const cmd = userText.trim();
+        if (cmd === '/clear') {
+             this.llmConversationHistory = [];
+             // Clear session messages via sessionManager effectively?
+             // Since sessionManager.clear() might be needed.
+             // For now just clear LLM history and notify.
+             await this.addMessageToHistory({
+                author: 'agent',
+                content: [{type: 'text', text: 'Chat history cleared (LLM Context).'}], 
+                senderName: 'Orchestrator'
+             });
+             this._onDidPostMessage.fire({ command: 'clearHistory' });
+             return;
+        }
+        if (cmd === '/help') {
+             const helpText = SLASH_COMMANDS.map(c => `**${c.command}** - ${c.description}`).join('\n');
+             await this.addMessageToHistory({
+                 author: 'agent',
+                 content: [{ type: 'text', text: `Here are the available commands:\n\n${helpText}` }],
+                 senderName: 'Orchestrator'
+             });
+             return;
+        }
+        if (cmd === '/test health' && typeof this.runAgentHealthCheck === 'function') {
+             await this.runAgentHealthCheck();
+             return;
+        }
+    }
+
         // Store original user query for agents that need context (e.g., BrainstormAgent)
         this.lastUserQuery = userText;
 
         // SDK Standard: Centralized storage
         // Check if already in history (double safety)
+        console.log('[OrchestratorAgent] handleChat debug: Step 2 (checking duplication)');
         const isIdDuplicate = messageId && this.chatHistory.some(m => m.messageId === messageId);
         
         // Synchronous Debounce: Check if we are already processing this exact text (race condition fix)
+        console.log('[OrchestratorAgent] handleChat debug: Step 3 (checking debounce)');
         // This prevents double-submits where chatHistory hasn't updated yet.
         if (this.recentQueryDebounce.has(userText)) {
              console.log(`[OrchestratorAgent] Skipping debounced content: "${userText.slice(0, 20)}..."`);
              return;
         }
+        console.log('[OrchestratorAgent] handleChat debug: Step 4 (debounce passed)');
 
         if (isIdDuplicate) {
             console.log(`[OrchestratorAgent] Skipping duplicate message ID: ${messageId}`);
@@ -2312,6 +1340,7 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         // Lock this content for 2 seconds
         this.recentQueryDebounce.add(userText);
         setTimeout(() => this.recentQueryDebounce.delete(userText), 2000);
+        console.log('[OrchestratorAgent] handleChat debug: Step 5 (debounce lock set)');
 
         const userMessage: ChatMessage = { 
             author: 'user', 
@@ -2320,7 +1349,9 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
             timestamp: new Date().toISOString(),
             messageId: messageId
         };
+        console.log('[OrchestratorAgent] calling addMessageToHistory...');
         await this.addMessageToHistory(userMessage);
+        console.log('[OrchestratorAgent] addMessageToHistory completed.');
 
         // Add to history for context - support multimodal content if images are attached
         if (this.lastImageAttachments && this.lastImageAttachments.length > 0) {
@@ -2332,6 +1363,7 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
             // Clear after use
             this.lastImageAttachments = [];
         } else {
+            // Standard push (Root cause of duplication in Complex block is fixed, so this is safe)
             this.llmConversationHistory.push({ role: 'user', content: userText });
         }
 
@@ -2342,1081 +1374,210 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
 
         // Bug-fix detection removed - LLM will handle intent detection
 
-        const taskTypePrompt = getTaskTypePrompt(userText, this.llmConversationHistory);
+        // Single-Prompt Architecture: Delegate EVERYTHING to Agentic Router
+        // The Router (SystemPromptFactory 'router') will determine intent, complexity, and target agent in ONE step.
+        
+        this.developerLogService.log(`[OrchestratorAgent] Delegating user query to Agentic Router (Single-Prompt Architecture).`);
+
+        const contextId = this.brainstormContextId || uuidv4();
+        const requestContext: RequestContext = {
+            contextId,
+            sender: 'User',
+            originator: 'User',
+            metadata: { sessionId: this.activeSessionId },
+            message: {
+                messageId: messageId || uuidv4(),
+                sender: 'User',
+                recipient: OrchestratorAgent.AGENT_ID,
+                timestamp: new Date().toISOString(),
+                kind: 'message',
+                role: 'user',
+                contextId,
+                parts: [{ kind: 'text', text: userText }]
+            } as any
+        } as any;
+
+        const eventBus: ExecutionEventBus = {
+            publish: async (event: any) => {
+                if (event?.type === 'progress' && event?.data) {
+                    this.processProgressLog(event.data, 'OrchestratorAgent');
+                }
+                
+                // Handle Resource Action (File Created) -> Generate UI Block & Persist
+                if (event?.type === 'resource-action' && event?.data?.uri) {
+                     const historyMsg: ChatMessage = {
+                         author: 'agent',
+                         // Reuse codeEditFile kind to trigger the File Block UI
+                         kind: 'codeEditFile', 
+                         senderName: OrchestratorAgent.AGENT_ID,
+                         timestamp: event.data.timestamp || new Date().toISOString(),
+                         filePath: event.data.uri,
+                         // Content is required by schema, providing summary
+                         content: [{ type: 'text', text: `Created file: ${path.basename(event.data.uri)}` }]
+                     } as any;
+                     
+                     // Persist to Memento
+                     await this.addMessageToHistory(historyMsg);
+                     
+                     // Notify UI to render immediately
+                     this._onDidPostMessage.fire({ 
+                         command: 'createFileCard', 
+                         payload: historyMsg 
+                     });
+                     // Force sync history update just in case
+                     this._onDidPostMessage.fire({ command: 'historyUpdate', payload: this.chatHistory });
+                }
+            }
+        } as any;
 
         try {
-            const reqTimeout = this.configService.getRequestTimeout(OrchestratorAgent.AGENT_ID);
-            const classificationTimeout = Math.min(Math.max(10000, (typeof reqTimeout === 'number' && reqTimeout > 0) ? reqTimeout : 20000), 25000);
-            const classificationPromise = this.llmService.requestLLMCompletion(
-                provider,
-                [{ role: 'user', content: taskTypePrompt }], // Classification prompt with full conversation history
-                apiKeys[0] || '',
-                endpoint,
-                [],
-                model,
-                undefined,
-                classificationTimeout
-            );
-            const response = await Promise.race([
-                classificationPromise,
-                new Promise<never>((_, reject) => setTimeout(() => reject(new Error('ClassificationTimeout')), classificationTimeout))
-            ]);
-            const llmContentRaw = (response.choices?.[0]?.message?.content ?? (response as any).choices?.[0]?.text ?? '').toString().trim();
-            const { userFacingText: cleanedLlmContent } = this.parseThoughtAndUserFacingText(llmContentRaw || null);
-
-            let classification: {
-                intent_type?: 'info_query' | 'code_implementation' | 'code_modification' | 'conversation';
-                is_complex_task: boolean;
-                complexity_score?: number;
-                expected_steps?: number;
-                affected_scope?: string;
-                complexity_reasons?: string[]
-            } | null = null;
-            try {
-                let candidate = cleanedLlmContent || '';
-                if (!candidate) { candidate = llmContentRaw; }
-                let parsed: any = null;
-                try { parsed = JSON.parse(candidate); }
-                catch {
-                    const codeBlockMatch = candidate.match(/```[a-zA-Z0-9]*\n([\s\S]*?)```/);
-                    const within = codeBlockMatch ? codeBlockMatch[1] : candidate;
-                    const first = within.indexOf('{');
-                    const last = within.lastIndexOf('}');
-                    if (first !== -1 && last !== -1 && last > first) {
-                        const slice = within.slice(first, last + 1);
-                        parsed = JSON.parse(slice);
-                    } else {
-                        throw new Error('No JSON object found');
-                    }
-                }
-                classification = parsed;
-            } catch (error) {
-                console.error('[OrchestratorAgent] Failed to parse LLM task classification as JSON:', error);
-                this.developerLogService.log(`Failed to parse LLM task classification as JSON: ${error}. Raw content: ${llmContentRaw}`);
-            }
-
-            // If classification failed and we likely have a connection/timeout error, surface it and stop.
-            if (!classification) {
-                const rawLower = (llmContentRaw || '').toLowerCase();
-                if (rawLower.includes('connection error') || rawLower.includes('timed out')) {
-                    const errorText = llmContentRaw || 'Connection error. Unable to reach the LLM service.';
-                    const agentMessage: ChatMessage = { author: 'agent', content: [{ type: 'text', text: errorText }], senderName: OrchestratorAgent.AGENT_ID, timestamp: new Date().toISOString() };
-                    await this.addMessageToHistory(agentMessage);
-                    this.postMessageToSession(sessionId, 'response', { text: errorText, senderName: agentMessage.senderName, timestamp: agentMessage.timestamp });
-                    await this.saveCurrentChatHistory();
-                    await this.saveCurrentLlmHistory();
-                    return;
-                }
-            }
-
-            // Handle info_query intent first - use MCP tools directly without agent routing
-            if (classification && classification.intent_type === 'info_query') {
-                this.developerLogService.log(`User query classified as info_query: "${userText}". Handling directly with MCP tools.`);
-                await this.handleInfoQuery(userText, classification, sessionId);
-                return;
-            }
-
-            if (classification && classification.is_complex_task) {
-                const complexityScore = classification.complexity_score || 50;
-                const expectedSteps = classification.expected_steps || 3;
-                const affectedScope = classification.affected_scope || 'multiple files';
-                const complexityReasons = classification.complexity_reasons || ['Multiple steps required'];
-
-                // BrainstormAgent는 Uroboros Mode에서만 사용
-                if (!this.autonomousMode) {
-                    // SDK Standard: 이전에 거절한 요청인지 확인
-                    const queryKey = userText.trim().toLowerCase();
-                    const wasDeclined = this.declinedUroborosQueries.has(queryKey);
-
-                    // 복잡도 점수가 75 이상이고, 입력 길이가 10자 이상이며, 세션에서 제안을 무시하지 않았고, 이전에 거절하지 않았으면 Uroboros Mode 제안
-                    if (complexityScore >= 75 && userText.length >= 10 && !this.sessionSuppressComplexityPrompt && !wasDeclined) {
-                        this.developerLogService.log(`User query classified as complex (score: ${complexityScore}). Proposing Uroboros Mode.`);
-
-                        // SDK Standard: LLM이 Uroboros Mode 제안 텍스트 생성
-                        const langCodeRaw = (vscode.env.language || 'en').toLowerCase();
-                        const baseLangCode = (langCodeRaw.split('-')[0] || langCodeRaw);
-                        const proposalPrompt = `System: You are Viper, an expert coding partner. The user has requested a task that may be complex.
-
-Task details:
-- User request: "${userText}"
-- Complexity score: ${complexityScore}/100
-- Expected steps: ${expectedSteps}
-- Affected scope: ${affectedScope}
-${complexityReasons && complexityReasons.length > 0 ? `- Complexity reasons:\n${complexityReasons.map(r => `  - ${r}`).join('\n')}` : ''}
-
-Your task:
-Write a natural, conversational message proposing Uroboros Mode (a structured planning approach) to the user.
-- Be terse and direct
-- Explain why this task might benefit from structured planning
-- Ask if they want to use Uroboros Mode
-- Use the user's language (${baseLangCode})
-- Do NOT use keywords or templates - write naturally based on the context
-
-Output ONLY the proposal message text. No markdown, no code fences, no JSON.`;
-
-                        let proposalText = '';
-                        try {
-                            const proposalResponse = await this.llmService.requestLLMCompletion(
-                                provider,
-                                [{ role: 'user', content: proposalPrompt }],
-                                apiKeys[0] || '',
-                                endpoint,
-                                [],
-                                model,
-                                undefined,
-                                Math.min(Math.max(10000, this.configService.getRequestTimeout(OrchestratorAgent.AGENT_ID) || 20000), 25000)
-                            );
-                            proposalText = (proposalResponse.choices?.[0]?.message?.content ?? (proposalResponse as any).choices?.[0]?.text ?? '').toString().trim();
-                        } catch (e: any) {
-                            this.developerLogService.log(`[OrchestratorAgent] Failed to generate Uroboros Mode proposal: ${e?.message || e}`);
-                            // Fallback to simple message
-proposalText = `This task may be complex (complexity: ${complexityScore}/100). Would you like to use Uroboros Mode for a more structured approach?`;
-                        }
-
-                        const proposalMessage: ChatMessage = {
-                            author: 'agent',
-                            content: [{ type: 'text', text: proposalText }],
-                            senderName: OrchestratorAgent.AGENT_ID,
-                            timestamp: new Date().toISOString(),
-                            kind: 'uroboros-proposal' as any,
-                            buttons: [
-                                {
-                                    label: '승인',
-                                    command: 'acceptUroborosMode',
-                                    payload: { userText },
-                                    style: 'primary'
-                                },
-                                {
-                                    label: '거절',
-                                    command: 'declineUroborosMode',
-                                    payload: { userText },
-                                    style: 'secondary'
-                                }
-                            ]
-                        };
-                        await this.addMessageToHistory(proposalMessage);
-
-                        this.postMessageToSession(sessionId, 'response', {
-                            text: proposalText,
-                            senderName: proposalMessage.senderName,
-                            timestamp: proposalMessage.timestamp,
-                            requiresUserInput: true,
-                            uroborosProposal: {
-                                userText,
-                                complexityScore,
-                                expectedSteps,
-                                affectedScope,
-                                complexityReasons
-                            },
-                            buttons: proposalMessage.buttons
-                        });
-                        
-                        this.pendingUroborosProposal = { userText };
-                        return;
-                    }
-                }
-
-                this.developerLogService.log(`User query classified as complex: "${userText}". Routing to BrainstormAgent (Uroboros Mode enabled).`);
-                // SDK Standard: Route complex tasks to BrainstormAgent for plan creation (Uroboros Mode only)
-                // Note: User message is already added in newChat case, so we only add to LLM history here
-                const alreadyAdded = this.chatHistory.some(m => 
-                    (messageId && m.messageId === messageId) || 
-                    (m.author === 'user' && m.content?.[0]?.text === userText)
-                );
-                if (!alreadyAdded) {
-                    const userMessage: ChatMessage = { author: 'user', content: [{ type: 'text', text: userText }], senderName: 'User', timestamp: new Date().toISOString(), messageId: messageId };
-                    await this.addMessageToHistory(userMessage);
-                }
-                this.llmConversationHistory.push({ role: 'user', content: userText });
-                this.lastUserQuery = userText;
-
-                // Correlation payload
-                const stepId = (this.currentStepIndex >= 0 && this.currentStepIndex < this.currentPlan.length) ? this.currentPlan[this.currentStepIndex].id : '';
-                const correlation = { planId: this.planId, workflowId: this.planId, stepId, executionId: this.currentExecutionId, runId: this.currentExecutionId, sessionId: this.activeSessionId } as any;
-                if (!this.brainstormContextId) { this.brainstormContextId = uuidv4(); }
-
-                // SDK Standard: Send user query to BrainstormAgent
-                await this.dispatch({
-                    messageId: uuidv4(),
-                    sender: AgentNames.ORCHESTRATOR,
-                    recipient: AgentNames.BRAINSTORM,
-                    timestamp: new Date().toISOString(),
-                    contextId: this.brainstormContextId,
-                    parts: [
-                        { kind: 'text', text: userText },
-                        { kind: 'data', mimeType: 'application/vnd.a2a+json', data: {
-                            task: userText,
-                            query: userText,
-                            correlation
-                        }}
-                    ]
-                } as any);
-                return;
-            } else {
-                this.developerLogService.log(`User query classified as simple: "${userText}". Responding conversationally.`);
-                // Directly route to Conversational agent for simple queries
-                // We need to get a conversational response from LLM
-                const convTimeout = Math.min(Math.max(10000, this.configService.getRequestTimeout(OrchestratorAgent.AGENT_ID) || 60000), 25000);
-                const streaming = this.configService.isStreamingEnabled(OrchestratorAgent.AGENT_ID);
-                const langCodeRaw = (vscode.env.language || 'en').toLowerCase();
-                const baseLangCode = (langCodeRaw.split('-')[0] || langCodeRaw);
-
-                // MCP SDK Standard: Use tool calling loop for conversational flow (same as handleInfoQuery)
-                const mcpClient = getMcpClient();
-
-                // Dynamically fetch tools from MCP server
-                let tools: any[] = [];
-                try {
-                    const mcpClientAny = mcpClient as any;
-                    if (typeof mcpClientAny.listTools === 'function') {
-                        const toolsList = await mcpClientAny.listTools();
-                        if (toolsList?.tools && Array.isArray(toolsList.tools)) {
-                            tools = toolsList.tools.map((tool: any) => {
-                                const inputSchema = tool.inputSchema || {};
-                                const properties: any = {};
-                                const required: string[] = [];
-
-                                if (inputSchema.properties && typeof inputSchema.properties === 'object') {
-                                    for (const [key, value] of Object.entries(inputSchema.properties)) {
-                                        properties[key] = value;
-                                    }
-                                }
-                                if (Array.isArray(inputSchema.required)) {
-                                    required.push(...inputSchema.required);
-                                }
-
-                                // MCP SDK Standard: Preserve full tool description for better LLM understanding
-                                const toolDescription = tool.description?.description || tool.description || tool.title || '';
-                                const toolTitle = tool.description?.title || tool.name;
-
-                                return {
-                                    type: 'function',
-                                    function: {
-                                        name: tool.name,
-                                        description: toolDescription || `${toolTitle}: ${tool.name}`,
-                                        parameters: {
-                                            type: 'object',
-                                            properties,
-                                            required: required.length > 0 ? required : undefined,
-                                            additionalProperties: false
-                                        }
-                                    }
-                                };
-                            });
-                            this.developerLogService.log(`[OrchestratorAgent] Loaded ${tools.length} tools for conversational flow: ${tools.map((t: any) => t.function?.name || t.name || 'unknown').join(', ')}`);
-                        }
-                    }
-                } catch (e: any) {
-                    console.warn(`[OrchestratorAgent] Failed to get tools from MCP:`, e?.message || e);
-                    tools = getCoreLLMTools(provider);
-                }
-
-                if (tools.length === 0) {
-                    tools = getCoreLLMTools(provider);
-                }
-
-                console.log(`[OrchestratorAgent] Tools loaded for conversational flow: ${tools.length} tools`);
-                console.log(`[OrchestratorAgent] Tool names: ${tools.map((t: any) => t.function?.name || t.name || 'unknown').join(', ')}`);
-
-                // Build system message with tool usage instructions (includes available tools list)
-                // Get workspace roots for context
-                const ws = vscode.workspace.workspaceFolders;
-                const workspaceRoots = ws ? ws.map(f => f.uri.fsPath) : [process.cwd()];
-
-                const systemInstructionsRaw = await getConversationalPrompt('', this.llmConversationHistory, tools, {
-                    provider,
-                    model,
-                    locale: baseLangCode,
-                    ideLanguage: langCodeRaw,
-                    mcpEnabled: tools.length > 0,
-                    workspaceRoots,
-                    uroborosMode: this.autonomousMode,
-                });
-                const systemInstructions = (typeof systemInstructionsRaw === 'string' ? systemInstructionsRaw : String(systemInstructionsRaw || '')).replace('User: ""', '').trim();
-
-                console.log(`[OrchestratorAgent] Generated prompt length: ${systemInstructions.length}`);
-                console.log(`[OrchestratorAgent] Prompt contains "Available Tools": ${systemInstructions.includes('Available Tools')}`);
-                console.log(`[OrchestratorAgent] Prompt contains "FileWriteTool": ${systemInstructions.includes('FileWriteTool') || systemInstructions.includes('file write')}`);
-                console.log(`[OrchestratorAgent] Prompt contains "tool_calls": ${systemInstructions.includes('tool_calls') || systemInstructions.includes('tool calls')}`);
-                
-                // Dynamic Context Loading
-                let dynamicContext = '';
-                try {
-                    dynamicContext = await this.contextService.loadContext(userText);
-                    if (dynamicContext) {
-                        this.developerLogService.log(`[OrchestratorAgent] Loaded dynamic context for query: "${userText.slice(0, 50)}..."`);
-                    }
-                } catch (e) {
-                    console.warn(`[OrchestratorAgent] Failed to load dynamic context:`, e);
-                }
-
-                const localeSystem = systemInstructions;
-
-                // Build conversation history: system message + actual conversation history + current user prompt
-                const convoHistory: LlmMessage[] = [
-                    { role: 'system', content: localeSystem } as LlmMessage,
-                    ...this.llmConversationHistory.slice(-10), // Last 10 messages for context
-                    { role: 'user', content: userText } as LlmMessage // Direct user text
-                ];
-
-                // MCP SDK Standard: Tool calling loop
-                const messages: LlmMessage[] = convoHistory;
-                let maxIterations = 5;
-                let finalResponse = '';
-                let hasStartedStreaming = false;
-                let hadToolCalls = false;
-                let confirmationRequested = false;
-
-                try {
-                while (maxIterations-- > 0) {
-                    let response;
-                    try {
-                        this.developerLogService.log(`[OrchestratorAgent] Calling LLM (iteration ${5 - maxIterations}/${5})...`);
-                        console.log(`[OrchestratorAgent] About to call requestLLMCompletion...`);
-                        
-                        // [Fix for Autonomous Execution]
-                        // If we are NOT in autonomous mode, and hadToolCalls is true (meaning we just ran tools),
-                        // we disable tools for this next call to force a summary/interpretation and prevent chaining.
-                        const currentTools = (!this.autonomousMode && hadToolCalls) ? [] : tools;
-
-                        response = await this.llmService.requestLLMCompletion(
-                            provider,
-                            messages,
-                            apiKeys[0] || '',
-                            endpoint,
-                            currentTools,
-                            model,
-                            streaming ? (chunk: string) => {
-                                if (!hasStartedStreaming) {
-                                    this.postMessageToSession(sessionId, 'responseStart', {});
-                                    hasStartedStreaming = true;
-                                }
-                                if (hasStartedStreaming) {
-                                    this.postMessageToSession(sessionId, 'responseChunk', { text: chunk });
-                                }
-                            } : undefined,
-                            convTimeout
-                        );
-                        console.log(`[OrchestratorAgent] requestLLMCompletion returned. Response type: ${typeof response}, has choices: ${!!response?.choices}`);
-                        console.log(`[OrchestratorAgent] LLM response received. Has choices: ${!!response?.choices}, choices length: ${response?.choices?.length || 0}`);
-                        console.log(`[OrchestratorAgent] response.choices[0] exists: ${!!response?.choices?.[0]}`);
-                        console.log(`[OrchestratorAgent] response.choices[0].message exists: ${!!response?.choices?.[0]?.message}`);
-                        console.log(`[OrchestratorAgent] response.choices[0].message.content type: ${typeof response?.choices?.[0]?.message?.content}, length: ${String(response?.choices?.[0]?.message?.content || '').length}`);
-                        console.log(`[OrchestratorAgent] response.choices[0].message.content value: "${String(response?.choices?.[0]?.message?.content || '').slice(0, 200)}"`);
-                        this.developerLogService.log(`[OrchestratorAgent] LLM response received. Has choices: ${!!response?.choices}, choices length: ${response?.choices?.length || 0}`);
-                        console.log(`[OrchestratorAgent] After developerLogService.log call`);
-                    } catch (error: any) {
-                        console.error(`[OrchestratorAgent] Error calling LLM:`, error);
-                        this.developerLogService.log(`[OrchestratorAgent] Error calling LLM: ${error?.message || error}`);
-                        if (!finalResponse) {
-                            finalResponse = `Error: ${error?.message || 'Failed to get response from LLM'}`;
-                        }
-                        break;
-                    }
-
-                    console.log(`[OrchestratorAgent] Checking if response is null/undefined...`);
-                    if (!response) {
-                        console.error(`[OrchestratorAgent] LLM returned null/undefined response`);
-                        this.developerLogService.log(`[OrchestratorAgent] LLM returned null/undefined response`);
-                        if (!finalResponse) {
-                            finalResponse = 'I received an invalid response from the LLM. Please try again.';
-                        }
-                        break;
-                    }
-
-                    console.log(`[OrchestratorAgent] Response is valid, extracting assistantMessage...`);
-                    const assistantMessage = response.choices?.[0]?.message;
-                    console.log(`[OrchestratorAgent] assistantMessage extracted. Has message: ${!!assistantMessage}`);
-                    if (!assistantMessage) {
-                        console.log(`[OrchestratorAgent] No assistant message in response. Response structure: ${JSON.stringify(response).slice(0, 500)}`);
-                        this.developerLogService.log(`[OrchestratorAgent] No assistant message in response. Response structure: ${JSON.stringify(response).slice(0, 500)}`);
-                        console.error(`[OrchestratorAgent] No assistant message in response:`, response);
-                        // If no message and no final response, set error message
-                        if (!finalResponse && !hadToolCalls) {
-                            finalResponse = 'I received an invalid response from the LLM. Please try again.';
-                        }
-                        break;
-                    }
-
-                    console.log(`[OrchestratorAgent] Assistant message received. Content type: ${typeof assistantMessage.content}, has content: ${!!assistantMessage.content}`);
-                    console.log(`[OrchestratorAgent] assistantMessage.content value: "${String(assistantMessage.content || '').slice(0, 200)}"`);
-                    console.log(`[OrchestratorAgent] assistantMessage.content length: ${String(assistantMessage.content || '').length}`);
-                    console.log(`[OrchestratorAgent] assistantMessage keys: ${Object.keys(assistantMessage).join(', ')}`);
-                    console.log(`[OrchestratorAgent] assistantMessage.tool_calls: ${JSON.stringify(assistantMessage.tool_calls || null)}`);
-                    this.developerLogService.log(`[OrchestratorAgent] Assistant message received. Content type: ${typeof assistantMessage.content}, has content: ${!!assistantMessage.content}`);
-
-                    console.log(`[OrchestratorAgent] Extracting tool_calls...`);
-                    const toolCalls = assistantMessage.tool_calls;
-                    console.log(`[OrchestratorAgent] toolCalls extracted. Has tool_calls: ${!!toolCalls}, length: ${toolCalls?.length || 0}`);
-                    this.developerLogService.log(`[OrchestratorAgent] LLM response - has tool_calls: ${!!toolCalls && toolCalls.length > 0}, tool_calls count: ${toolCalls?.length || 0}, content length: ${(assistantMessage.content || '').toString().length}`);
-                    if (toolCalls && toolCalls.length > 0) {
-                        console.log(`[OrchestratorAgent] Tool calls received: ${toolCalls.map((tc: any) => tc.function?.name || 'unknown').join(', ')}`);
-                        this.developerLogService.log(`[OrchestratorAgent] Tool calls received: ${toolCalls.map((tc: any) => tc.function?.name || 'unknown').join(', ')}`);
-                    }
-
-                    // If there are tool calls, ignore the content (it may contain THOUGHT tags or explanations)
-                    // Only use content if there are no tool calls
-                    console.log(`[OrchestratorAgent] Checking if tool_calls exist...`);
-                    if (!toolCalls || toolCalls.length === 0) {
-                        console.log(`[OrchestratorAgent] No tool_calls, processing content as final response...`);
-                        const rawContent = (assistantMessage.content ?? '').toString().trim();
-                        console.log(`[OrchestratorAgent] rawContent length: ${rawContent.length}, rawContent: "${rawContent.slice(0, 200)}"`);
-                        // Parse and clean THOUGHT tags before using as final response
-                        const { userFacingText } = this.parseThoughtAndUserFacingText(rawContent);
-                        console.log(`[OrchestratorAgent] After parseThoughtAndUserFacingText. userFacingText length: ${userFacingText?.length || 0}, userFacingText: "${userFacingText?.slice(0, 200) || ''}"`);
-                        finalResponse = userFacingText || rawContent;
-                        console.log(`[OrchestratorAgent] finalResponse set. Length: ${finalResponse.length}, content: "${finalResponse.slice(0, 100)}"`);
-                        messages.push(assistantMessage);
-                        console.log(`[OrchestratorAgent] Breaking from loop (no tool_calls)`);
-                        break;
-                    }
-
-                    console.log(`[OrchestratorAgent] Tool_calls exist, processing tool execution...`);
-
-                    // Mark that we had tool calls
-                    hadToolCalls = true;
-
-                    // If tool calls exist, add the assistant message with tool_calls
-                    // Keep original content but clean THOUGHT tags if present
-                    // Some LLM APIs need content to be present even with tool_calls
-                    let cleanedContent = (assistantMessage.content ?? '').toString();
-                    if (cleanedContent) {
-                        const { userFacingText } = this.parseThoughtAndUserFacingText(cleanedContent);
-                        cleanedContent = userFacingText || cleanedContent;
-                    }
-                    const cleanAssistantMessage = {
-                        ...assistantMessage,
-                        content: cleanedContent // Keep cleaned content for API compatibility
-                    };
-                    messages.push(cleanAssistantMessage as any);
-
-                    // Execute tool calls
-                    // Optimization: Execute independent read tools in parallel
-                    const toolResults: LlmMessage[] = [];
-                    const toolPromises = toolCalls.map(async (toolCall: any) => {
-                        try {
-                            const toolName = toolCall.function?.name;
-                            // Handle arguments - could be string (JSON) or already an object
-                            let toolArgs: any;
-                            if (typeof toolCall.function?.arguments === 'string') {
-                                try {
-                                    toolArgs = JSON.parse(toolCall.function.arguments);
-                                } catch (e) {
-                                    console.error(`[OrchestratorAgent] Failed to parse tool arguments as JSON:`, toolCall.function.arguments);
-                                    toolArgs = {};
-                                }
-                            } else if (typeof toolCall.function?.arguments === 'object' && toolCall.function?.arguments !== null) {
-                                toolArgs = toolCall.function.arguments;
-                            } else {
-                                toolArgs = {};
-                            }
-                            console.log(`[OrchestratorAgent] Parsed tool args for ${toolName}:`, JSON.stringify(toolArgs).slice(0, 200));
-
-                            // Pre-execution check for FileWriteTool to determine if it's a Create or Update
-                            let wasAlreadyExisting = false;
-                            if (toolName === 'FileWriteTool') {
-                                const filePath = toolArgs.filePath || toolArgs.path;
-                                if (filePath) {
-                                    try {
-                                        await fs.access(filePath);
-                                        wasAlreadyExisting = true;
-                                    } catch {
-                                        wasAlreadyExisting = false;
-                                    }
-                                }
-                            }
-                            // Sanitize content for FileWriteTool to fix literal \n issues
-                            if (toolName === 'FileWriteTool' && toolArgs.content) {
-                                // If content has literal "\n" strings but NO actual newlines, it's likely a flattened string.
-                                // In this case, we unescape the newlines. 
-                                // We avoid doing this if actual newlines exist, to preserve literal "\n" in things like print("\n")
-                                if (typeof toolArgs.content === 'string' && toolArgs.content.includes('\\n') && !toolArgs.content.includes('\n')) {
-                                   toolArgs.content = toolArgs.content.replace(/\\n/g, '\n');
-                                }
-                            }
-
-
-                            this.developerLogService.log(`[OrchestratorAgent] Executing tool in conversational flow: ${toolName}`);
-
-                            // Show progress log for MCP tool execution
-                            const toolDisplayName = toolName || 'Unknown tool';
-                            const toolArgsStr = Object.keys(toolArgs).length > 0
-                                ? ` with ${Object.keys(toolArgs).join(', ')}`
-                                : '';
-                            this.postMessageToSession(sessionId, 'progressLog', { text: `[MCP] Executing ${toolDisplayName}${toolArgsStr}...` });
-
-                            const toolResult = await mcpClient.callTool({
-                                name: toolName,
-                                arguments: toolArgs
-                            } as any);
-
-                            // Show completion log
-                            this.postMessageToSession(sessionId, 'progressLog', { text: `[MCP] ${toolDisplayName} completed` });
-
-                            // Handle ThinkTool - display thought in UI
-                            if (toolName === 'ThinkTool') {
-                                const thoughtContent = toolArgs.thought;
-                                if (thoughtContent) {
-                                    this.developerLogService.log(`[OrchestratorAgent] ThinkTool executed. Thought: ${thoughtContent.slice(0, 50)}...`);
-                                    
-                                    // Send thought to UI
-                                    const thoughtMessage: ChatMessage = {
-                                        author: 'agent',
-                                        content: [],
-                                        thought: thoughtContent,
-                                        senderName: OrchestratorAgent.AGENT_ID,
-                                        timestamp: new Date().toISOString()
-                                    };
-                                    await this.addMessageToHistory(thoughtMessage);
-                                    this.postMessageToSession(sessionId, 'response', { 
-                                        text: '', 
-                                        thought: thoughtContent,
-                                        senderName: thoughtMessage.senderName, 
-                                        timestamp: thoughtMessage.timestamp 
-                                    });
-
-                                    return {
-                                        role: 'tool',
-                                        content: 'Thought recorded.',
-                                        tool_call_id: toolCall.id,
-                                        name: toolName
-                                    } as any;
-                                }
-                            }
-
-                            // Handle FileWriteTool result
-                            if (toolName === 'FileWriteTool' && toolResult) {
-                                const filePath = toolArgs.filePath || toolArgs.path;
-                                if (filePath) {
-                                    this.developerLogService.log(`[OrchestratorAgent] FileWriteTool executed. Updating UI for file: ${filePath}`);
-                                    
-                                    // Record artifact
-                                    try {
-                                        this.recordArtifact(filePath, 'created');
-                                    } catch (e) {
-                                        console.warn(`[OrchestratorAgent] Failed to record artifact:`, e);
-                                    }
-
-                                    // Run Linter to get summary for the UI card
-                                    let lintSummary = '0 lint errors';
-                                    try {
-                                        const lintTimeoutMs = 15000;
-                                        const lintResult = await Promise.race([
-                                            mcpClient.callTool({
-                                                name: 'LintTool',
-                                                arguments: { paths: [filePath], fix: true }
-                                            } as any),
-                                            new Promise((_, reject) => setTimeout(() => reject(new Error('LintTool timed out')), lintTimeoutMs))
-                                        ]);
-
-                                        if (lintResult) {
-                                            const errorCount = (lintResult as any).errorCount || 0;
-                                            const warningCount = (lintResult as any).warningCount || 0;
-                                            if (errorCount > 0 || warningCount > 0) {
-                                                lintSummary = `${errorCount} error${errorCount !== 1 ? 's' : ''}, ${warningCount} warning${warningCount !== 1 ? 's' : ''}`;
-                                                this.postMessageToSession(sessionId, 'progressLog', { text: `[Linter] ${lintSummary} in ${path.basename(filePath)}` });
-                                            }
-                                        }
-                                    } catch (e: any) {
-                                        this.developerLogService.log(`[OrchestratorAgent] Linter check failed: ${e?.message || e}`);
-                                        lintSummary = 'Linter unavailable';
-                                    }
-
-                                    // Send UI update directly (createFileCard)
-                                    // Use wasAlreadyExisting to correctly label "Create New File" vs "Update File"
-                                    this.postMessageToSession(sessionId, 'createFileCard', {
-                                        senderName: OrchestratorAgent.AGENT_ID,
-                                        timestamp: new Date().toISOString(),
-                                        filePath: filePath,
-                                        relativePath: path.basename(filePath),
-                                        title: wasAlreadyExisting ? 'Update File' : 'Create New File',
-                                        suggestionType: wasAlreadyExisting ? 'edit-file' : 'create-file',
-                                        lintSummary: lintSummary
-                                    });
-
-                                    // Trigger Post-Actions Suggestions (Follow-up Tasks)
-                                    // SDK Standard: Provide next steps after any file operation
-                                    // This ensures the "What about follow-up suggestions?" issue is resolved
-                                    this.sendDirectActionSummary(filePath, OrchestratorAgent.AGENT_ID).catch(e => {
-                                        console.error('[OrchestratorAgent] Failed to send direct action summary:', e);
-                                    });
-                                }
-                            }
-
-                            const resultContent = (toolResult as any)?.structuredContent
-                                ? JSON.stringify((toolResult as any).structuredContent)
-                                : ((toolResult as any)?.content?.find?.((b: any) => b?.type === 'text')?.text || JSON.stringify(toolResult));
-
-                            toolResults.push({
-                                role: 'tool',
-                                content: resultContent,
-                                tool_call_id: toolCall.id,
-                                name: toolName
-                            } as any);
-                        } catch (error: any) {
-                            console.error(`[OrchestratorAgent] Tool execution failed (${toolCall.function?.name}):`, error);
-                            this.developerLogService.log(`[OrchestratorAgent] Tool execution failed (${toolCall.function?.name}): ${error.message}`);
-                            
-                            this.postMessageToSession(sessionId, 'progressLog', { text: `[MCP] ${toolCall.function?.name} failed: ${error.message}` });
-
-                            return {
-                                role: 'tool',
-                                content: `Error executing tool ${toolCall.function?.name}: ${error.message}`,
-                                tool_call_id: toolCall.id,
-                                name: toolCall.function?.name
-                            } as any;
-                        }
-                    });
-
-
-                    // Wait for all tools to complete
-                    const results = await Promise.all(toolPromises);
-                    toolResults.push(...results);
-
-                    // Stop here if strictly single-turn mode (non-Uroboros)
-                    // If we just executed tools, we want to return results to the user and wait for their next command,
-                    // UNLESS this is Uroboros mode which allows autonomous chains.
-                    // Exception: If the LLM didn't produce any tools, we simply continue (likely just thinking/talking).
-                    /*
-                    if (!this.configService.getUroborosMode() && hadToolCalls) {
-                         this.developerLogService.log(`[OrchestratorAgent] Non-Uroboros mode: Stopping loop after tool execution.`);
-                         
-                         // Force a final response if one wasn't generated yet so the loop exits gracefully
-                         if (!finalResponse) {
-                             // We don't set finalResponse string here to avoid double-printing, 
-                             // but we break to stop further LLM calls.
-                             // The logic below will handle 'no final response' by showing 'Task completed'.
-                         }
-                         break;
-                    }
-                    */
-                    // [Refactoring Note]: The user wants strict control. Even if the LLM wants to continue, we must stop.
-                    // However, we must ensure 'tool results' are fed back to the LLM *OR* shown to the user.
-                    // Current architecture is: User -> LLM -> Tools -> LLM -> Final Response.
-                    // If we break here, the second LLM call (to interpret tool results) never happens.
-                    // This is actually BAD for things like "List files and tell me what you see".
-                    // The standard "ReAct" loop *requires* one more call.
-                    // So we allow *one* follow-up call (the natural loop behavior), but we should ensure `maxIterations` isn't abused.
-                    // `maxIterations` is already 5. The issue is likely the LLM deciding to do *another* task after the first one.
-                    
-                    // Correct Fix: If tool calls happened, we allow the loop to continue SO THAT the LLM can see the output.
-                    // BUT, we must ensure the NEXT LLM response doesn't trigger *new* tools if we want to be strict.
-                    // A better approach for "User declined Uroboros" is that the specific 'Plan' logic shouldn't have started.
-                    // This seems to be a deeper issue where the LLM *ignored* the user's "No".
-                    // But to respect the "No Autonomous Mode" rule:
-                    
-                    if (!this.autonomousMode && hadToolCalls) {
-                        // If we are NOT in Uroboros (Autonomous) mode, we should generally stop after tools are done 
-                        // AND the LLM has had a chance to comment on them.
-                        // However, to prevent "chaining" (Agent decides to do Task B after Task A without asking),
-                        // we limit the remaining iterations to 1.
-                        // This allows the LLM to see the tool output and give a final summary, but prevents it from starting a new tool execution cycle.
-                        if (maxIterations > 1) {
-                             this.developerLogService.log(`[OrchestratorAgent] Non-Uroboros mode (autonomousMode=false): Clamping maxIterations to 1 to allow strictly one follow-up (interpretation).`);
-                             maxIterations = 1;
-                        }
-                    }
-                }
-
-                // If we have tool calls but no final response, don't show anything
-                // (tool execution results will be handled in the next iteration or FileWriteTool handler)
-                console.log(`[OrchestratorAgent] Loop ended. finalResponse: ${!!finalResponse}, finalResponse length: ${finalResponse?.length || 0}, hadToolCalls: ${hadToolCalls}, maxIterations remaining: ${maxIterations}`);
-                this.developerLogService.log(`[OrchestratorAgent] Loop ended. finalResponse: ${!!finalResponse}, hadToolCalls: ${hadToolCalls}, maxIterations remaining: ${maxIterations}`);
-
-                console.log(`[OrchestratorAgent] Checking finalResponse. !finalResponse: ${!finalResponse}, finalResponse.trim(): ${finalResponse?.trim() || 'empty'}`);
-                if (!finalResponse || !finalResponse.trim()) {
-                    console.log(`[OrchestratorAgent] finalResponse is empty or whitespace. hadToolCalls: ${hadToolCalls}`);
-                    if (hadToolCalls) {
-                        // Tool calls were executed, but LLM didn't provide a final response
-                        if (!confirmationRequested) {
-                            this.developerLogService.log(`[OrchestratorAgent] Tool calls executed but no final response. Requesting confirmation from LLM.`);
-                            messages.push({ role: 'user', content: 'The tool has been executed successfully. Please provide a brief confirmation message to the user.' } as any);
-                            confirmationRequested = true;
-                            // continue; // Retry LLM with the new prompt (implicit loop)
-                            // continue; // Retry LLM with the new prompt (implicit loop)
-                        } else {
-                            // We already asked, and it still returned empty. Fallback to hardcoded.
-                            this.developerLogService.log(`[OrchestratorAgent] LLM returned empty response even after confirmation request. Using fallback.`);
-                            finalResponse = 'Task completed.';
-                        }
-                        
-                        // Do NOT close stream here, let the normal flow handle it with the new finalResponse
-                        /*
-                        if (hasStartedStreaming) {
-                            this._onDidPostMessage.fire({ command: 'responseEnd', payload: {} });
-                        }
-                        */
-                        // If we still have iterations left, the loop will continue automatically
-                        // Otherwise, we return here
-                        if (maxIterations <= 0) {
-                            return; // Exit early - tool execution is sufficient
-                        }
-                        // Otherwise, continue the while loop
-                    } else {
-                        this.developerLogService.log(`[OrchestratorAgent] No final response and no tool calls. Setting error message.`);
-                        finalResponse = 'I couldn\'t process that request.';
-                    }
-                }
-
-                // Only parse and display if we have a final response
-                console.log(`[OrchestratorAgent] Final response check: has finalResponse=${!!finalResponse}, length=${finalResponse?.length || 0}, trimmed length: ${finalResponse?.trim()?.length || 0}`);
-                this.developerLogService.log(`[OrchestratorAgent] Final response check: has finalResponse=${!!finalResponse}, length=${finalResponse?.length || 0}`);
-
-                if (finalResponse && finalResponse.trim()) {
-                    console.log(`[OrchestratorAgent] finalResponse is valid, processing for UI...`);
-                    const { thought, userFacingText } = this.parseThoughtAndUserFacingText(finalResponse || null);
-                    const finalText = userFacingText || finalResponse;
-
-                    // Skip if finalText is empty or only whitespace
-                    if (!finalText || !finalText.trim()) {
-                        this.developerLogService.log(`[OrchestratorAgent] Final text is empty after parsing. Closing stream if started.`);
-                        if (hasStartedStreaming) {
-                            this._onDidPostMessage.fire({ command: 'responseEnd', payload: {} });
-                        }
-                        return;
-                    }
-
-                    this.developerLogService.log(`[OrchestratorAgent] Sending final response to UI. Length: ${finalText.length}`);
-
-                    // DO NOT send final response as progressLog - it will be shown in bubble
-                    // progressLog is only for intermediate status updates, not final responses
-
-                    if (streaming) {
-                        if (!hasStartedStreaming) {
-                            this.postMessageToSession(sessionId, 'responseStart', {});
-                        }
-                        this.postMessageToSession(sessionId, 'responseEnd', { thought: thought || undefined });
-                    } else {
-                        this.postMessageToSession(sessionId, 'responseStart', {});
-                        this.postMessageToSession(sessionId, 'responseChunk', { text: finalText });
-                        this.postMessageToSession(sessionId, 'responseEnd', { thought: thought || undefined });
-                    }
-
-                    // After responseEnd, send pending createFileCard
-                    if ((this as any)._pendingFileCard) {
-                        this.postMessageToSession(sessionId, 'createFileCard', (this as any)._pendingFileCard);
-                        (this as any)._pendingFileCard = null;
-                    }
-
-                    const agentMessage: ChatMessage = {
-                        author: 'agent',
-                        content: [{ type: 'text', text: finalText }],
-                        thought: thought || undefined,
-                        senderName: OrchestratorAgent.AGENT_ID,
-                        timestamp: new Date().toISOString()
-                    };
-                    await this.addMessageToHistory(agentMessage);
-                    this.llmConversationHistory.push({ role: 'assistant', content: finalText });
-                    await this.saveCurrentChatHistory();
-                    await this.saveCurrentLlmHistory();
-                    await this.updateSessionTitleSummary();
-                } else {
-                    // No final response but tool calls were executed
-                    // This can happen if the LLM thinks the tool output is sufficient, but we should always confirm to the user.
-                    this.developerLogService.log(`[OrchestratorAgent] No final response to send after tool execution. Generating fallback.`);
-                    
-                    let fallbackText = 'Task completed.';
-                    // If we can infer context from the last tool call, that would be better, but for now a generic message is better than silence.
-                    // If TaskCompletionTool was used, we can say "Task completed."
-                    
-                    // We should send this as a response so the user knows it's done.
-                    if (streaming) {
-                        if (!hasStartedStreaming) {
-                            this.postMessageToSession(sessionId, 'responseStart', {});
-                        }
-                        this.postMessageToSession(sessionId, 'responseChunk', { text: fallbackText });
-                        this.postMessageToSession(sessionId, 'responseEnd', {});
-                    } else {
-                        this.postMessageToSession(sessionId, 'responseStart', {});
-                        this.postMessageToSession(sessionId, 'responseChunk', { text: fallbackText });
-                        this.postMessageToSession(sessionId, 'responseEnd', {});
-                    }
-
-                    // After responseEnd, send pending createFileCard
-                    if ((this as any)._pendingFileCard) {
-                        this.postMessageToSession(sessionId, 'createFileCard', (this as any)._pendingFileCard);
-                        // Do NOT send intermediate responses to UI for tool calls.
-                        // Only log them.
-                        this.developerLogService.log(`[OrchestratorAgent] Pending file card sent after fallback response.`);
-                        (this as any)._pendingFileCard = null;
-                    }
-
-                    const agentMessage: ChatMessage = {
-                        author: 'agent',
-                        content: [{ type: 'text', text: fallbackText }],
-                        senderName: OrchestratorAgent.AGENT_ID,
-                        timestamp: new Date().toISOString()
-                    };
-                    await this.addMessageToHistory(agentMessage);
-                    this.llmConversationHistory.push({ role: 'assistant', content: fallbackText });
-                    await this.saveCurrentChatHistory();
-                    await this.saveCurrentLlmHistory();
-                    await this.updateSessionTitleSummary();
-                }
-                } catch (error: any) {
-                    console.error(`[OrchestratorAgent] Error in conversational flow:`, error);
-                    this.developerLogService.log(`[OrchestratorAgent] Error in conversational flow: ${error?.message || error}`);
-                    if (!finalResponse) {
-                        finalResponse = `Error: ${error?.message || 'An error occurred while processing your request'}`;
-                    }
-                    // Try to send error response
-                    if (finalResponse) {
-                        this.postMessageToSession(sessionId, 'responseStart', {});
-                        this.postMessageToSession(sessionId, 'responseChunk', { text: finalResponse });
-                        this.postMessageToSession(sessionId, 'responseEnd', {});
-                    }
-                }
-            }
-        } catch (error: any) {
-            console.error('Error classifying user query:', error);
-            this.developerLogService.log(`ERROR: Failed to classify user query. Falling back to plan creation. ${error?.message || String(error)}`);
-            await this.createAndExecutePlan(userText); // Fallback to plan creation on error
+            await this.execute(requestContext, eventBus);
+        } catch (e: any) {
+             this.developerLogService.log(`[OrchestratorAgent] Router Execution failed: ${e?.message || e}`);
+             // Fallback: Default to Brainstorm if Router fails catastrophically
+             await this.dispatch({
+                messageId: uuidv4(),
+                sender: AgentNames.ORCHESTRATOR,
+                recipient: AgentNames.BRAINSTORM,
+                timestamp: new Date().toISOString(),
+                contextId: contextId,
+                parts: [
+                    { kind: 'text', text: userText },
+                    { kind: 'data', mimeType: 'application/vnd.a2a+json', data: {
+                        task: userText,
+                        query: userText
+                    }}
+                ]
+            } as any);
         }
     }
 
-    private async createAndExecutePlan(userText: string): Promise<void> {
-        this.suppressPostActionsSuggestions = false; // Reset suppression for new user request
-        this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Creating a plan...' } });
 
-        const userLanguage = vscode.env.language;
-        const specialistAgentDescriptions = this._specialistAgentDescriptions;
 
-        const planPrompt = getPlanPrompt(userLanguage, userText, specialistAgentDescriptions, this.autonomousMode);
-
+    protected async handleExecutionResult(result: string, requestContext: RequestContext, eventBus: ExecutionEventBus, correlationId?: string): Promise<void> {
+        let parsedResult: any;
         try {
-            const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
-            const apiKeys = await this.configService.getApiKeys();
-            const endpoint = this.configService.getEndpoint();
-            const provider = this.configService.getLlmProvider();
-            const timeout = this.configService.getRequestTimeout(OrchestratorAgent.AGENT_ID);
-            const planSchema = CREATE_EXECUTION_PLAN_SCHEMA;
-            const planPromise = this.llmService.requestLLMCompletion(
-                provider,
-                [{ role: 'user', content: planPrompt }],
-                apiKeys[0] || '',
-                endpoint,
-                [],
-                model,
-                undefined,
-                timeout,
-                { structured: { mode: 'json_schema', schema: planSchema, schemaName: 'create_execution_plan' } }
-            );
-            const planTimeoutMs = Math.min(Math.max(12000, timeout || 60000), 30000);
-            let response: any;
-            try {
-                response = await Promise.race([
-                    planPromise,
-                    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('PlanTimeout')), planTimeoutMs))
-                ]);
-            } catch (e: any) {
-                if (e && e.message === 'PlanTimeout') {
-                    this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'Plan generation is slow; using a fast fallback.' } });
-                    // Create simple fallback plan
-                    const fallbackPlan: ExecutionPlan = {
-                        analysis: {
-                            complexity_score: 3,
-                            requires_decomposition: false,
-                            workflow_phases: ['implement'],
-                            reasoning: 'Timeout fallback - creating simple plan'
-                        },
-                        plan: [{
-                            step_number: 1,
-                            phase: 'implement',
-                            description: userText,
-                            target_agent: 'CodeEditAgent',
-                            dependencies: []
-                        }]
-                    };
-                    
-                    // Process fallback plan
-                    this.planId = uuidv4();
-                    this.deferredPostActions = [];
-                    this.pendingPostActions = [];
-                    this.isAwaitingPostActionsConfirmation = false;
-                    this.suppressPostActionsSuggestions = false;
-                    this.producedArtifacts.clear();
-                    
-                    const sortedSteps = this.topologicalSort(fallbackPlan.plan);
-                    this.currentPlan = sortedSteps.map((step: ExecutionStep) => ({
-                        id: `${this.planId}:${step.step_number}`,
-                        description: `${step.target_agent}: ${step.description}`,
-                        status: 'pending'
-                    }));
-                    this.currentStepIndex = -1;
-                    this.currentExecutionId = '';
-                    this.handledExecutions.clear();
-                    
-                    if (this.autonomousMode) {
-                        this._onDidPostMessage.fire({ command: 'displayPlan', payload: { plan: this.currentPlan } });
-                        const planDetails = this.currentPlan.map((step, index) => `${index + 1}. ${step.description}`).join('\n');
-                        const fullResponseMessage = `I created a simplified plan. Proceed?\n${planDetails}`;
-                        const planCreatedMessage: ChatMessage = { author: 'agent', content: [{ type: 'text', text: fullResponseMessage }], senderName: OrchestratorAgent.AGENT_ID, timestamp: new Date().toISOString() };
-                        await this.addMessageToHistory(planCreatedMessage);
-                        this._onDidPostMessage.fire({ command: 'response', payload: { text: fullResponseMessage, senderName: planCreatedMessage.senderName, timestamp: planCreatedMessage.timestamp }});
-                        this.pendingPlan = this.currentPlan.map(step => ({ ...step }));
-                        this.isAwaitingPlanConfirmation = true;
-                        await this.requestPlanConfirmation();
-                        return;
-                    } else {
-                        await this.executePlan();
-                        return;
-                    }
+            // Locate JSON block if wrapped in markdown
+            const jsonMatch = result.match(/```json\n([\s\S]*?)\n```/) || result.match(/\{[\s\S]*\}/);
+            const jsonString = jsonMatch ? jsonMatch[0].replace(/```json\n?|```/g, '') : result;
+            parsedResult = JSON.parse(jsonString);
+        } catch (e) {
+            // New Prompt Rule: Self-Execution = Plain Text.
+            // If JSON parse fails, we treat it as a Direct Answer/Conversation.
+            await this.handleConversationalResponse(result);
+            return;
+        }
+
+        // --- Schema Adaptation ---
+        // New: { targetAgent, thought, payload: { task, complexity, target_file, related_files } }
+        // Old: { chosen_agent, reason, target_file, related_files, complexity_score, intent_type }
+        
+        const payload = parsedResult.payload || {};
+        
+        const chosen_agent = parsedResult.targetAgent || parsedResult.chosen_agent; 
+        const reason = parsedResult.thought || parsedResult.reason || 'No reasoning provided';
+        const target_file = payload.target_file || parsedResult.target_file;
+        const related_files = payload.related_files || parsedResult.related_files;
+        let complexity_score = payload.complexity !== undefined ? payload.complexity : parsedResult.complexity_score;
+        let intent_type = parsedResult.intent_type; // Maintain legacy read if present
+
+        // Task Description: Use refined logic from payload, fallback to raw input
+        const taskDescription = payload.task || requestContext.user_input || '';
+
+        // Normalize complexity (Ensure 0-100)
+        let normalizedScore = typeof complexity_score === 'number' ? complexity_score : 0;
+        // Legacy Safety: If score is 0-10, scale to 0-100 (unless it's explicitly low complexity)
+        if (normalizedScore <= 10 && normalizedScore > 0) normalizedScore = normalizedScore * 10;
+        
+        this.developerLogService.log(`[Orchestrator] Routing decision: Agent=${chosen_agent}, Score=${normalizedScore}, Intent=${intent_type || 'N/A'}`);
+
+        // 1. Complex Task Handling (Uroboros Proposal)
+        // Only propose if NOT already in autonomous mode and NOT previously declined
+        const UROBOROS_THRESHOLD = 80;
+        
+        const isComplex = parsedResult.is_complex_task || normalizedScore >= UROBOROS_THRESHOLD;
+
+        if (isComplex && !this.autonomousMode) {
+             const userText = requestContext.user_input || 'Complex Task';
+             const userTextLower = userText.trim().toLowerCase();
+             
+             if (this.declinedUroborosQueries.has(userTextLower)) {
+                 this.developerLogService.log(`[Orchestrator] User previously declined Uroboros for this query. Proceeding with standard routing.`);
+             } else if (this.configService.getUroborosMode()) {
+                 this.developerLogService.log(`[Orchestrator] High complexity detected (${normalizedScore}). Proposing Uroboros Mode.`);
+                 
+                 const proposalMsg = `This task appears to be a high-complexity project (Consistency Score: ${normalizedScore}). Shall I switch to **Uroboros Mode** (Autonomous Agentic Loop) to handle it efficiently?`;
+                 const agentMessage: ChatMessage = {
+                     author: 'agent',
+                     content: [{ type: 'text', text: proposalMsg }],
+                     senderName: OrchestratorAgent.AGENT_ID,
+                     timestamp: new Date().toISOString()
+                 };
+                 await this.addMessageToHistory(agentMessage);
+                 this.postMessageToSession(this.activeSessionId, 'chatMessage', agentMessage);
+                 
+                 this.pendingUroborosProposal = { userText };
+                 return; // Stop processing, wait for user confirmation
+             } else {
+                 this.developerLogService.log(`[Orchestrator] High complexity (${normalizedScore}) but Uroboros disabled. Proceeding with standard routing.`);
+             }
+        }
+
+        // 2. Routing Decision
+        if (chosen_agent && chosen_agent !== 'OrchestratorAgent' && chosen_agent !== 'None') {
+             // Dispatch to Specialist Agent
+             this.developerLogService.log(`[Orchestrator] Dispatching to ${chosen_agent}`);
+             
+             this.postMessageToSession(this.activeSessionId, 'progressLog', { text: `↪️ Handoff to ${chosen_agent}...` });
+
+             const response = await this.dispatch({
+                messageId: uuidv4(),
+                sender: OrchestratorAgent.AGENT_ID,
+                recipient: chosen_agent,
+                timestamp: new Date().toISOString(),
+                contextId: correlationId || uuidv4(),
+                type: 'task', // Unified task type
+                payload: {
+                    task: taskDescription, // Use refined task
+                    context: reason,
+                    targetFile: target_file,
+                    relatedFiles: related_files,
+                    complexity: normalizedScore
                 }
-                throw e;
-            }
-            const rawContent = (response.choices?.[0]?.message?.content ?? response.choices?.[0]?.text ?? '').toString().trim();
-
-            if (rawContent) {
-                console.log('[OrchestratorAgent] rawContent:', rawContent);
-
-                // Try to parse as ExecutionPlan
-                let executionPlan: ExecutionPlan | null = null;
-                try {
-                    executionPlan = JSON.parse(rawContent);
-                    
-                    // Validate structure
-                    if (!executionPlan || !executionPlan.analysis || !executionPlan.plan || !Array.isArray(executionPlan.plan)) {
-                        console.warn('[Orchestrator] Invalid ExecutionPlan structure, treating as conversational');
-                        executionPlan = null;
-                    }
-                } catch (parseError) {
-                    console.log('[Orchestrator] Failed to parse as ExecutionPlan, treating as conversational response');
-                    executionPlan = null;
-                }
-
-                // If successfully parsed as ExecutionPlan
-                if (executionPlan) {
-                    // Log analysis
-                    console.log(`[Orchestrator] Complexity: ${executionPlan.analysis.complexity_score}/10`);
-                    console.log(`[Orchestrator] Phases: ${executionPlan.analysis.workflow_phases.join(' → ')}`);
-                    console.log(`[Orchestrator] Reasoning: ${executionPlan.analysis.reasoning}`);
-                    
-                    // Initialize new plan
-                    this.planId = uuidv4();
-                    this.deferredPostActions = [];
-                    this.pendingPostActions = [];
-                    this.isAwaitingPostActionsConfirmation = false;
-                    this.suppressPostActionsSuggestions = false;
-                    this.producedArtifacts.clear();
-                    
-                    // Topological sort by dependencies
-                    const sortedSteps = this.topologicalSort(executionPlan.plan);
-                    
-                    // Convert to existing plan format for compatibility
-                    this.currentPlan = sortedSteps.map((step: ExecutionStep) => ({
-                        id: `${this.planId}:${step.step_number}`,
-                        description: `${step.target_agent}: ${step.description}`,
-                        status: 'pending'
-                    }));
-                    
-                    this.currentStepIndex = -1;
-                    this.currentExecutionId = '';
-                    this.handledExecutions.clear();
-                    this.pruneLlmHistoryIfNeeded();
-                    
-                    const firstPendingIndex = this.currentPlan.findIndex(s => s.status === 'pending');
-                    const firstDescription = firstPendingIndex !== -1 ? (this.currentPlan[firstPendingIndex].description || '') : '';
-                    
-                    // Check if first step targets internal planning agents
-                    const firstIsBrainstorm = firstDescription.toLowerCase().startsWith('brainstormagent:');
-                    const firstIsTaskDecomp = firstDescription.toLowerCase().startsWith('taskdecompositionagent:');
-                    
-                    if (firstIsBrainstorm || firstIsTaskDecomp) {
-                        // Do NOT display plan yet; let internal planning agents run first
-                        await this.executePlan();
-                    } else {
-                        if (this.autonomousMode) {
-                            // Autonomous mode: show plan and ask confirmation
-                            this._onDidPostMessage.fire({ command: 'displayPlan', payload: { plan: this.currentPlan } });
-                            const planDetails = this.currentPlan.map((step, index) => `${index + 1}. ${step.description}`).join('\n');
-                            const fullResponseMessage = `I have created the following plan. Please review it and confirm to proceed:\n${planDetails}`;
-                            const planCreatedMessage: ChatMessage = { author: 'agent', content: [{ type: 'text', text: fullResponseMessage }], senderName: OrchestratorAgent.AGENT_ID, timestamp: new Date().toISOString() };
-                            await this.addMessageToHistory(planCreatedMessage);
-                            this._onDidPostMessage.fire({ command: 'response', payload: { text: fullResponseMessage, senderName: planCreatedMessage.senderName, timestamp: planCreatedMessage.timestamp }});
-                            this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: 'I have created a plan. Shall I proceed? Please reply with yes/ok to continue.' } });
-                            this.pendingPlan = this.currentPlan.map(step => ({ ...step }));
-                            this.isAwaitingPlanConfirmation = true;
-                            await this.requestPlanConfirmation();
-                        } else {
-                            // Normal mode: show PLAN widget and execute
-                            try {
-                                this._onDidPostMessage.fire({ command: 'displayPlan', payload: { plan: this.currentPlan } });
-                            } catch {}
-                            await this.executePlan();
-                        }
-                    }
-                } else {
-                    // Treat as conversational response
-                    await this.handleConversationalResponse(rawContent);
+             });
+             
+             // Handle Response from Specialist Agent
+             if (response) {
+                let replyText = '';
+                // Handle various response formats (String bridge, A2A Message, etc.)
+                if (typeof response === 'string') {
+                    replyText = response;
+                } else if (response.parts) { // Standard A2A Message
+                    replyText = response.parts.filter((p: any) => p.kind === 'text').map((p: any) => p.text).join('\n');
+                } else if (response.content) { // Legacy Message
+                    replyText = Array.isArray(response.content) ? response.content.map((c: any) => c.text || JSON.stringify(c)).join('') : String(response.content);
+                } else if (response.payload && response.payload.text) { // Payload wrapper
+                    replyText = response.payload.text;
                 }
 
-
-            } else {
-                throw new Error('LLM failed to generate a plan.');
-            }
-        } catch (error) {
-            console.error('Failed to create or parse plan:', error);
-            this.handleError(error as Error);
+                if (replyText) {
+                    await this.handleConversationalResponse(replyText);
+                }
+             }
+             
+        } else {
+             // Direct Answer / Self-Execution
+             // Triggered if targetAgent is OrchestratorAgent OR if output was Plain Text (caught in catch block)
+             await this.handleConversationalResponse(reason || result);
         }
     }
 
     /**
      * Topological sort using Kahn's algorithm
+
      * Ensures steps are executed in dependency order
      */
-    private topologicalSort(steps: ExecutionStep[]): ExecutionStep[] {
-        const stepMap = new Map<number, ExecutionStep>();
-        const inDegree = new Map<number, number>();
-        const adjList = new Map<number, number[]>();
-        
-        // Build graph
-        for (const step of steps) {
-            stepMap.set(step.step_number, step);
-            inDegree.set(step.step_number, 0);
-            adjList.set(step.step_number, []);
-        }
-        
-        for (const step of steps) {
-            for (const dep of step.dependencies) {
-                if (!adjList.has(dep)) {
-                    console.warn(`[Orchestrator] Dependency ${dep} not found for step ${step.step_number}`);
-                    continue;
-                }
-                adjList.get(dep)!.push(step.step_number);
-                inDegree.set(step.step_number, inDegree.get(step.step_number)! + 1);
-            }
-        }
-        
-        // Kahn's algorithm
-        const queue: number[] = [];
-        for (const [node, degree] of inDegree.entries()) {
-            if (degree === 0) {
-                queue.push(node);
-            }
-        }
-        
-        const sorted: ExecutionStep[] = [];
-        while (queue.length > 0) {
-            const current = queue.shift()!;
-            sorted.push(stepMap.get(current)!);
-            
-            for (const neighbor of adjList.get(current) || []) {
-                inDegree.set(neighbor, inDegree.get(neighbor)! - 1);
-                if (inDegree.get(neighbor) === 0) {
-                    queue.push(neighbor);
-                }
-            }
-        }
-        
-        // Check for cycles
-        if (sorted.length !== steps.length) {
-            console.error('[Orchestrator] Detected dependency cycle in plan!');
-            // Return unsorted as fallback
-            return steps;
-        }
-        
-        return sorted;
-    }
+
 
     /**
      * Handle response when it's not a plan (Q&A, greeting, etc.)
@@ -3479,22 +1640,9 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
         this._onDidPostMessage.fire({ command: 'response', payload: { text: resultText }});
     }
 
-    private async requestPlanConfirmation(): Promise<void> {
-        try {
-            // Avoid calling LLM here to prevent unexpected outputs mixing into the confirmation flow
-            const confirmationText = 'I have created a plan. Shall I proceed? Please reply with yes/ok to continue.';
 
-            // Do not add to chat history; show as a non-intrusive status banner instead
-            this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: confirmationText } });
-            // Deep copy the plan to avoid reference issues
-            this.pendingPlan = this.currentPlan.map(step => ({ ...step })); // Set the pending plan
-            this.isAwaitingPlanConfirmation = true;
-            await this.saveCurrentChatHistory();
-            await this.saveCurrentLlmHistory();
-        } catch (e) {
-            this.handleError(e as any);
-        }
-    }
+
+
 
     private async handlePlanConfirmation(userText: string): Promise<boolean> {
         try {
@@ -3658,659 +1806,60 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
         }
     }
 
-    private async executePlan(): Promise<void> {
-        try {
-            if (this.currentPlan.length === 0) { return; }
-            const nextStepIndex = this.currentPlan.findIndex(step => step.status === 'pending');
-            if (nextStepIndex === -1) {
-                if (this.isCompletingPlan) { return; }
-                this.isCompletingPlan = true;
-                try {
-                    const statusText = AgentMessages.orchestrator.planFinished;
-                    this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: statusText } });
-                    await this.sendPlanCompletionSummary(false);
-                } finally {
-                    this.isCompletingPlan = false;
-                    this.currentPlan = [];
-                    // Reset dispatch guards on plan completion
-                    this.lastDispatchedStep = '';
-                    this.lastDispatchedAt = 0;
-                    // Reset correlation
-                    this.planId = '';
-                    this.currentStepIndex = -1;
-                    this.currentExecutionId = '';
-                    this.handledExecutions.clear();
-                    this.producedArtifacts.clear();
-                    await this.saveStateCheckpoint();
-                }
-                return;
-            }
 
-            const step = this.currentPlan[nextStepIndex];
-            try { console.log(`[OrchestratorAgent] executePlan -> nextStepIndex=${nextStepIndex}, step="${step.description}"`); } catch {}
-            this.currentPlan[nextStepIndex].status = 'in-progress';
-            this._onDidPostMessage.fire({ command: 'updatePlanStep', payload: { index: nextStepIndex, status: 'in-progress' } });
-            // Correlate this execution
-            this.currentStepIndex = nextStepIndex;
-            this.currentExecutionId = uuidv4();
-            this.currentPlan[nextStepIndex].executionId = this.currentExecutionId;
-            this.currentPlan[nextStepIndex].executionId = this.currentExecutionId;
-            try { console.log(`[OrchestratorAgent] Correlation set -> planId=${this.planId}, stepId=${this.currentPlan[nextStepIndex].id}, executionId=${this.currentExecutionId}`); } catch {}
-            
-            await this.saveStateCheckpoint();
 
-            await this.routeAndDelegate(step.description);
-        } catch (error: any) {
-            console.error('[OrchestratorAgent] Error executing plan step:', error);
-            this.developerLogService.log(`ERROR: Failed to execute plan step. ${error.message}`);
 
-            // Mark current step as error
-            const currentStepIndex = this.currentPlan.findIndex(step => step.status === 'in-progress');
-            if (currentStepIndex !== -1) {
-                this.currentPlan[currentStepIndex].status = 'error';
-                this._onDidPostMessage.fire({ command: 'updatePlanStep', payload: { index: currentStepIndex, status: 'error' } });
-            }
 
-            // Try to continue with next step, or finish plan if no more steps
-            const nextStepIndex = this.currentPlan.findIndex(step => step.status === 'pending');
-            if (nextStepIndex !== -1) {
-                // Continue with next step
-                this.developerLogService.log(`Continuing to next step after error.`);
-                await this.executePlan();
-            } else {
-                // No more steps, mark plan as finished (with errors)
-                const hasErrors = this.currentPlan.some(step => step.status === 'error');
-                const statusText = hasErrors ? 'Plan finished with errors.' : 'Plan finished.';
-                this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: statusText } });
-                await this.sendPlanCompletionSummary(hasErrors);
-                this.currentPlan = [];
-                this.producedArtifacts.clear();
-            }
-        }
-    }
-
-    private async routeAndDelegate(stepDescription: string): Promise<void> {
-        const specialistAgents = OrchestratorAgent.SPECIALIST_AGENTS;
-
-        // Build agent descriptions including external agents
-        const allAgents = [...OrchestratorAgent.SPECIALIST_AGENTS];
-        for (const [name, info] of this.externalAgents) {
-            allAgents.push({ name, description: info.description });
-        }
-
-        const specialistDescriptions = allAgents
-            .map(agent => `- ${agent.name}: ${agent.description}`)
-            .join('\n');
-
-            const activeFile = this.contextService.getActiveFile();
-            const lastSource = this.lastSourceFilePath;
-            
-            const routingPrompt = getRoutingPrompt(
-                stepDescription, 
-                specialistDescriptions, 
-                { activeFile, lastSourceFile: lastSource }
-            );
-
-            // try { console.log('[OrchestratorAgent] Routing Prompt:', routingPrompt); } catch {}
-        // System message should come first, followed by user message
+    private generateDiffHtml(original: string, modified: string): string {
+        const patch = diff.createPatch('diff', original, modified);
+        let html = '<pre><code>';
+        const lines = patch.split('\n');
+        let inHunk = false;
         
-        // Load custom agent configuration
-        const { loadPromptConfig } = require('./utils/promptLoader');
-        const customPrompt = await loadPromptConfig(OrchestratorAgent.AGENT_ID);
-        const fullRoutingPrompt = customPrompt ? `${routingPrompt}\n\n${customPrompt}` : routingPrompt;
-
-        const messages: LlmMessage[] = [ { role: 'system', content: fullRoutingPrompt }, { role: 'user', content: stepDescription } ];
-
-        try {
-            const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
-            const apiKeys = await this.configService.getApiKeys();
-            const endpoint = this.configService.getEndpoint();
-            const provider = this.configService.getLlmProvider();
-            const timeout = this.configService.getRequestTimeout(OrchestratorAgent.AGENT_ID);
-
-            // Manual timeout guard: if routing LLM call stalls, we will default to Conversational
-            const routingSchema = { 
-                type: 'object', 
-                properties: { 
-                    chosen_agent: { type: 'string' }, 
-                    reason: { type: 'string' },
-                    target_file: { type: 'string', description: 'The inferred target file name (e.g. dfs.py) if applicable.' }
-                }, 
-                required: ['chosen_agent', 'reason'] 
-            } as any;
-            const routingPromise = this.llmService.requestLLMCompletion(
-                provider,
-                messages,
-                apiKeys[0] || '',
-                endpoint,
-                [],
-                model,
-                undefined,
-                timeout,
-                { structured: { mode: 'json_schema', schema: routingSchema, schemaName: 'RoutingDecision' } }
-            );
-            const routeTimeoutMs = timeout ? Math.max(10000, timeout) : 25000;
-            let rawRoutingStr = '';
-            try {
-                const response = await Promise.race([
-                    routingPromise,
-                    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('RoutingTimeout')), routeTimeoutMs))
-                ]);
-                const rawRouting = (response as any).choices?.[0]?.message?.content ?? (response as any).choices?.[0]?.text ?? '';
-                rawRoutingStr = (rawRouting || '').toString().trim();
-            } catch (e: any) {
-                if (e && e.message === 'RoutingTimeout') {
-                    console.warn('[OrchestratorAgent] Routing LLM timed out. Defaulting to Conversational.');
-                    this.developerLogService.log('Routing LLM timed out. Defaulting to Conversational.');
-                } else {
-                    throw e;
-                }
-            }
-            const { userFacingText: cleanedLlmContent } = this.parseThoughtAndUserFacingText(rawRoutingStr || null);
-
-            let parsedRoutingDecision: { chosen_agent: string, reason: string } | null = null;
-            // 1) Try direct JSON
-            try {
-                if (cleanedLlmContent) {
-                    parsedRoutingDecision = JSON.parse(cleanedLlmContent);
-                }
-            } catch {}
-            // 2) Try from code block
-            if (!parsedRoutingDecision) {
-                try {
-                    const match = (cleanedLlmContent || '').match(/```[a-zA-Z0-9]*\n([\s\S]*?)```/);
-                    const within = match ? match[1] : (cleanedLlmContent || '');
-                    if (within) {
-                        parsedRoutingDecision = JSON.parse(within);
-                    }
-                } catch {}
-            }
-            // 3) Slice between first '{' and last '}'
-            if (!parsedRoutingDecision) {
-                try {
-                    const candidate = cleanedLlmContent || rawRoutingStr || '';
-                    const first = candidate.indexOf('{');
-                    const last = candidate.lastIndexOf('}');
-                    if (first !== -1 && last !== -1 && last > first) {
-                        const slice = candidate.slice(first, last + 1);
-                        parsedRoutingDecision = JSON.parse(slice);
-                    }
-                } catch {}
-            }
-            // 4) Retry once with strict reminder
-            if (!parsedRoutingDecision) {
-                try {
-                    const strictReminder = `\n\nIMPORTANT: Output ONLY valid JSON: {\"chosen_agent\": string, \"reason\": string}. No prose. No code fences.`;
-                    const strictMessages: LlmMessage[] = [ { role: 'system', content: routingPrompt + strictReminder }, { role: 'user', content: stepDescription } ];
-                    const retry = await this.llmService.requestLLMCompletion(
-                        provider,
-                        strictMessages,
-                        apiKeys[0] || '',
-                        endpoint,
-                        [],
-                        model,
-                        undefined,
-                        timeout,
-                        { structured: { mode: 'json_schema', schema: routingSchema, schemaName: 'RoutingDecision' } }
-                    );
-                    const retryRaw = (retry.choices?.[0]?.message?.content ?? (retry as any).choices?.[0]?.text ?? '').toString().trim();
-                    const { userFacingText: retryClean } = this.parseThoughtAndUserFacingText(retryRaw || null);
-                    try {
-                        parsedRoutingDecision = JSON.parse(retryClean || retryRaw || '');
-                    } catch {}
-                    if (!parsedRoutingDecision) {
-                        const first = (retryClean || retryRaw || '').indexOf('{');
-                        const last = (retryClean || retryRaw || '').lastIndexOf('}');
-                        if (first !== -1 && last !== -1 && last > first) {
-                            parsedRoutingDecision = JSON.parse((retryClean || retryRaw || '').slice(first, last + 1));
-                        }
-                    }
-                } catch (error) {
-                    console.error('[OrchestratorAgent] Failed strict retry for routing JSON:', error);
-                    this.developerLogService.log(`Failed strict retry for routing JSON: ${error}`);
-                }
-            }
-
-            // SDK Standard: 실제로 등록된 Agent만 사용
-            // 메인 작업용 Agent (6개)
-            const registeredAgentNames = new Set([
-                'BrainstormAgent',              // PLAN.md 생성 (브레인스토밍)
-                'TaskDecompositionAgent',       // TASK.md 생성 (작업 분해)
-                'CodeEditAgent',                // 파일 생성/수정
-                'CodeAnalysisAgent',            // 심볼 검색 (ContextManagementAgent 의존)
-                'RefactoringSuggestionAgent',   // 리팩토링 제안
-                'ContextManagementAgent',       // 대화 컨텍스트 관리
-                // 후속 작업용 Agent (3개) - deferRegex로 필터링됨
-                'DocumentationGenerationAgent',
-                'ReadmeGenerationAgent',
-                'TestGenerationAgent'
-            ]);
-            
-            // Dynamically add external agents from a2a-servers.json
-            for (const [agentName] of this.externalAgents) {
-                registeredAgentNames.add(agentName);
-            }
-            
-            // 제거될 Agent (등록 안됨):
-            // - SecurityAnalysisAgent (MCP SecurityVulnerabilityTool로 대체)
-            // - CodeWatcherAgent, CommentGenerationAgent, GitignoreGenerationAgent
-            // - ProgressTrackingAgent, ContextArchiveAgent, AILedLearningAgent
-
-            let finalChosenAgent = 'CodeEditAgent'; // Default to CodeEditAgent for code tasks
-            if (parsedRoutingDecision && parsedRoutingDecision.chosen_agent) {
-                const chosenAgent = parsedRoutingDecision.chosen_agent;
-                
-                if (chosenAgent === 'Conversational') {
-                    // Handle Conversational routing directly by responding to the user
-                    // Instead of using the 'reason' (which is often just a justification in English),
-                    // we generate a proper conversational response in the user's language.
-                    const userLanguage = vscode.env.language || 'en';
-                    const conversationalPrompt = getConversationalPrompt(stepDescription, this.llmConversationHistory, [], userLanguage);
-                    
-                    this.developerLogService.log(`[OrchestratorAgent] Routing to Conversational. Generating response in ${userLanguage}...`);
-
-                    let responseText = '';
-                    try {
-                        // Load custom prompt for conversational context if available
-                        const { loadPromptConfig } = require('./utils/promptLoader');
-                        const chatCustomPrompt = await loadPromptConfig(OrchestratorAgent.AGENT_ID);
-                        const chatMessages: any[] = [{ role: 'user', content: conversationalPrompt }];
-                        if (chatCustomPrompt) {
-                            chatMessages.unshift({ role: 'system', content: chatCustomPrompt });
-                        }
-
-                        const convResp = await this.llmService.requestLLMCompletion(
-                            provider,
-                            chatMessages,
-                            apiKeys[0] || '',
-                            endpoint,
-                            [],
-                            model,
-                            undefined,
-                            timeout
-                        );
-                        responseText = (convResp.choices?.[0]?.message?.content ?? (convResp as any).choices?.[0]?.text ?? '').toString().trim();
-                    } catch (e: any) {
-                        this.developerLogService.log(`[OrchestratorAgent] Failed to generate conversational response: ${e.message}`);
-                        responseText = parsedRoutingDecision.reason || "I'm sorry, I couldn't generate a response.";
-                    }
-
-                    const responseMessage: ChatMessage = {
-                        author: 'agent',
-                        content: [{ type: 'text', text: responseText }],
-                        senderName: OrchestratorAgent.AGENT_ID,
-                        timestamp: new Date().toISOString()
-                    };
-                    await this.addMessageToHistory(responseMessage);
-                    this._onDidPostMessage.fire({ command: 'response', payload: { text: responseText, senderName: responseMessage.senderName, timestamp: responseMessage.timestamp } });
-                    
-                    // Mark current step as completed (or skipped) since we handled it conversationally
-                    return; 
-                } else if (chosenAgent === 'BrainstormAgent' && !this.autonomousMode) {
-                    // BrainstormAgent는 Uroboros Mode에서만 사용
-                    this.developerLogService.log(`BrainstormAgent selected by routing LLM but Uroboros Mode is disabled. Falling back to CodeEditAgent.`);
-                    finalChosenAgent = 'CodeEditAgent';
-                } else if (registeredAgentNames.has(chosenAgent)) {
-                    finalChosenAgent = chosenAgent;
-                } else {
-                    console.warn(`[OrchestratorAgent] LLM chose an unregistered agent: "${chosenAgent}". Falling back to CodeEditAgent.`);
-                    this.developerLogService.log(`LLM chose an unregistered agent: "${chosenAgent}". Falling back to CodeEditAgent.`);
-                }
-            } else {
-                // No heuristic fallback; strictly default to CodeEditAgent on invalid or missing routing JSON
-                console.warn('[OrchestratorAgent] LLM did not return a valid JSON routing decision. Defaulting to CodeEditAgent.');
-                this.developerLogService.log('LLM did not return a valid JSON routing decision. Defaulting to CodeEditAgent.');
-            }
-
-            console.log(`[OrchestratorAgent] Final chosen agent: ${finalChosenAgent} for step: ${stepDescription}`);
-            this.developerLogService.log(`Final chosen agent: ${finalChosenAgent} for step: ${stepDescription}`);
-            // Do not emit routing decision as chat to UI (keep logs only)
-            try {
-                const reason = (parsedRoutingDecision && parsedRoutingDecision.reason) ? parsedRoutingDecision.reason : '';
-                if (reason) { this.developerLogService.log(`Routing reason: ${reason}`); }
-            } catch {}
-
-            // Duplicate-dispatch suppression: if the same step was dispatched very recently
-            const now = Date.now();
-            if (this.lastDispatchedStep === stepDescription && (now - this.lastDispatchedAt) < 8000 && this.lastUserInputAt <= this.lastDispatchedAt) {
-                console.warn('[OrchestratorAgent] Suppressing duplicate dispatch without new user input:', stepDescription);
-                this.developerLogService.log(`[OrchestratorAgent] Suppressed duplicate dispatch for step: ${stepDescription}`);
-                return;
-            }
-
-            // LLM-Driven Context Selection (Primary)
-            // If the Routing LLM explicitly identified a target file, use it.
-            let resolvedFilePath = parsedRoutingDecision?.target_file;
-            if (resolvedFilePath) {
-                 this.developerLogService.log(`[OrchestratorAgent] LLM Explicitly selected target file: ${resolvedFilePath}`);
-            } else {
-                 // Fallback: Check if lastUserQuery implies a specific file via strict instruction
-                 // But user requested NO keyword parsing. So we skip regex.
-                 // We rely purely on the routing LLM to update 'target_file' field.
-            }
-
-            // 2. Active File Priority
-            // If no explicit file in query (or LLM didn't pick one), check active file.
-            if (!resolvedFilePath) {
-                const activeFile = this.contextService.getActiveFile();
-                if (activeFile) {
-                    resolvedFilePath = activeFile;
-                    // Update persistence if it changed
-                    if (this.lastContextFilePath !== activeFile) {
-                        this.lastContextFilePath = activeFile;
-                        this.developerLogService.log(`[OrchestratorAgent] Context Switch: Active file priority. Context updated to ${activeFile}`);
-                    }
-                } else {
-                    // 3. No Active File -> Clear Context
-                    if (this.lastContextFilePath) {
-                        this.developerLogService.log(`[OrchestratorAgent] Context Reset: No active file. Clearing persistent context.`);
-                        this.lastContextFilePath = undefined;
-                    }
-                    // Implicitly, resolvedFilePath remains undefined.
-                }
-            }
-            // 4. Smart Context Swap
-            // If context is implicit (Active/History) and points to Test/Artifact,
-            // but Agent is Docs/Test/Readme -> Swap to Source.
-            // Heuristic: Documents and Tests are usually derived from Source.
-            // If user did NOT explicitly specify a file (extractedFilePath is undefined),
-            // and we are just following the active focus or history,
-            // and that focus/history is a Test or Artifact,
-            // and the intended task (Agent) is one that typically targets Source...
-            // THEN swap to the last known Source File.
-            // 4. Smart Context Swap (Disable per user request: "LLM Prompt로 제어해줘")
-            // Rely purely on Routing Prompt to set 'target_file'.
-
-
-
-
-
-
-            // Smart Context Resolution:
-            // If we extracted a relative filename (e.g. "dfs.py") and we have a lastContextFilePath (e.g. "/abs/path/to/dfs.py")
-            // that matches the filename, prefer the absolute path from context.
-            if (resolvedFilePath && !path.isAbsolute(resolvedFilePath) && this.lastContextFilePath) {
-                const extractedName = path.basename(resolvedFilePath);
-                const contextName = path.basename(this.lastContextFilePath);
-                if (extractedName.toLowerCase() === contextName.toLowerCase()) {
-                    this.developerLogService.log(`[OrchestratorAgent] Using lastContextFilePath (${this.lastContextFilePath}) instead of resolving ${resolvedFilePath} against root.`);
-                    resolvedFilePath = this.lastContextFilePath;
-                } else {
-                    // Smart Context Resolution v2: Try resolving against the directory of the last context file
-                    try {
-                        const contextDir = path.dirname(this.lastContextFilePath);
-                        const candidate = path.join(contextDir, resolvedFilePath);
-                        // If lastContextFilePath is outside workspace, we prefer its dir.
-                        const ws = vscode.workspace.workspaceFolders;
-                        const root = ws?.[0]?.uri?.fsPath || '';
-                        if (root && !this.lastContextFilePath.startsWith(root)) {
-                             resolvedFilePath = candidate;
-                             this.developerLogService.log(`[OrchestratorAgent] Resolving ${extractedName} against external context dir: ${contextDir} -> ${resolvedFilePath}`);
-                        }
-                    } catch {}
-                }
-            }
-            // Fallback: use active editor file from ContextService
-            if (!resolvedFilePath) {
-                const activeFile = this.contextService.getActiveFile() || '';
-                resolvedFilePath = activeFile;
-
-                // Smart Context Switching (Heuristic):
-                // If the active file is a test or documentation file, and the user didn't specify a file,
-                // try to find the corresponding source file.
-                // This is a safety net for when the LLM routing didn't explicitly pick a file.
-                if (activeFile && (activeFile.includes('test') || activeFile.includes('docs') || activeFile.endsWith('.md'))) {
-                    try {
-                        const baseName = path.basename(activeFile);
-                        // e.g. test_dfs.py -> dfs.py, test_dfs.md -> dfs.py
-                        const sourceNameCandidate = baseName.replace(/^test_/, '').replace(/^docs_/, '').replace(/\.md$/, '.py').replace(/\.test\./, '.');
-                        
-                        if (sourceNameCandidate !== baseName) {
-                            const dir = path.dirname(activeFile);
-                            // Check same dir
-                            const candidate1 = path.join(dir, sourceNameCandidate);
-                            // Check parent dir (common for docs/test structure)
-                            const candidate2 = path.join(path.dirname(dir), sourceNameCandidate);
-                            // Check src dir
-                            const candidate3 = path.join(path.dirname(dir), 'src', sourceNameCandidate);
-
-                            // We can't synchronously check file existence easily here without fs, 
-                            // but we can check if it matches a known pattern or just suggest it if the task implies code analysis.
-                            // For now, let's rely on the fact that if the user asked for "analysis" and we are in a doc, we probably want the code.
-                            // But blindly switching might be bad if the user DOES want to analyze the test.
-                            
-                            // Let's only switch if the task description strongly implies "source code" or "implementation"
-                            // and NOT "test" or "documentation".
-                            // LLM-based decision to avoid keyword hardcoding
-                            const shouldSwitch = await this.shouldSwitchContextWithLLM(this.lastUserQuery || '', activeFile, sourceNameCandidate);
-                            
-                            if (shouldSwitch) {
-                                    
-                                // Try to resolve via workspace search (best effort)
-                                // Since we can't search here easily, we will just log a suggestion or swap if we are confident.
-                                // Let's swap to candidate2 (parent dir) or candidate1 (same dir) if it looks like a source file name.
-                                if (sourceNameCandidate.endsWith('.py') || sourceNameCandidate.endsWith('.ts') || sourceNameCandidate.endsWith('.js')) {
-                                    this.developerLogService.log(`[OrchestratorAgent] Context Switch: Active file is test/doc (${activeFile}), but task implies source analysis. Switching context to: ${sourceNameCandidate}`);
-                                    // Prefer candidate1 (same dir) if it exists? We can't check.
-                                    // But usually test_dfs.py is in same dir as dfs.py or in tests/.
-                                    // If activeFile is d:\...\test_dfs.py, candidate1 is d:\...\dfs.py.
-                                    resolvedFilePath = candidate1;
-                                    
-                                    // PERSISTENCE FIX: Update lastContextFilePath so subsequent steps use this new context
-                                    this.lastContextFilePath = resolvedFilePath;
-                                    this.developerLogService.log(`[OrchestratorAgent] Persisted new context: ${this.lastContextFilePath}`);
-                                }
-                            }
-                        }
-                    } catch {}
-                }
-            }
-
-
-            // BUT: If the agent is CodeAnalysisAgent or others that might need absolute paths, we should be careful.
-            // Actually, for consistency, we should generally prefer absolute paths internally if available,
-            // or at least ensure that if we have an absolute path, we don't break it by making it relative
-            // if the agent expects absolute.
-            // However, the issue reported is that CodeAnalysisAgent received "test_dfs.py" (relative)
-            // when it should have received the full path.
-            // The logic below forces relative path if it's within the workspace.
-            // We will CHANGE this to keep it absolute if it was already absolute,
-            // OR only normalize for display purposes, but pass the absolute path in the payload.
-            
-            // Current logic:
-            // if (resolvedFilePath && path.isAbsolute(resolvedFilePath)) {
-            //     const wsFolders = vscode.workspace.workspaceFolders;
-            //     if (wsFolders && wsFolders.length > 0) {
-            //         const root = wsFolders[0].uri.fsPath;
-            //         const rel = path.relative(root, resolvedFilePath);
-            //         if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-            //             resolvedFilePath = rel;
-            //             try { console.log(`[OrchestratorAgent] Normalized path to relative: ${resolvedFilePath}`); } catch {}
-            //         }
-            //     }
-            // }
-
-            // NEW LOGIC: Do NOT force relative path. Keep it absolute.
-            // Most agents (CodeEdit, CodeAnalysis) work better with absolute paths or can handle them.
-            // Relative paths are ambiguous without a clear root.
-            // We will only log the relative path for debugging but keep resolvedFilePath absolute.
-            if (resolvedFilePath && path.isAbsolute(resolvedFilePath)) {
-                const wsFolders = vscode.workspace.workspaceFolders;
-                if (wsFolders && wsFolders.length > 0) {
-                    const root = wsFolders[0].uri.fsPath;
-                    const rel = path.relative(root, resolvedFilePath);
-                    if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-                         // Just log it, don't change resolvedFilePath
-                        try { console.log(`[OrchestratorAgent] Path is inside workspace: ${rel} (keeping absolute: ${resolvedFilePath})`); } catch {}
-                    }
-                }
-            }
-
-            try { console.log(`[OrchestratorAgent] routeAndDelegate resolvedFilePath: "${resolvedFilePath}" (extracted="${extractedFilePath}", lastContext="${this.lastContextFilePath}", active="${this.contextService.getActiveFile()}")`); } catch {}
-            // Log absolute path check
-            if (resolvedFilePath && !path.isAbsolute(resolvedFilePath)) {
-                try { console.log(`[OrchestratorAgent] WARNING: resolvedFilePath is RELATIVE: ${resolvedFilePath}. This may cause issues for agents expecting absolute paths.`); } catch {}
-                
-                // Try to resolve it to absolute if it's relative
-                if (this.lastContextFilePath && path.dirname(this.lastContextFilePath)) {
-                     try {
-                        const absCandidate = path.resolve(path.dirname(this.lastContextFilePath), resolvedFilePath);
-                        if (await fs.stat(absCandidate).then(() => true).catch(() => false)) {
-                            resolvedFilePath = absCandidate;
-                            console.log(`[OrchestratorAgent] Auto-resolved relative path to absolute: ${resolvedFilePath}`);
-                        }
-                     } catch {}
-                }
-                if (resolvedFilePath && !path.isAbsolute(resolvedFilePath)) {
-                    const wsFolders = vscode.workspace.workspaceFolders;
-                    if (wsFolders && wsFolders.length > 0) {
-                        const root = wsFolders[0].uri.fsPath;
-                        const absCandidate = path.join(root, resolvedFilePath);
-                         // We don't check existence here strictly, just assume workspace root
-                        resolvedFilePath = absCandidate;
-                        console.log(`[OrchestratorAgent] Auto-resolved relative path to workspace root: ${resolvedFilePath}`);
-                    }
-                }
-            }
-
-            // Validate TestGenerationAgent: requires filePath
-            // SDK Standard: TestGenerationAgent should be able to handle workspace-wide tests or infer context
-            // if (finalChosenAgent === AgentNames.TEST_GENERATION && !resolvedFilePath) {
-            
-            // Passive Tracking via ContextService (Spotlight Model)
-            if (resolvedFilePath && path.isAbsolute(resolvedFilePath)) {
-                this.contextService.updateFocus(resolvedFilePath);
-                
-                // Sync legacy tracking for backward compatibility (if needed)
-                const state = this.contextService.getContextState();
-                if (state.primarySource && this.lastSourceFilePath !== state.primarySource) {
-                    this.lastSourceFilePath = state.primarySource;
-                    this.developerLogService.log(`[OrchestratorAgent] Context Spotlight Moved: Source=${this.lastSourceFilePath}, Active=${state.activeFocus}`);
-                    await this.state.update(OrchestratorAgent.LAST_SOURCE_FILE_KEY, this.lastSourceFilePath);
-                }
-            }
-            //     console.warn(`[OrchestratorAgent] TestGenerationAgent requires filePath but none found. Falling back to CodeEditAgent.`);
-            //     this.developerLogService.log(`TestGenerationAgent requires filePath but none found for step: "${stepDescription}". Falling back to CodeEditAgent.`);
-            //     finalChosenAgent = AgentNames.CODE_EDIT;
-            // }
-
-            // SDK Standard: Plan이 없는 경우 (direct dispatch) 새로운 correlation 생성
-            // 이전 요청의 correlation과 충돌하지 않도록 새로운 planId와 executionId 사용
-            if (this.currentPlan.length === 0) {
-                if (!this.planId) { this.planId = uuidv4(); }
-                if (!this.currentExecutionId) { this.currentExecutionId = uuidv4(); }
-                // 새로운 요청이므로 handledExecutions 초기화 (이전 요청의 executionId와 충돌 방지)
-                this.handledExecutions.clear();
-            }
-
-            // Correlation payload for idempotency (include MAF-style aliases) and sticky session routing
-            const stepId = (this.currentStepIndex >= 0 && this.currentStepIndex < this.currentPlan.length) ? this.currentPlan[this.currentStepIndex].id : '';
-            const correlation = { planId: this.planId, workflowId: this.planId, stepId, executionId: this.currentExecutionId, runId: this.currentExecutionId, sessionId: this.activeSessionId } as any;
-
-            // Special handling for BrainstormAgent
-            if (finalChosenAgent === AgentNames.BRAINSTORM) {
-                // Always allow BrainstormAgent when explicitly selected by the routing LLM
-                // The routing decision already considered whether brainstorming is needed
-                if (!this.brainstormContextId) { this.brainstormContextId = uuidv4(); }
-            }
-
-            // Prepare standard A2A Message for all agents
-            const filePath = resolvedFilePath;
-
-            // SDK Standard: For BrainstormAgent, task is the original user query, not the step description
-            const taskText = finalChosenAgent === AgentNames.BRAINSTORM && this.lastUserQuery
-                ? this.lastUserQuery  // Original user query is the task
-                : stepDescription;     // For other agents, step description is the task
-
-            // SDK Standard: Pass all artifacts created/updated in the current plan as context
-            const contextFiles = Array.from(this.producedArtifacts.keys());
-
-            const standardMessage: A2AMessage<any> = {
-                kind: 'message',
-                messageId: uuidv4(),
-                timestamp: new Date().toISOString(),
-                contextId: finalChosenAgent === AgentNames.BRAINSTORM ? this.brainstormContextId : undefined,
-                recipient: finalChosenAgent,  // Internal: Used by dispatch() for routing, not SDK standard
-                parts: [
-                    { kind: 'text', text: taskText },  // SDK Standard: parts[0].text = task (primary)
-                    { kind: 'data', mimeType: 'application/vnd.a2a+json', data: {
-                        task: taskText,           // SDK Standard: explicit task (duplicate for clarity)
-                        query: stepDescription,   // Internal plan step for reference
-                        filePath: resolvedFilePath, // Explicit assignment
-                        contextFiles,             // <--- NEW: Pass all plan artifacts
-                        correlation
-                    }}
-                ]
-            } as any;
-
-            if (finalChosenAgent === AgentNames.TEST_GENERATION) {
-                try {
-                    console.log(`[OrchestratorAgent] Dispatching to TestGenerationAgent. resolvedFilePath="${resolvedFilePath}"`);
-                    if (!resolvedFilePath) {
-                        console.warn(`[OrchestratorAgent] WARNING: Dispatching to TestGenerationAgent without filePath!`);
-                    }
-                    console.log(`[OrchestratorAgent] standardMessage preview: ${JSON.stringify(standardMessage)}`);
-                } catch {}
-            }
-
-            await this.dispatch(standardMessage);
-            try { console.log(`[OrchestratorAgent] Dispatched to ${finalChosenAgent} (standard A2A)${filePath ? ` with filePath=${filePath}` : ''}`); } catch {}
-            // BrainstormAgent stays interactive with the user; no auto-complete fallback
-
-            // Record last dispatch info
-            this.lastDispatchedStep = stepDescription;
-            this.lastDispatchedAt = Date.now();
-        } catch (error: any) {
-            console.error('Error routing request via LLM:', error);
-            this.developerLogService.log(`ERROR: ${AgentMessages.orchestrator.routeFailed} ${error.message}`);
-
-            // Mark current step as error
-            const currentStepIndex = this.currentPlan.findIndex(step => step.status === 'in-progress');
-            if (currentStepIndex !== -1) {
-                this.currentPlan[currentStepIndex].status = 'error';
-                this._onDidPostMessage.fire({ command: 'updatePlanStep', payload: { index: currentStepIndex, status: 'error' } });
-            }
-
-            // Send error message to user
-            const errorMessage: ChatMessage = {
-                author: 'agent',
-                content: [{ type: 'text', text: `${AgentMessages.orchestrator.stepExecutionFailed}${error.message || AgentMessages.orchestrator.unknownError}` }],
-                senderName: OrchestratorAgent.AGENT_ID,
-                timestamp: new Date().toISOString()
-            };
-            await this.addMessageToHistory(errorMessage);
-            this._onDidPostMessage.fire({ command: 'response', payload: { text: errorMessage.content[0].text, senderName: errorMessage.senderName, timestamp: errorMessage.timestamp } });
-
-            // Try to continue with next step or finish plan
-            const nextStepIndex = this.currentPlan.findIndex(step => step.status === 'pending');
-            if (nextStepIndex !== -1) {
-                // Continue with next step
-                this.developerLogService.log(`Continuing to next step after routing error.`);
-                await this.executePlan();
-            } else {
-                // No more steps, finish plan
-                const hasErrors = this.currentPlan.some(step => step.status === 'error');
-                const statusText = hasErrors ? AgentMessages.orchestrator.planFinishedErrors : AgentMessages.orchestrator.planFinished;
-                this._onDidPostMessage.fire({ command: 'statusUpdate', payload: { text: statusText } });
-                this.parseAndSendFinalResponse(hasErrors ? AgentMessages.orchestrator.planCompletedErrors : AgentMessages.orchestrator.planCompletedSuccess);
-                this.currentPlan = [];
-            }
-        }
+        lines.forEach(line => {
+             if (line.startsWith('@@')) {
+                 inHunk = true;
+                 html += `${line}\n`;
+                 return;
+             }
+             if (!inHunk) {
+                 if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('diff') || line.startsWith('index')) {
+                     return;
+                 }
+             }
+             if (inHunk) {
+                 if (line.startsWith('+') && !line.startsWith('+++')) {
+                     html += `<span style="color: green;">${line}</span>\n`;
+                 } else if (line.startsWith('-') && !line.startsWith('---')) {
+                     html += `<span style="color: red;">${line}</span>\n`;
+                 } else {
+                     html += `${line}\n`;
+                 }
+             }
+        });
+        
+        html += '</code></pre>';
+        return html;
     }
 
-    private addMessageToHistory(message: ChatMessage): void {
+    private async addMessageToHistory(message: ChatMessage): Promise<void> {
         // Deduplicate based on messageId if available
         if (message.messageId) {
-            const exists = this.chatHistory.some(m => m.messageId === message.messageId);
-            if (exists) {
-                console.log(`[OrchestratorAgent] Skipping duplicate message with ID ${message.messageId}`);
-                return;
+            // Check session manager state directly
+            const state = this.sessionManager.getState();
+            if (state) {
+                const exists = state.messages.some(m => m.messageId === message.messageId);
+                if (exists) {
+                    console.log(`[OrchestratorAgent] Skipping duplicate message with ID ${message.messageId}`);
+                    return;
+                }
             }
         }
         
         // Prevent adjacent duplicate user messages (content check fallback)
-        if (message.author === 'user' && this.chatHistory.length > 0) {
-            const lastMsg = this.chatHistory[this.chatHistory.length - 1];
+        const currentMessages = this.sessionManager.getState()?.messages || [];
+        if (message.author === 'user' && currentMessages.length > 0) {
+            const lastMsg = currentMessages[currentMessages.length - 1];
             if (lastMsg.author === 'user') {
                  const lastText = Array.isArray(lastMsg.content) 
                     ? lastMsg.content.map(c => (c as any).text).join('') 
@@ -4325,34 +1874,32 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
             }
         }
         
-        this.chatHistory.push(message);
-        this.saveCurrentChatHistory();
+        // Use SessionManager to add message
+        await this.sessionManager.addMessage(message);
 
-        // SDK Standard: chatHistory와 llmConversationHistory 동기화
-        // agent 메시지도 llmConversationHistory에 추가하여 LLM 프롬프트에 포함되도록 함
+        // SDK Standard: Sync LLM History
         try {
             if (message.author === 'user') {
-                // User 메시지는 이미 handleChatAndSpecialistCommands에서 추가되므로 여기서는 스킵
-                // 단, newChat의 initialQuery 등 직접 호출되는 경우를 위해 추가
                 const text = Array.isArray(message.content)
                     ? message.content.map((c: any) => typeof c === 'string' ? c : (c?.text ?? '')).filter(Boolean).join(' ')
                     : (typeof (message as any).text === 'string' ? (message as any).text : '');
+                
+                // Orchestrator manages llmConversationHistory in memory, so we update it
                 if (text && !this.llmConversationHistory.some(m => m.role === 'user' && m.content === text)) {
                     this.llmConversationHistory.push({ role: 'user', content: text });
-                    this.saveCurrentLlmHistory();
+                    // Sync to SessionManager
+                    await this.sessionManager.updateLlmHistory(this.llmConversationHistory);
                 }
             } else if (message.author === 'agent') {
-                // Agent 메시지를 llmConversationHistory에 추가 (role: 'assistant')
                 const text = Array.isArray(message.content)
                     ? message.content.map((c: any) => typeof c === 'string' ? c : (c?.text ?? '')).filter(Boolean).join(' ')
                     : (typeof (message as any).text === 'string' ? (message as any).text : '');
                 if (text) {
-                    // 중복 방지: 마지막 메시지가 같은 내용이면 스킵 (LLM 응답 후 수동 추가와의 중복 방지)
                     const lastMsg = this.llmConversationHistory[this.llmConversationHistory.length - 1];
                     if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.content !== text) {
                         this.llmConversationHistory.push({ role: 'assistant', content: text });
                         this.pruneLlmHistoryIfNeeded();
-                        this.saveCurrentLlmHistory();
+                        await this.sessionManager.updateLlmHistory(this.llmConversationHistory);
                     }
                 }
             }
@@ -4360,43 +1907,46 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
             console.warn('[OrchestratorAgent] Failed to sync message to llmConversationHistory:', e);
         }
 
+        // Opportunistically refresh session title
+        // Current logic in Orchestrator relies on state directly. Refactor to use SessionManager logic or keep local calc.
+        // We'll keep local calc but use sessionManager.updateSessionTitle
         try {
-            // Update sessions index: increment messageCount, and set a summary-based title on first user message
-            const sessions = this.state.get<any[]>(OrchestratorAgent.SESSIONS_INDEX_KEY, []) || [];
-            const activeId = this.state.get<string>(OrchestratorAgent.ACTIVE_SESSION_ID_KEY, this.activeSessionId || '');
-            const idx = sessions.findIndex(s => s.id === activeId);
-            if (idx >= 0) {
-                const meta = { ...sessions[idx] };
-                meta.messageCount = (meta.messageCount || 0) + 1;
+            const activeId = this.sessionManager.getActiveSessionId();
+            if (activeId) {
                 let shouldDeriveTitle = false;
-                if (message.author === 'user') { shouldDeriveTitle = true; }
-                else if (message.author === 'agent') { shouldDeriveTitle = true; }
-                if (shouldDeriveTitle) {
+                // Only derive if message count is low or if it's the first message?
+                // Old logic: "if message.author === 'user' { ... } else if agent ... "
+                // Realistically, title should be derived from first user message.
+                // Or we call `updateSessionTitleSummary` which uses LLM.
+                // The old logic also had a simple heuristic title setter.
+                
+                // Let's call the AI summarizer
+                (async () => { try { await this.updateSessionTitleSummary(); } catch {} })();
+                
+                // Simple heuristic title fallback if title is default?
+                // We'll leave it to updateSessionTitleSummary for now or existing simple logic.
+                // The old code had simple logic inside addMessageToHistory. 
+                // Let's preserve the simple logic:
+                if (message.author === 'user' || message.author === 'agent') {
+                    // Only update if it's roughly the first message or so?
+                    // The old logic just updated it every time? No, it seemed to just set it.
+                    // Actually, it updated it locally in 'sessions' array then saved.
+                    // We'll skip the simple heuristic and rely on updateSessionTitleSummary (AI) or assume SessionManager handles default.
+                    // Or replicate simple logic:
                     let text = '';
                     if (Array.isArray(message.content)) {
-                        text = message.content
-                            .map((c: any) => typeof c === 'string' ? c : (c?.text ?? ''))
-                            .filter(Boolean)
-                            .join(' ');
+                         text = message.content.map((c: any) => typeof c === 'string' ? c : (c?.text ?? '')).filter(Boolean).join(' ');
                     } else if (typeof (message as any).text === 'string') {
-                        text = (message as any).text;
+                         text = (message as any).text;
                     }
                     const firstLine = (text || '').split(/\r?\n/)[0].trim();
-                    if (firstLine) {
-                        const maxLen = 60;
-                        const summary = firstLine.length > maxLen ? firstLine.slice(0, maxLen - 1) + '…' : firstLine;
-                        meta.title = summary;
+                    if (firstLine && currentMessages.length <= 1) { // Only first message
+                         const maxLen = 60;
+                         const summary = firstLine.length > maxLen ? firstLine.slice(0, maxLen - 1) + '…' : firstLine;
+                         await this.sessionManager.updateSessionTitle(activeId, summary);
                     }
                 }
-                sessions[idx] = meta;
-                const thenable = this.state.update(OrchestratorAgent.SESSIONS_INDEX_KEY, sessions);
-                try { (thenable as any)?.then?.(() => this._onDidPostMessage.fire({ command: 'historyList', payload: { sessions, activeId } })); } catch {}
             }
-        } catch {}
-
-        // Opportunistically refresh session title with AI summarization
-        try {
-            (async () => { try { await this.updateSessionTitleSummary(); } catch {} })();
         } catch {}
     }
 
@@ -4446,18 +1996,6 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
 
     private getSessionLlmHistoryKey(sessionId: string): string {
         return `session:${sessionId}:llmHistory`;
-    }
-
-    private async saveCurrentChatHistory(): Promise<void> {
-        if (this.activeSessionId) { // Use class member
-            await this.state.update(this.getSessionChatHistoryKey(this.activeSessionId), this.chatHistory);
-        }
-    }
-
-    private async saveCurrentLlmHistory(): Promise<void> {
-        if (this.activeSessionId) { // Use class member
-            await this.state.update(this.getSessionLlmHistoryKey(this.activeSessionId), this.llmConversationHistory);
-        }
     }
 
 	private parseThoughtAndUserFacingText(rawContent: string | null): { thought?: string, userFacingText: string } {
@@ -4597,7 +2135,10 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
     }
 
     private async sendPlanCompletionSummary(hasErrors: boolean): Promise<void> {
+        if (this.isSendingPlanSummary) { return; }
+        this.isSendingPlanSummary = true;
         try {
+            try {
             const steps = Array.isArray(this.currentPlan) ? this.currentPlan : [];
             const done = steps.filter(s => s.status === 'completed').length;
             const failed = steps.filter(s => s.status === 'error').length;
@@ -4738,8 +2279,11 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
             this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: logLine } });
 
             this._onDidPostMessage.fire({ command: 'response', payload: { text: summary, senderName: historyMessage.senderName, timestamp: historyMessage.timestamp, requiresUserInput: extractedFollowUps.length > 0, nextActionSuggestion } });
-        } catch (e) {
-            this.parseAndSendFinalResponse(hasErrors ? 'Plan completed with some errors.' : 'All steps completed successfully.');
+            } catch (e) {
+                this.parseAndSendFinalResponse(hasErrors ? 'Plan completed with some errors.' : 'All steps completed successfully.');
+            }
+        } finally {
+            this.isSendingPlanSummary = false;
         }
     }
 
@@ -4775,171 +2319,11 @@ proposalText = `This task may be complex (complexity: ${complexityScore}/100). W
     /**
      * Plan이 없는 경우 (direct dispatch) 요약 생성
      */
-    private async sendDirectActionSummary(filePath: string, senderName: string): Promise<void> {
-        try {
-            const artifacts = Array.from(this.producedArtifacts.entries());
-            const ws = vscode.workspace.workspaceFolders;
-            const root = ws?.[0]?.uri?.fsPath || '';
-            const artifactsList = artifacts.map(([absOrRel, kind]) => {
-                const abs = path.isAbsolute(absOrRel) ? absOrRel : (root ? path.resolve(root, absOrRel) : absOrRel);
-                const rel = root ? path.relative(root, abs) : abs;
-                const link = `file://${abs.replace(/\\/g, '/')}`;
-                return { kind, abs, rel, link };
-            });
 
-            const langCodeRaw = (vscode.env.language || 'en').toLowerCase();
-            const baseLangCode = (langCodeRaw.split('-')[0] || langCodeRaw);
-            const sys = `You are interacting with a user whose VS Code UI language code is "${langCodeRaw}". Always respond in the natural language corresponding to this code (base language "${baseLangCode}").
 
-Using the structured data provided:
-1. Write a concise, natural summary of what was accomplished (file created/updated).
-2. Based on the artifact (created/updated file), suggest 2-3 relevant follow-up tasks that would be valuable next steps (e.g., testing, documentation, refactoring, optimization).
-3. List each follow-up task as a numbered item.
-4. End with a polite question asking whether to proceed with those follow-up tasks (do not include example answers).
-5. At the very end, provide a single line starting with "NEXT_ACTION_SUGGESTION:" followed by a concise next action suggestion in ENGLISH.
 
-Format your response as:
-- Summary of what was accomplished
-- Follow-up suggestions (numbered list)
-- Question to user
-- NEXT_ACTION_SUGGESTION: [English suggestion]`;
 
-            const data = {
-                header: 'Action completed successfully.',
-                artifacts: artifactsList
-            };
 
-            const messages: LlmMessage[] = [
-                { role: 'system', content: sys },
-                { role: 'user', content: JSON.stringify(data) }
-            ];
-
-            let summary = '';
-            try {
-                const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
-                const apiKeys = await this.configService.getApiKeys();
-                const endpoint = this.configService.getEndpoint();
-                const provider = this.configService.getLlmProvider();
-                const timeout = this.configService.getRequestTimeout(OrchestratorAgent.AGENT_ID);
-                const resp = await this.llmService.requestLLMCompletion(
-                    provider,
-                    messages,
-                    apiKeys[0] || '',
-                    endpoint,
-                    [],
-                    model,
-                    undefined,
-                    timeout
-                );
-                summary = (resp as any)?.choices?.[0]?.message?.content || '';
-            } catch {}
-
-            // Extract follow-up tasks from LLM response (numbered list)
-            let extractedFollowUps: string[] = [];
-            let nextActionSuggestion = '';
-            if (summary && typeof summary === 'string') {
-                const lines = summary.split('\n');
-                const followUpPattern = /^\s*\d+\.\s*(.+)$/;
-                const nextActionPattern = /^NEXT_ACTION_SUGGESTION:\s*(.+)$/;
-
-                for (const line of lines) {
-                    const match = line.match(followUpPattern);
-                    if (match && match[1]) {
-                        extractedFollowUps.push(match[1].trim());
-                    }
-                    const nextActionMatch = line.match(nextActionPattern);
-                    if (nextActionMatch && nextActionMatch[1]) {
-                        nextActionSuggestion = nextActionMatch[1].trim();
-                    }
-                }
-                // Remove the NEXT_ACTION_SUGGESTION line from the displayed summary
-                summary = summary.replace(/^NEXT_ACTION_SUGGESTION:.*$/gm, '').trim();
-            }
-
-            if (!summary || typeof summary !== 'string') {
-                // Fallback to deterministic summary
-                const lines: string[] = [];
-                lines.push('# Action Summary');
-                lines.push('Action completed successfully.');
-                lines.push('');
-                if (artifactsList.length > 0) {
-                    lines.push('## Artifacts');
-                    for (const a of artifactsList) {
-                        lines.push(`- [${a.kind}] [${a.rel}](${a.link})`);
-                    }
-                }
-                summary = lines.join('\n');
-            }
-
-            const historyMessage: ChatMessage = {
-                author: 'agent',
-                content: [{ type: 'text', text: summary }],
-                senderName: OrchestratorAgent.AGENT_ID,
-                timestamp: new Date().toISOString()
-            } as any;
-            (historyMessage as any).requiresUserInput = extractedFollowUps.length > 0;
-            await this.addMessageToHistory(historyMessage);
-
-            // When follow-ups exist (extracted from LLM response), set awaiting confirmation
-            if (extractedFollowUps.length > 0) {
-                this.pendingPostActions = extractedFollowUps;
-                this.isAwaitingPostActionsConfirmation = true;
-            }
-
-            // Log a concise summary line to the progress log
-            const logLine = `Action completed successfully. (followUps=${extractedFollowUps.length})`;
-            this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: logLine } });
-
-            // DO NOT send responseStart/responseEnd here - it will overwrite createFileCard messages
-            // Instead, use the response command which adds a new message without affecting existing ones
-            this._onDidPostMessage.fire({
-                command: 'response',
-                payload: {
-                    text: summary,
-                    senderName: historyMessage.senderName,
-                    timestamp: historyMessage.timestamp,
-                    requiresUserInput: extractedFollowUps.length > 0,
-                    nextActionSuggestion
-                }
-            });
-
-            this.llmConversationHistory.push({ role: 'assistant', content: summary });
-            await this.saveCurrentChatHistory();
-            await this.saveCurrentLlmHistory();
-            await this.updateSessionTitleSummary?.();
-        } catch (e) {
-            this.developerLogService.log(`[OrchestratorAgent] Failed to send direct action summary: ${e}`);
-        }
-    }
-
-    // SDK Standard: LLM generates follow-up actions via prompt, not hardcoded
-    private buildDynamicPostActionsFromArtifacts(): string[] {
-        return [];
-    }
-
-    private async runLintForFile(filePath: string): Promise<void> {
-		try {
-			const ws = vscode.workspace.workspaceFolders;
-			const root = ws?.[0]?.uri?.fsPath || '';
-			let target = filePath;
-			if (root) {
-				const abs = path.isAbsolute(filePath) ? filePath : path.resolve(root, filePath);
-				const rel = path.relative(root, abs) || abs;
-				target = rel.replace(/\\/g, '/');
-			}
-			const mcpClient = getMcpClient();
-			const res: any = await (mcpClient as any).callTool({ name: 'LintTool', arguments: { paths: [target], fix: false } });
-			const sc = (res as any)?.structuredContent || {};
-			const errorCount = typeof sc.errorCount === 'number' ? sc.errorCount : 0;
-			const warningCount = typeof sc.warningCount === 'number' ? sc.warningCount : 0;
-			const fileLabel = path.basename(filePath);
-			const summary = `${fileLabel} – ${errorCount} lint errors (${warningCount} warnings)`;
-			this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: summary } });
-			this._onDidPostMessage.fire({ command: 'lintSummary', payload: { filePath, summary } });
-		} catch (e: any) {
-			try { this.developerLogService.log(`[OrchestratorAgent] LintTool failed for ${filePath}: ${e?.message || e}`); } catch {}
-		}
-	}
 
 	private handleError(error: any): void {
         console.error(error);
@@ -4952,394 +2336,103 @@ Format your response as:
         });
 	}
 
-	private updateDiagnostics(filePath: string, issues: any[]): void {
-		// Implementation unchanged
-	}
 
-	// --- Helper: Robustly extract a JSON string array plan from arbitrary text ---
-	private extractPlanArray(text: string): string[] | null {
-        if (!text) { return null; }
-        let candidate = text.trim();
-        try {
-            // 1) Direct JSON parse if starts with '['
-            if (/^\s*\[/.test(candidate)) {
-                const parsed = JSON.parse(candidate);
-                if (Array.isArray(parsed) && parsed.length > 0 && parsed.every(x => typeof x === 'string')) { return parsed as string[]; }
-            }
-        } catch {}
-        // 2) Extract first JSON array anywhere
-        try {
-            const arrayMatch = candidate.match(/(\[[\s\S]*?\])/m);
-            if (arrayMatch && arrayMatch[1]) {
-                const parsed = JSON.parse(arrayMatch[1]);
-                if (Array.isArray(parsed) && parsed.length > 0) { return parsed as string[]; }
-            }
-        } catch {}
-        // 3) Extract from ```json code block
-        try {
-            const cb = candidate.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-            if (cb && cb[1]) {
-                const parsed = JSON.parse(cb[1].trim());
-                if (Array.isArray(parsed) && parsed.length > 0) { return parsed as string[]; }
-            }
-        } catch {}
-        // 4) Fallback: bullet/numbered lines to array
-        try {
-            const lines = candidate
-                .replace(/<\/?DIRECT_RESPONSE>/gi, '')
-                .replace(/<\|[^>]+\|>/g, '')
-                .split(/\r?\n/) // split to lines
-                .map(l => l.trim())
-                .filter(l => !!l);
-            // Keep lines that look like steps: - foo, 1. bar, * baz
-            const steps = lines
-                .map(l => l.replace(/^[-*]\s+/, '').replace(/^\d+\.?\s+/, '').trim())
-                .filter(l => l.length > 0);
-            if (steps.length > 0) { return steps; }
-        } catch {}
-        return null;
-    }
+
+
 
     /**
      * Send update-task command to TaskDecompositionAgent to update TASK.md checkbox
      */
-    private async updateTaskMd(stepIndex: number, stepDescription: string): Promise<void> {
-        try {
-            // TaskDecompositionAgent update is handled via A2A message routing
-        } catch (e: any) {
-            this.developerLogService.log(`Error updating TASK.md: ${e?.message || e}`);
+
+
+
+
+    private async saveCurrentChatHistory(): Promise<void> {
+        if (this.activeSessionId) {
+            await this.sessionManager.overwriteMessages(this.activeSessionId, this.chatHistory);
         }
     }
+
+    private async saveCurrentLlmHistory(): Promise<void> {
+        if (this.activeSessionId) {
+            await this.sessionManager.updateLlmHistory(this.llmConversationHistory);
+        }
+    }
+
+
+
+
+
+
 
     /**
-     * Handle info_query intent: Use MCP tools directly to provide information without creating code
+    /**
+     * Updates the current plan programmatically (e.g., from PlanningStrategy).
+     * @param steps List of step descriptions
+     * @param startImmediately If true, begins execution of the first pending step immediately.
      */
-    private async handleInfoQuery(userText: string, classification: { complexity_score?: number; affected_scope?: string; complexity_reasons?: string[] }, sessionId: string): Promise<void> {
-        try {
-            const mcpClient = getMcpClient();
-            const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
-            const apiKeys = await this.configService.getApiKeys();
-            const endpoint = this.configService.getEndpoint();
-            const provider = this.configService.getLlmProvider();
 
-            console.log(`[OrchestratorAgent] Processing info_query: ${userText}`);
-            this.developerLogService.log(`[OrchestratorAgent] Processing info_query: ${userText}`);
 
-            // Step 1: Use ListDirTool to get directory listing to provide context
-            let dirList: any = null;
 
-            // For info_query, always try to get directory listing to provide context
-            // LLM will decide whether to use this information based on the query
-            try {
-                const ws = vscode.workspace.workspaceFolders;
-                const workspaceRoot = ws?.[0]?.uri?.fsPath || '';
-                console.log(`[OrchestratorAgent] Calling ListDirTool with dirPath: '.', workspace root: ${workspaceRoot}`);
 
-                dirList = await mcpClient.callTool({
-                    name: 'ListDirTool',
-                    arguments: {
-                        dirPath: '.',
-                        recursive: false,
-                        limit: 100,
-                        sortBy: 'name',
-                        order: 'asc'
-                    }
-                });
+    // --- Unified "Function A" Implementation ---
 
-                console.log(`[OrchestratorAgent] ListDirTool response:`, JSON.stringify(dirList, null, 2));
-                // ListDirTool 응답 구조: {content: [...], structuredContent: {entries: [...]}}
-                const entries = dirList?.structuredContent?.entries || dirList?.entries || [];
-                console.log(`[OrchestratorAgent] ListDirTool returned ${entries.length} entries`);
-                this.developerLogService.log(`[OrchestratorAgent] ListDirTool returned ${entries.length} entries`);
 
-                if (entries && Array.isArray(entries) && entries.length > 0) {
-                    console.log(`[OrchestratorAgent] Sample entries:`, entries.slice(0, 5).map((e: any) => ({ name: e.name, type: e.type, path: e.path })));
-                }
-            } catch (e: any) {
-                // If ListDirTool fails, continue without directory listing
-                console.error(`[OrchestratorAgent] ListDirTool failed:`, e);
-                this.developerLogService.log(`[OrchestratorAgent] ListDirTool failed (non-critical): ${e?.message || e}`);
-            }
 
-            // Step 2: Build context with MCP tool results (directory listing only)
-            let contextInfo = '';
-            // ListDirTool 응답 구조: {content: [...], structuredContent: {entries: [...]}}
-            const entries = dirList?.structuredContent?.entries || dirList?.entries || [];
-            if (entries && Array.isArray(entries) && entries.length > 0) {
-                const files = entries.filter((e: any) => e.type === 'file').map((e: any) => e.name);
-                const dirs = entries.filter((e: any) => e.type === 'dir').map((e: any) => e.name);
-                contextInfo = `\n\nCurrent Directory Contents:\nFiles: ${files.join(', ')}${dirs.length > 0 ? `\nDirectories: ${dirs.join(', ')}` : ''}`;
-                console.log(`[OrchestratorAgent] Built contextInfo with ${files.length} files, ${dirs.length} dirs`);
-            } else {
-                console.warn(`[OrchestratorAgent] WARNING: No directory listing available. dirList:`, dirList);
-                this.developerLogService.log(`[OrchestratorAgent] WARNING: No directory listing available for info_query`);
-                contextInfo = `\n\nNote: Directory listing is currently unavailable. Please provide information based on general knowledge.`;
-            }
-
-            // Step 3: Generate response using LLM with context
-            const langCodeRaw = (vscode.env.language || 'en').toLowerCase();
-            const baseLangCode = (langCodeRaw.split('-')[0] || langCodeRaw);
-            const localeSystem = `You are interacting with a user whose VS Code UI language code is "${langCodeRaw}". Always respond in the natural language corresponding to this code (base language "${baseLangCode}").`;
-
-            const infoPrompt = `System: You are Viper, an expert coding partner. The user is asking for information about their codebase or workspace.
-
-Rules:
-- Use the provided directory/file information to answer the user's question directly
-- Do NOT propose to create any files or write any code
-- If you need to read file contents, use the FileReadTool MCP tool that is available to you
-- Provide a clear, concise summary or explanation based on the available information
-- If directory information is provided, use it to give an accurate overview
-- **CRITICAL**: If directory information is provided, you MUST use it. Do NOT make up or guess file names.
-
-User Request: "${userText}"${contextInfo}
-
-Provide a helpful response based on the information available. Use FileReadTool if you need to read file contents.`;
-
-            const convTimeout = Math.min(Math.max(10000, this.configService.getRequestTimeout(OrchestratorAgent.AGENT_ID) || 60000), 30000);
-            const streaming = this.configService.isStreamingEnabled(OrchestratorAgent.AGENT_ID);
-
-            console.log(`[OrchestratorAgent] Sending info_query to LLM with contextInfo length: ${contextInfo.length}`);
-            console.log(`[OrchestratorAgent] Full prompt preview:`, infoPrompt.substring(0, 500));
-
-            // MCP SDK Standard: Dynamically fetch tools from MCP server (including external MCP servers)
-            let tools: any[] = [];
-            try {
-                const mcpClientAny = mcpClient as any;
-                if (typeof mcpClientAny.listTools === 'function') {
-                    const toolsList = await mcpClientAny.listTools();
-                    if (toolsList?.tools && Array.isArray(toolsList.tools)) {
-                        // MCP tool을 OpenAI-style function format으로 변환
-                        tools = toolsList.tools.map((tool: any) => {
-                            // MCP SDK Standard: inputSchema는 이미 JSON Schema 형식
-                            const inputSchema = tool.inputSchema || {};
-                            const properties: any = {};
-                            const required: string[] = [];
-
-                            // JSON Schema에서 properties와 required 추출
-                            if (inputSchema.properties && typeof inputSchema.properties === 'object') {
-                                for (const [key, value] of Object.entries(inputSchema.properties)) {
-                                    properties[key] = value;
-                                }
-                            }
-                            if (Array.isArray(inputSchema.required)) {
-                                required.push(...inputSchema.required);
-                            }
-
-                            return {
-                                type: 'function',
-                                function: {
-                                    name: tool.name,
-                                    description: tool.description || tool.title || '',
-                                    parameters: {
-                                        type: 'object',
-                                        properties,
-                                        required: required.length > 0 ? required : undefined,
-                                        additionalProperties: false
-                                    }
-                                }
-                            };
-                        });
-                        console.log(`[OrchestratorAgent] Loaded ${tools.length} tools from MCP server (including external MCP servers)`);
-                        this.developerLogService.log(`[OrchestratorAgent] Available tools: ${tools.map((t: any) => t.function.name).join(', ')}`);
-                    }
-                }
-            } catch (e: any) {
-                console.warn(`[OrchestratorAgent] Failed to get tools from MCP, using getCoreLLMTools:`, e?.message || e);
-                this.developerLogService.log(`[OrchestratorAgent] MCP tools fetch failed: ${e?.message || e}`);
-                tools = getCoreLLMTools(provider); // Fallback
-            }
-
-            if (tools.length === 0) {
-                tools = getCoreLLMTools(provider); // Final fallback
-            }
-
-            // MCP SDK Standard: Tool calling loop
-            const messages: LlmMessage[] = [{ role: 'system', content: localeSystem }, { role: 'user', content: infoPrompt }];
-            let maxIterations = 5; // Prevent infinite loops
-            let finalResponse = '';
-
-            while (maxIterations-- > 0) {
-                const response = await this.llmService.requestLLMCompletion(
-                    provider,
-                    messages,
-                    apiKeys[0] || '',
-                    endpoint,
-                    tools,
-                    model,
-                    streaming ? (chunk: string) => {
-                        this.postMessageToSession(sessionId, 'responseChunk', { text: chunk });
-                    } : undefined,
-                    convTimeout
-                );
-
-                const assistantMessage = response.choices?.[0]?.message;
-                if (!assistantMessage) {
-                    break;
-                }
-
-                messages.push(assistantMessage);
-
-                // Check if LLM wants to call tools
-                const toolCalls = assistantMessage.tool_calls;
-                if (!toolCalls || toolCalls.length === 0) {
-                    // No more tool calls, this is the final response
-                    finalResponse = (assistantMessage.content ?? '').toString().trim();
-                    break;
-                }
-
-                // Execute tool calls
-                const toolResults: LlmMessage[] = [];
-                for (const toolCall of toolCalls) {
-                    try {
-                        const toolName = toolCall.function?.name;
-                        let toolArgs: any;
-                        const rawArgs = toolCall.function?.arguments;
-                        if (typeof rawArgs === 'string') {
-                            try {
-                                toolArgs = JSON.parse(rawArgs || '{}');
-                            } catch {
-                                toolArgs = {};
-                            }
-                        } else if (typeof rawArgs === 'object' && rawArgs !== null) {
-                            toolArgs = rawArgs;
-                        } else {
-                            toolArgs = {};
-                        }
-
-                        console.log(`[OrchestratorAgent] Executing tool: ${toolName}`, toolArgs);
-
-                        const toolResult = await mcpClient.callTool({
-                            name: toolName,
-                            arguments: toolArgs
-                        } as any);
-
-                        // MCP Tool 응답 구조: {content: [...], structuredContent: payload}
-                        const resultContent = (toolResult as any)?.structuredContent
-                            ? JSON.stringify((toolResult as any).structuredContent)
-                            : ((toolResult as any)?.content?.find?.((b: any) => b?.type === 'text')?.text || JSON.stringify(toolResult));
-
-                        toolResults.push({
-                            role: 'tool',
-                            content: resultContent,
-                            tool_call_id: toolCall.id,
-                            name: toolName
-                        } as any);
-                    } catch (e: any) {
-                        console.error(`[OrchestratorAgent] Tool execution failed:`, e);
-                        toolResults.push({
-                            role: 'tool',
-                            content: `Error: ${e?.message || e}`,
-                            tool_call_id: toolCall.id,
-                            name: toolCall.function?.name
-                        } as any);
-                    }
-                }
-
-                // Add tool results to conversation
-                messages.push(...toolResults);
-            }
-
-            if (!finalResponse) {
-                finalResponse = 'I couldn\'t process that request.';
-            }
-
-            const { thought, userFacingText } = this.parseThoughtAndUserFacingText(finalResponse || null);
-            const finalText = userFacingText || finalResponse;
-
-            if (streaming) {
-                this.postMessageToSession(sessionId, 'responseEnd', { thought: thought || undefined });
-            } else {
-                // Emulate streaming for consistent UI
-                this.postMessageToSession(sessionId, 'responseStart', {});
-                this.postMessageToSession(sessionId, 'responseChunk', { text: finalText });
-                this.postMessageToSession(sessionId, 'responseEnd', { thought: thought || undefined });
-            }
-
-            const agentMessage: ChatMessage = {
-                author: 'agent',
-                content: [{ type: 'text', text: finalText }],
-                thought: thought || undefined,
-                senderName: OrchestratorAgent.AGENT_ID,
-                timestamp: new Date().toISOString()
-            };
-            await this.addMessageToHistory(agentMessage);
-            this.llmConversationHistory.push({ role: 'assistant', content: finalText });
-
-            await this.saveCurrentChatHistory();
-            await this.saveCurrentLlmHistory();
-            await this.updateSessionTitleSummary();
-
-        } catch (e: any) {
-            console.error('[OrchestratorAgent] Error handling info_query:', e);
-            this.developerLogService.log(`ERROR: Failed to handle info_query: ${e?.message || String(e)}`);
-
-            const errorText = `정보를 조회하는 중 오류가 발생했습니다: ${e?.message || '알 수 없는 오류'}`;
-            const agentMessage: ChatMessage = {
-                author: 'agent',
-                content: [{ type: 'text', text: errorText }],
-                senderName: OrchestratorAgent.AGENT_ID,
-                timestamp: new Date().toISOString()
-            };
-            await this.addMessageToHistory(agentMessage);
-            this._onDidPostMessage.fire({ command: 'response', payload: { text: errorText, senderName: agentMessage.senderName, timestamp: agentMessage.timestamp } });
-            await this.saveCurrentChatHistory();
-            await this.saveCurrentLlmHistory();
-        }
-    }
-    private async saveStateCheckpoint(): Promise<void> {
-        try {
-            const state: AgentState = {
-                sessionId: this.activeSessionId,
-                plan: this.currentPlan.map(step => ({
-                    id: step.id,
-                    description: step.description,
-                    status: step.status as any
-                })),
-                currentStepIndex: this.currentStepIndex,
-                openIssues: [], // TODO: Implement open issues tracking
-                lastUpdate: new Date().toISOString()
-            };
-            await this.checkpointService.saveCheckpoint(state);
-        } catch (error) {
-            console.error('[OrchestratorAgent] Failed to save checkpoint:', error);
-        }
+    protected async getTools(userInput: string, requestContext: RequestContext): Promise<any[]> {
+        // Orchestrator needs core tools (especially semantic search & notify_user) to handle knowledge gaps
+        // and communicate effectively, even if its main output is JSON planning.
+        const { getCoreLLMTools } = require('../services/LLMTools');
+        return getCoreLLMTools();
     }
 
 
-    private async shouldSwitchContextWithLLM(userQuery: string, activeFile: string, candidateFile: string): Promise<boolean> {
-        if (!userQuery || !activeFile || !candidateFile) {
-            return false;
-        }
 
-        const prompt = `
-You are a smart coding assistant.
-The user is currently viewing a file: "${activeFile}" (likely a test or documentation file).
-The user asked: "${userQuery}".
-A potential source code file exists: "${candidateFile}".
-
-Determine if the user's request implies modifying or analyzing the SOURCE CODE ("${candidateFile}") instead of the current file ("${activeFile}").
-If the user wants to add comments, implement logic, or fix bugs, they usually mean the source code.
-If the user wants to run tests or update documentation, they mean the current file.
-
-Reply with ONLY "YES" if we should switch context to "${candidateFile}".
-Reply with ONLY "NO" if we should stay on "${activeFile}".
-`;
-
-        try {
-            const response = await this.llmService.chatCompletion({
-                messages: [{ role: 'user', content: prompt }],
-                model: 'gpt-4o-mini', // Use a fast, cheap model for this heuristic
-                temperature: 0,
-                maxTokens: 5
-            });
-
-            const answer = response?.choices?.[0]?.message?.content?.trim().toUpperCase();
-            this.developerLogService.log(`[OrchestratorAgent] Context Switch LLM Check: ${answer} (Query: "${userQuery}", Active: "${activeFile}")`);
-            return answer === 'YES';
-        } catch (error) {
-            console.error('[OrchestratorAgent] Context Switch LLM Check failed:', error);
-            return false;
-        }
+    public async cancelTask(): Promise<void> {
+        // Implement cancellation logic
     }
 
+    // --- Helper Methods ---
+
+    // Removed duplicates: recordArtifact (4486), handleError (duplicate), sendPlanCompletionSummary (4333)
+    // kept postMessageToSession as it was missing in middle
+
+    private postMessageToSession(sessionId: string, command: string, payload: any): void {
+        if (sessionId === this.activeSessionId) {
+            this._onDidPostMessage.fire({ command, payload });
+        }
+    }
+    
+    // Removed duplicates: parseThoughtAndUserFacingText (4197), pruneLlmHistoryIfNeeded (4141)
+    // Removed duplicate: parseAndSendFinalResponse (4298)
+    public async handleA2AMessage(message: A2AMessage<any>): Promise<void> {
+        this.developerLogService.log(`[Orchestrator] Received A2A Message from ${message.sender}: ${message.type}`);
+        
+        switch (message.type) {
+            case 'propose-task':
+                const tasks = message.payload?.tasks || message.payload?.new_steps || [];
+                const reason = message.payload?.reason || "New tasks proposed";
+                if (tasks.length > 0) {
+                     this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: `🔄 ${message.sender}: ${reason}` } });
+                     await this.updatePlan(tasks, true);
+                }
+                break;
+             case 'response-code-execution':
+             case 'execution-result':
+                const executionId = message.payload?.correlationId;
+                if (executionId && this.currentPlan) {
+                     const stepIndex = this.currentPlan.findIndex((s) => s.executionId === executionId);
+                     if (stepIndex !== -1) {
+                         const success = message.payload.success;
+                         this.currentPlan[stepIndex].status = success ? 'completed' : 'error';
+                         this._onDidPostMessage.fire({ 
+                            command: 'updatePlanStep', 
+                            payload: { index: stepIndex, status: this.currentPlan[stepIndex].status } 
+                         });
+                         await this.executePlan();
+                     }
+                }
+                break;
+        }
+    }
 }

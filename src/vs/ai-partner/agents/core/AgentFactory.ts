@@ -160,27 +160,15 @@ export class AgentFactory {
             agentClass: require('../BrainstormAgent').BrainstormAgent
         });
         
-        // BugFixAgent is not implemented yet - remove from registration
-        // this.registerAgent({
-        //     name: 'BugFixAgent',
-        //     description: 'Analyzes and fixes bugs',
-        //     category: 'specialized',
-        //     agentClass: require('../BugFixAgent').BugFixAgent
-        // });
-        
         this.registerAgent({
-            name: 'CodeAnalysisAgent',
-            description: 'Analyzes code quality and performance',
-            category: 'utility',
-            agentClass: require('../CodeAnalysisAgent').CodeAnalysisAgent
+            name: 'BugFixAgent',
+            description: 'Analyzes and fixes bugs with aggressive recursion',
+            category: 'specialized',
+            agentClass: require('../specialized/BugFixAgent').BugFixAgent
         });
         
-        this.registerAgent({
-            name: 'SecurityAnalysisAgent',
-            description: 'Scans for security vulnerabilities',
-            category: 'utility',
-            agentClass: require('../SecurityAnalysisAgent').SecurityAnalysisAgent
-        });
+        // CodeAnalysisAgent removed - replaced by SemanticGraphTool
+        // SecurityAnalysisAgent removed - functionality integrated or deprecated
         
         // Note: ReadmeGenerationAgent removed - its functionality is now part of DocumentationGenerationAgent
         // to avoid confusion and overlap. Use DocumentationGenerationAgent for all documentation needs.

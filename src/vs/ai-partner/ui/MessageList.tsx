@@ -7,14 +7,15 @@ interface MessageListProps {
     messages: DisplayMessage[];
     isThinking?: boolean;
     onAction?: () => void;
+    onRollback?: (messageId: string | undefined, timestamp: string) => void;
 }
 
 // MODIFIED: 새로운 props를 받도록 수정합니다.
-export const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onAction }) => {
+export const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onAction, onRollback }) => {
     return (
         <div className="message-list">
             {messages.map((msg, index) => (
-                <MessageItem key={index} message={msg} onAction={onAction} />
+                <MessageItem key={index} message={msg} onAction={onAction} onRollback={onRollback} />
             ))}
             {isThinking && (
                 <div className="typing-indicator progress-log-item" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--vscode-descriptionForeground)', padding: '0 0 0 8px', margin: '0 0 4px 0', fontStyle: 'italic' }}>

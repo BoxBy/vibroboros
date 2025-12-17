@@ -15,6 +15,8 @@ export class ConfigService {
     // Profiles cache to reduce frequent settings reads
     private _profilesCache: any[] | null = null;
     private _activeProfileIdCache: string | null = null;
+    // API Keys cache to avoid frequent SecretStorage IPC calls
+    private _apiKeysCache: Map<string, string> = new Map();
 
     private constructor() {
         this.secretStorage = SecretStorageService.getInstance();
@@ -30,6 +32,11 @@ export class ConfigService {
             ConfigService.instance = new ConfigService();
         }
         return ConfigService.instance;
+    }
+
+    public clearApiKeyCache(): void {
+        this._apiKeysCache.clear();
+        console.log('[ConfigService] API Key cache cleared.');
     }
 
     public getExtensionPath(): string {
@@ -84,6 +91,7 @@ export class ConfigService {
         if (apiKey !== undefined) {
             await this.secretStorage.setProfileApiKey(profile.id, apiKey);
         }
+        this.clearApiKeyCache();
         return profile;
     }
 
@@ -94,6 +102,7 @@ export class ConfigService {
         if (this.getActiveProfileId() === profileId) {
             await this.setActiveProfileId(null);
         }
+        this.clearApiKeyCache();
     }
 
     public async setStreamingEnabled(enabled: boolean): Promise<void> {
@@ -269,6 +278,7 @@ export class ConfigService {
             // Verify the key was stored correctly
             const storedKey = await this.getOllamaApiKey();
             console.log('[ConfigService] Verification - Ollama API key is', storedKey ? 'present' : 'missing');
+            this.clearApiKeyCache();
         } catch (error) {
             console.error('[ConfigService] Error setting Ollama API key:', error);
             throw error;
@@ -348,48 +358,75 @@ export class ConfigService {
     /**
      * Retrieves the API keys for the currently configured LLM provider.
      */
+    /**
+     * Retrieves the API keys for the currently configured LLM provider.
+     */
     public async getApiKeys(): Promise<string[]> {
         const active = this.getActiveProfile();
         if (active && active.id) {
+            // Check Cache first
+            if (this._apiKeysCache.has(`profile:${active.id}`)) {
+                return [this._apiKeysCache.get(`profile:${active.id}`)!];
+            }
+
+            console.log(`[ConfigService] Using active profile: ${active.id} (${active.name})`);
+            console.log(`[ConfigService] Retrieving API key for profile ${active.id} from SecretStorage...`);
             const key = await this.secretStorage.getProfileApiKey(active.id);
-            return key ? [key] : [];
+            console.log(`[ConfigService] Profile API key retrieved: ${key ? 'Yes' : 'No'}`);
+            
+            if (key) {
+                this._apiKeysCache.set(`profile:${active.id}`, key);
+                return [key];
+            }
+            return [];
         }
+
         const provider = this.getLlmProvider();
+        
+        // Check Cache
+        if (this._apiKeysCache.has(`provider:${provider}`)) {
+            return [this._apiKeysCache.get(`provider:${provider}`)!];
+        }
+
         console.log('[ConfigService] Getting API keys for provider:', provider);
 
         let key: string | undefined;
-        switch (provider) {
-            case 'openai':
-                key = await this.secretStorage.getApiKey(provider);
-                console.log('[ConfigService] Retrieved OpenAI key:', key ? 'present' : 'not found');
-                return key ? key.split(',').map(k => k.trim()).filter(k => k.length > 0) : [];
-            case 'ollama':
-                key = await this.getOllamaApiKey(); // Use dedicated method for Ollama
-                console.log('[ConfigService] Retrieved Ollama key:', key ? 'present' : 'not found');
-                console.log('[ConfigService] Ollama key length:', key ? key.length : 0);
-                const result = key ? [key] : [];
-                console.log(`[ConfigService] Returning API keys: ${result.length > 0 ? `non-empty array (length: ${key ? key.length : 0})` : 'empty array'}`); // API 키 길이 추가
-                return result;
-            case 'anthropic':
-                key = await this.secretStorage.getApiKey(provider);
-                console.log('[ConfigService] Retrieved Anthropic key:', key ? 'present' : 'not found');
-                return key ? [key] : [];
-            case 'xai':
-                key = await this.secretStorage.getApiKey(provider);
-                return key ? [key] : [];
-            case 'google':
-                key = await this.secretStorage.getApiKey(provider);
-                return key ? [key] : [];
-            case 'groq':
-                key = await this.secretStorage.getApiKey(provider);
-                return key ? [key] : [];
-            case 'openrouter':
-                key = await this.secretStorage.getApiKey(provider);
-                return key ? [key] : [];
-            default:
-                return [];
+        try {
+            switch (provider) {
+                case 'openai':
+                    key = await this.secretStorage.getApiKey(provider);
+                    break;
+                case 'ollama':
+                    key = await this.getOllamaApiKey(); // Uses its own logic, but result can be cached here
+                    break;
+                case 'anthropic':
+                case 'xai':
+                case 'google':
+                case 'groq':
+                case 'openrouter':
+                    key = await this.secretStorage.getApiKey(provider);
+                    break;
+                default:
+                    return [];
+            }
+        } catch (err) {
+            console.error('[ConfigService] Failed to retrieve API key:', err);
+            return [];
         }
+
+        if (key) {
+            this._apiKeysCache.set(`provider:${provider}`, key);
+            // OpenAI keys can be comma-separated
+            if (provider === 'openai') {
+                return key.split(',').map(k => k.trim()).filter(k => k.length > 0);
+            }
+            return [key];
+        }
+        
+        return [];
     }
+
+
 
     /**
      * Retrieves the API endpoint for the currently configured LLM provider.
@@ -422,7 +459,7 @@ export class ConfigService {
     /**
      * Retrieves the configured language model for the current provider.
      */
-    public getModel(agentName?: string): string {
+    public getModel(_agentName?: string): string {
         const active = this.getActiveProfile();
         if (active && typeof active.model === 'string' && active.model.length > 0) {
             return active.model;
@@ -486,6 +523,10 @@ export class ConfigService {
         return this.getConfiguration(`agent.${agentName}`).get<number>('requestTimeout') || 60000;
     }
 
+    public getPrompt(agentName: string): string {
+        return this.getConfiguration(`agent.${agentName}`).get<string>('customPrompt') || '';
+    }
+
     public getDeveloperMode(): boolean {
         return vscode.workspace.getConfiguration('viper').get<boolean>('developerMode') || false;
     }
@@ -498,11 +539,69 @@ export class ConfigService {
         }
     }
 
-	        public getContextTokenThreshold(): number {
-	    		return this.getConfiguration('agent.orchestrator').get<number>('contextTokenThreshold') || 100000;
-	    	}
+        public getContextTokenThreshold(): number {
+    		return this.getConfiguration('agent.orchestrator').get<number>('contextTokenThreshold') || 100000;
+    	}
 
-	        public getWorkspacePath(): string {
+        public async setContextTokenThreshold(limit: number): Promise<void> {
+            await this.getConfiguration('agent.orchestrator').update('contextTokenThreshold', limit, vscode.ConfigurationTarget.Global);
+        }
+
+        public getSummarizeTokenLimit(): number {
+            // Default to 1.0 (Full usage of context if not restricted), but user formula has 0.7 hardcoded too.
+            // If user meant "Ratio of Max Context dedicated to Summarization", e.g. 0.5
+            return this.getConfiguration('agent.contextManagement').get<number>('summarizeTokenLimit') || 0.75; 
+        }
+
+        public async setSummarizeTokenLimit(limit: number): Promise<void> {
+            await this.getConfiguration('agent.contextManagement').update('summarizeTokenLimit', limit, vscode.ConfigurationTarget.Global);
+        }
+
+        public getThinkingLanguage(): string {
+            const useSync = this.getUseVSCodeThinkingLang();
+            if (useSync) {
+                const vscodeLang = vscode.env.language; // e.g. 'en', 'ko', 'ja', 'zh-cn'
+                // Map common codes to full names if needed, or return as is if prompts handle codes.
+                // Assuming prompts prefer full names for clarity.
+                const langMap: Record<string, string> = {
+                    'ko': 'Korean',
+                    'en': 'English',
+                    'ja': 'Japanese',
+                    'zh-cn': 'Chinese (Simplified)',
+                    'zh-tw': 'Chinese (Traditional)',
+                    'es': 'Spanish',
+                    'fr': 'French',
+                    'de': 'German',
+                    'it': 'Italian',
+                    'pt-br': 'Portuguese (Brazil)',
+                    'ru': 'Russian'
+                };
+                return langMap[vscodeLang] || vscodeLang;
+            }
+            return this.getConfiguration('agent.orchestrator').get<string>('thinkingLanguage') || 'Korean';
+        }
+
+        public async setThinkingLanguage(lang: string): Promise<void> {
+            await this.getConfiguration('agent.orchestrator').update('thinkingLanguage', lang, vscode.ConfigurationTarget.Global);
+        }
+
+        public getUseVSCodeThinkingLang(): boolean {
+            return this.getConfiguration('agent.orchestrator').get<boolean>('useVSCodeThinkingLang') || false;
+        }
+
+        public async setUseVSCodeThinkingLang(use: boolean): Promise<void> {
+            await this.getConfiguration('agent.orchestrator').update('useVSCodeThinkingLang', use, vscode.ConfigurationTarget.Global);
+        }
+
+        public getMaxContextOverride(): number | undefined {
+            return this.getConfiguration('llm').get<number>('maxContextOverride');
+        }
+
+        public async setMaxContextOverride(limit: number | undefined): Promise<void> {
+            await this.getConfiguration('llm').update('maxContextOverride', limit, vscode.ConfigurationTarget.Global);
+        }
+
+        public getWorkspacePath(): string {
 	            if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
 	                return vscode.workspace.workspaceFolders[0].uri.fsPath;
 	            }
@@ -515,15 +614,14 @@ export class ConfigService {
 	        public getInternalAgents(): Array<{ name: string; description: string }> {
 	            return [
 	                { name: 'OrchestratorAgent', description: 'Main orchestration agent' },
-	                { name: 'CodeEditAgent', description: 'Code editing and file operations' },
-	                { name: 'TestGenerationAgent', description: 'Test generation' },
-	                { name: 'DocumentationGenerationAgent', description: 'Documentation generation' },
-	                { name: 'CodeAnalysisAgent', description: 'Code analysis and review' },
-	                { name: 'SecurityAnalysisAgent', description: 'Security analysis' },
-	                { name: 'RefactoringSuggestionAgent', description: 'Refactoring suggestions' },
-	                { name: 'TaskDecompositionAgent', description: 'Task decomposition' },
-	                { name: 'ReadmeGenerationAgent', description: 'README generation' },
-	                { name: 'BugFixAgent', description: 'Bug fixing' }
+	                { name: 'CodeEditAgent', description: 'Coding & Implementation' },
+	                { name: 'TaskDecompositionAgent', description: 'Task Breakdown' },
+	                { name: 'BrainstormAgent', description: 'Planning & Architecture' },
+	                { name: 'TestGenerationAgent', description: 'Testing' },
+	                { name: 'DocumentationGenerationAgent', description: 'Documentation' },
+	                { name: 'BugFixAgent', description: 'Deep Debugging & Root Cause' },
+	                { name: 'ReadmeGenerationAgent', description: 'README Management' },
+	                { name: 'ContextManagementAgent', description: 'Context Optimization' }
 	            ];
 	        }
 	    }

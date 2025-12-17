@@ -22,9 +22,11 @@ import { AuthService } from './auth_service';
 import { DeveloperLogService } from './services/DeveloperLogService';
 import { A2AMessage } from './interfaces/A2AMessage';
 import { OrchestratorAgent } from './agents/OrchestratorAgent';
+import { SemanticModelService } from './services/SemanticModelService';
 import * as jsdiff from 'diff'; // jsdiff ?꾪룷??異붽?
 import { TerminalStreamService } from './services/TerminalStreamService';
 import type { Dirent } from 'fs';
+import { MCPHealthCheckService } from './services/MCPHealthCheckService';
 
 async function createCheckpoint(label: string) {
     try {
@@ -149,10 +151,10 @@ function getWebviewContent(
 
             <script>
                 const vscode = acquireVsCodeApi();
-                const originalFilePath = ${JSON.stringify(originalFilePath)};
-                const originalCode = ${JSON.stringify(originalCode)};
-                const modifiedCode = ${JSON.stringify(modifiedCode)};
-                const diffPatch = ${JSON.stringify(diffPatch)}; // jsdiff濡??앹꽦???⑥튂
+                const originalFilePath = \${JSON.stringify(originalFilePath)};
+                const originalCode = \${JSON.stringify(originalCode)};
+                const modifiedCode = \${JSON.stringify(modifiedCode)};
+                const diffPatch = \${JSON.stringify(diffPatch)}; // jsdiff濡??앹꽦???⑥튂
 
                 // diff2html ?뚮뜑留?
                 const diffHtml = Diff2Html.html(diffPatch, {
@@ -192,6 +194,7 @@ function getWebviewContent(
 export async function activate(context: vscode.ExtensionContext) {
     console.log('AI Partner extension is now active.');
     try {
+
         // 1. Initialize Services
         ConfigService.initialize(context);
         const configService = ConfigService.getInstance();
@@ -199,6 +202,9 @@ export async function activate(context: vscode.ExtensionContext) {
         const authService = AuthService.getInstance(configService);
         const devLogService = DeveloperLogService.getInstance();
         const diagnostics = vscode.languages.createDiagnosticCollection('viper');
+
+        // Warm up MCP Health Check (background)
+        MCPHealthCheckService.getInstance().warmUp(context.extensionPath).catch((err: any) => console.error('[viper] MCP warm-up failed:', err));
 
         // 2. Start the MCP server (for tools)
         const mcpServer = createMCPServer();
@@ -251,38 +257,61 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // 2-1. Attach external MCP servers from .agent/mcp-servers.json via stdio and route tools
         const externalClients = new Map<string, mcpClientModule.Client>();
+        let mcpConfig: any = {};
         try {
             const mcpConfigPath = path.join(context.extensionPath, '.agent', 'mcp-servers.json');
             const mcpConfigRaw = await fs.readFile(mcpConfigPath, 'utf-8');
-            const mcpConfig = JSON.parse(mcpConfigRaw);
-            if (mcpConfig && mcpConfig.mcpServers && typeof mcpConfig.mcpServers === 'object') {
-                for (const [serverId, cfg] of Object.entries<any>(mcpConfig.mcpServers)) {
-                    // Check for enabled/active flag (default to true)
-                    if (cfg.enabled === false || cfg.active === false) {
-                        console.log(`[viper] Skipping inactive MCP server '${serverId}'.`);
-                        continue;
-                    }
+            mcpConfig = JSON.parse(mcpConfigRaw);
+        } catch (e) {
+            console.log('[viper] No or invalid mcp-servers.json; skipping external MCP setup.');
+        }
 
-                    try {
-                        if (!StdioClientTransport) { throw new Error('Stdio transport not available in SDK'); }
-                        const transport = new StdioClientTransport({
-                            command: cfg.command,
-                            args: Array.isArray(cfg.args) ? cfg.args : [],
-                            env: cfg.env || {},
-                            cwd: cfg.cwd || undefined,
-                            stderr: 'pipe'
-                        } as any);
-                        const client = new mcpClientModule.Client({ name: `vb-${serverId}`, version: '1.0.0', transport });
-                        if (typeof (client as any).connect === 'function') { await (client as any).connect(transport as any); }
-                        externalClients.set(serverId, client);
-                        console.log(`[viper] Connected external MCP '${serverId}'.`);
-                    } catch (e: any) {
-                        console.warn(`[viper] Failed to connect external MCP '${serverId}':`, e?.message || e);
-                    }
-                }
+        // Helper to start an MCP server
+        const connectMcpServer = async (id: string, command: string, args: string[], env: any = {}) => {
+            try {
+                if (!StdioClientTransport) { throw new Error('Stdio transport not available'); }
+                const transport = new StdioClientTransport({
+                    command,
+                    args,
+                    env: { ...process.env, ...env },
+                    stderr: 'pipe'
+                } as any);
+                const client = new mcpClientModule.Client({ name: `vb-${id}`, version: '1.0.0', transport });
+                if (typeof (client as any).connect === 'function') { await (client as any).connect(transport as any); }
+                externalClients.set(id, client);
+                console.log(`[viper] Connected MCP '${id}'.`);
+            } catch (e: any) {
+                console.warn(`[viper] Failed to connect MCP '${id}':`, e?.message || e);
             }
-        } catch (e: any) {
-            console.log('[viper] No or invalid mcp-servers.json; skipping external MCPs.');
+        };
+
+        // Start Embedded Defaults (if not overridden in config)
+        const embeddedMap: Record<string, { pkg: string; bin: string }> = {
+            'fetch': { pkg: 'fetch-mcp', bin: 'dist/index.js' },
+            'terminal-controller': { pkg: 'mcp-terminal', bin: 'dist/index.js' }
+        };
+
+        for (const [id, info] of Object.entries(embeddedMap)) {
+            // If user config has defined this server, skip embedded (user override)
+            if (mcpConfig?.mcpServers?.[id]) {
+                console.log(`[viper] Embedded MCP '${id}' overridden by config.`);
+                continue;
+            }
+            try {
+                const scriptPath = path.join(context.extensionPath, 'node_modules', info.pkg, info.bin);
+                await fs.access(scriptPath); // Check existence
+                await connectMcpServer(id, process.execPath, [scriptPath]);
+            } catch (e) {
+                console.warn(`[viper] Embedded MCP '${id}' not found or failed to start:`, e);
+            }
+        }
+
+        // Start External Configured Servers
+        if (mcpConfig && mcpConfig.mcpServers && typeof mcpConfig.mcpServers === 'object') {
+            for (const [serverId, cfg] of Object.entries<any>(mcpConfig.mcpServers)) {
+                if (cfg.enabled === false || cfg.active === false) { continue; }
+                await connectMcpServer(serverId, cfg.command, Array.isArray(cfg.args) ? cfg.args : [], cfg.env);
+            }
         }
 
         // Wrap default client with a router that can dispatch to externals
@@ -517,7 +546,7 @@ export async function activate(context: vscode.ExtensionContext) {
         orchestratorInstance = orchestrator;
 
         // Register main webview provider and bridge messages
-        const provider = new AIPartnerViewProvider(context.extensionUri, configService, llmService);
+        const provider = new AIPartnerViewProvider(context.extensionUri, configService, llmService, context);
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(AIPartnerViewProvider.viewType, provider, { webviewOptions: { retainContextWhenHidden: true } })
         );
@@ -673,6 +702,38 @@ export async function activate(context: vscode.ExtensionContext) {
                 console.error('[extension.ts] provider.onDidReceiveMessage error:', err);
             }
         });
+
+        // Semantic Graph Refresh Command
+        context.subscriptions.push(
+            vscode.commands.registerCommand('viper.refreshSemanticGraph', async () => {
+                await SemanticModelService.getInstance().refresh();
+            })
+        );
+        
+        // Semantic Graph Auto-Update on Save
+        context.subscriptions.push(
+            vscode.workspace.onDidSaveTextDocument(async (doc) => {
+                await SemanticModelService.getInstance().onFileSave(doc);
+            })
+        );
+
+        // Semantic Graph Auto-Update on Create
+        context.subscriptions.push(
+            vscode.workspace.onDidCreateFiles(async (event) => {
+                for (const file of event.files) {
+                    await SemanticModelService.getInstance().onFileCreate(file);
+                }
+            })
+        );
+
+        // Semantic Graph Auto-Update on Delete
+        context.subscriptions.push(
+            vscode.workspace.onDidDeleteFiles(async (event) => {
+                for (const file of event.files) {
+                    await SemanticModelService.getInstance().onFileDelete(file);
+                }
+            })
+        );
 
         // 10. Checkpoint commands
         context.subscriptions.push(

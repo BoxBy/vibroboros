@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ConfigService } from './config_service';
 import { LLMService } from './services/LLMService';
 import { MCPHealthCheckService } from './services/MCPHealthCheckService';
+import { OrchestratorAgent } from './agents/OrchestratorAgent';
 import { A2AMessage, A2A_MIME_TYPES, createProgressMessage, createPlanMessage, createFileEditMessage, createA2ADataMessage, PlanData, FileEditData } from './types/A2AMessages';
 
 function getNonce() {
@@ -162,6 +163,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
         private readonly _extensionUri: vscode.Uri,
         private readonly configService: ConfigService,
         private readonly llmService: LLMService,
+        private readonly _context: vscode.ExtensionContext
     ) { }
 
     public resolveWebviewView(
@@ -253,13 +255,135 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                     try {
                         const streamingEnabled = this.configService.isStreamingEnabled();
                         const advancedHistorySummaryEnabled = this.configService.getAdvancedHistorySummaryEnabled();
-                        this.postMessage({ command: 'featureToggles', payload: { streamingEnabled, advancedHistorySummaryEnabled } });
+                        const summarizeTokenLimit = this.configService.getSummarizeTokenLimit();
+                        const contextTokenThreshold = this.configService.getContextTokenThreshold();
+                        const thinkingLanguage = this.configService.getThinkingLanguage();
+                        const maxContextOverride = this.configService.getMaxContextOverride();
+                        const useVSCodeThinkingLang = this.configService.getUseVSCodeThinkingLang();
+                        this.postMessage({ 
+                            command: 'featureToggles', 
+                            payload: { 
+                                streamingEnabled, 
+                                advancedHistorySummaryEnabled,
+                                summarizeTokenLimit,
+                                contextTokenThreshold,
+                                thinkingLanguage,
+                                maxContextOverride,
+                                useVSCodeThinkingLang
+                            } 
+                        });
                     } catch (e: any) {
-                        this.postMessage({ command: 'featureToggles', payload: { streamingEnabled: false, advancedHistorySummaryEnabled: false } });
+                        this.postMessage({ 
+                            command: 'featureToggles', 
+                            payload: { 
+                                streamingEnabled: false, 
+                                advancedHistorySummaryEnabled: false,
+                                summarizeTokenLimit: 0.75,
+                                contextTokenThreshold: 100000,
+                                thinkingLanguage: 'Korean'
+                            } 
+                        });
                     }
                     break;
                 }
-                // ... (omitted handlers)
+                case 'setSummarizeTokenLimit': {
+                    try {
+                        const { limit } = message.payload;
+                        if (typeof limit === 'number') {
+                            await this.configService.setSummarizeTokenLimit(limit);
+                            // Echo back
+                            this.postMessage({ command: 'featureToggles', payload: { summarizeTokenLimit: limit } }); 
+                        }
+                    } catch (e) { console.error('setSummarizeTokenLimit failed', e); }
+                    break;
+                }
+                case 'setContextTokenThreshold': {
+                    try {
+                        const { limit } = message.payload;
+                        if (typeof limit === 'number') {
+                            await this.configService.setContextTokenThreshold(limit);
+                            // Echo back
+                            this.postMessage({ command: 'featureToggles', payload: { contextTokenThreshold: limit } });
+                        }
+                    } catch (e) { console.error('setContextTokenThreshold failed', e); }
+                    break;
+                }
+                case 'setMaxContextOverride': {
+                    try {
+                        const { limit } = message.payload;
+                        // limit can be number or undefined (null)
+                        await this.configService.setMaxContextOverride(limit);
+                        this.postMessage({ command: 'featureToggles', payload: { maxContextOverride: limit } });
+                    } catch (e) { console.error('setMaxContextOverride failed', e); }
+                    break;
+                }
+                case 'setUseVSCodeThinkingLang': {
+                    try {
+                        const { use } = message.payload;
+                        if (typeof use === 'boolean') {
+                            await this.configService.setUseVSCodeThinkingLang(use);
+                            this.postMessage({ command: 'featureToggles', payload: { useVSCodeThinkingLang: use } });
+                        }
+                    } catch (e) { console.error('setUseVSCodeThinkingLang failed', e); }
+                    break;
+                }
+                case 'setThinkingLanguage': {
+                    try {
+                        const { lang } = message.payload;
+                        if (typeof lang === 'string') {
+                            await this.configService.setThinkingLanguage(lang);
+                            this.postMessage({ command: 'featureToggles', payload: { thinkingLanguage: lang } });
+                        }
+                    } catch (e) {
+                        console.error('setThinkingLanguage failed', e);
+                    }
+                    break;
+                }
+                case 'newChat':
+                    try {
+                        const { initialQuery, messageId } = message;
+                        const orchestrator = OrchestratorAgent.getInstance();
+                        await orchestrator.acceptMessage({
+                            type: 'text',
+                            from: 'user',
+                            text: initialQuery || '',
+                            contextId: 'new-chat-session', // Reset context
+                            messageId // Pass explicit ID
+                        });
+                    } catch (e) {
+                        console.error('[ViperView] newChat failed:', e);
+                    }
+                    break;
+
+                case 'chatMessage':
+                    try {
+                        const orchestrator = OrchestratorAgent.getInstance();
+                        await orchestrator.acceptMessage({
+                            type: 'text',
+                            from: 'user',
+                            text: message.text,
+                            attachments: message.attachments,
+                            messageId: message.messageId // Pass explicit ID
+                        });
+                    } catch (e) {
+                         console.error('[ViperView] chatMessage failed:', e);
+                    }
+                    break;
+                case 'rollbackTo':
+                        try {
+                            const { messageId, timestamp } = message.payload;
+                            const orchestrator = OrchestratorAgent.getInstance();
+                            // Orchestrator needs to implement rollback mechanism
+                            // For now, we'll assume we can signal it.
+                            // But usually rollback is state management.
+                            // If Orchestrator supports it, called it.
+                            if (typeof (orchestrator as any).rollbackTo === 'function') {
+                                await (orchestrator as any).rollbackTo(messageId, timestamp);
+                            }
+                        } catch (e) {
+                             console.error('[ViperView] rollbackTo failed:', e);
+                        }
+                        break;
                 
                 case 'refreshConfiguredItems': {
                     try {
@@ -343,7 +467,8 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                             let healthStatus = { mcp: {}, a2a: {} };
                             try {
                                 const healthService = MCPHealthCheckService.getInstance();
-                                healthStatus = await healthService.checkAllServers(root.fsPath);
+                                const force = message.payload?.force === true;
+                                healthStatus = await healthService.checkAllServers(root.fsPath, force);
                             } catch (e) {
                                 console.error('[ViperView] Health check failed:', e);
                             }
@@ -375,6 +500,51 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 
+                case 'requestModels':
+                    try {
+                        const provider = this.configService.getLlmProvider();
+                        let apiKey = '';
+                        let endpoint = '';
+                        
+                        switch (provider) {
+                            case 'openai':
+                                apiKey = (await this.configService.getOpenaiApiKeys())[0] || '';
+                                endpoint = this.configService.getOpenaiEndpoint();
+                                break;
+                            case 'ollama':
+                                apiKey = await this.configService.getOllamaApiKey();
+                                endpoint = this.configService.getOllamaEndpoint();
+                                break;
+                            case 'anthropic':
+                                apiKey = this.configService.getAnthropicApiKey();
+                                endpoint = this.configService.getAnthropicEndpoint();
+                                break;
+                            case 'xai':
+                                apiKey = this.configService.getXaiApiKey();
+                                endpoint = this.configService.getXaiEndpoint();
+                                break;
+                            case 'google':
+                                apiKey = this.configService.getGoogleApiKey();
+                                endpoint = this.configService.getGoogleEndpoint();
+                                break;
+                            case 'groq':
+                                apiKey = this.configService.getGroqApiKey();
+                                endpoint = this.configService.getGroqEndpoint();
+                                break;
+                            case 'openrouter':
+                                apiKey = this.configService.getOpenrouterApiKey();
+                                endpoint = this.configService.getOpenrouterEndpoint();
+                                break;
+                        }
+
+                        const models = await this.llmService.listModels(provider, apiKey, endpoint);
+                        this.postMessage({ command: 'updateModels', payload: models });
+                    } catch (e) {
+                         console.error('requestModels failed', e);
+                         this.postMessage({ command: 'updateModels', payload: [] });
+                    }
+                    break;
+                
                 // LLM Configuration & Profiles
                 case 'requestLlmSettings':
                     try {
@@ -395,8 +565,26 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                             groqEndpoint: this.configService.getGroqEndpoint(),
                             openrouterApiKey: this.configService.getOpenrouterApiKey(),
                             openrouterEndpoint: this.configService.getOpenrouterEndpoint(),
-                            model: this.configService.getModel()
+                            model: this.configService.getModel(),
+                            modelMaxContext: 0 // Default
                         };
+
+                        // Fetch actual context size
+                        try {
+                            const info = await this.llmService.getModelInfo(
+                                settings.llmProvider, 
+                                settings.model,
+                                // Pass API key just in case dynamic fetch is needed
+                                settings.llmProvider === 'google' ? settings.googleApiKey :
+                                settings.llmProvider === 'openrouter' ? settings.openrouterApiKey :
+                                settings.llmProvider === 'ollama' ? settings.ollamaApiKey : undefined,
+                                settings.llmProvider === 'ollama' ? settings.ollamaEndpoint : undefined
+                            );
+                            settings.modelMaxContext = info.maxContextTokens;
+                        } catch (err) {
+                            console.warn('[ViperView] Failed to fetch model info for context size', err);
+                        }
+
                         this.postMessage({ command: 'llmSettingsResponse', payload: settings });
                     } catch (e) {
                          console.error('requestLlmSettings failed', e);
@@ -406,28 +594,49 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                     try {
                         const s = message.payload;
                         if (s) {
-                            if (s.llmProvider) await this.configService.setLlmProvider(s.llmProvider);
-                            if (s.openaiApiKeys !== undefined) await this.configService.setOpenaiApiKeys(s.openaiApiKeys.split(','));
-                            if (s.openaiEndpoint !== undefined) await this.configService.setOpenaiEndpoint(s.openaiEndpoint);
-                            if (s.ollamaEndpoint !== undefined) await this.configService.setOllamaEndpoint(s.ollamaEndpoint);
-                            if (s.ollamaApiKey !== undefined) await this.configService.setOllamaApiKey(s.ollamaApiKey);
-                            if (s.ollamaIsCloud !== undefined) await this.configService.setOllamaIsCloud(s.ollamaIsCloud);
-                            if (s.anthropicApiKey !== undefined) await this.configService.setAnthropicApiKey(s.anthropicApiKey);
-                            if (s.anthropicEndpoint !== undefined) await this.configService.setAnthropicEndpoint(s.anthropicEndpoint);
-                            if (s.xaiApiKey !== undefined) await this.configService.setXaiApiKey(s.xaiApiKey);
-                            if (s.xaiEndpoint !== undefined) await this.configService.setXaiEndpoint(s.xaiEndpoint);
-                            if (s.googleApiKey !== undefined) await this.configService.setGoogleApiKey(s.googleApiKey);
-                            if (s.googleEndpoint !== undefined) await this.configService.setGoogleEndpoint(s.googleEndpoint);
-                            if (s.groqApiKey !== undefined) await this.configService.setGroqApiKey(s.groqApiKey);
-                            if (s.groqEndpoint !== undefined) await this.configService.setGroqEndpoint(s.groqEndpoint);
-                            if (s.openrouterApiKey !== undefined) await this.configService.setOpenrouterApiKey(s.openrouterApiKey);
-                            if (s.openrouterEndpoint !== undefined) await this.configService.setOpenrouterEndpoint(s.openrouterEndpoint);
-                            if (s.model !== undefined) await this.configService.setModel(s.model);
+                            if (s.llmProvider) { await this.configService.setLlmProvider(s.llmProvider); }
+                            if (s.openaiApiKeys !== undefined) { await this.configService.setOpenaiApiKeys(s.openaiApiKeys.split(',')); }
+                            if (s.openaiEndpoint !== undefined) { await this.configService.setOpenaiEndpoint(s.openaiEndpoint); }
+                            if (s.ollamaEndpoint !== undefined) { await this.configService.setOllamaEndpoint(s.ollamaEndpoint); }
+                            if (s.ollamaApiKey !== undefined) { await this.configService.setOllamaApiKey(s.ollamaApiKey); }
+                            if (s.ollamaIsCloud !== undefined) { await this.configService.setOllamaIsCloud(s.ollamaIsCloud); }
+                            if (s.anthropicApiKey !== undefined) { await this.configService.setAnthropicApiKey(s.anthropicApiKey); }
+                            if (s.anthropicEndpoint !== undefined) { await this.configService.setAnthropicEndpoint(s.anthropicEndpoint); }
+                            if (s.xaiApiKey !== undefined) { await this.configService.setXaiApiKey(s.xaiApiKey); }
+                            if (s.xaiEndpoint !== undefined) { await this.configService.setXaiEndpoint(s.xaiEndpoint); }
+                            if (s.googleApiKey !== undefined) { await this.configService.setGoogleApiKey(s.googleApiKey); }
+                            if (s.googleEndpoint !== undefined) { await this.configService.setGoogleEndpoint(s.googleEndpoint); }
+                            if (s.groqApiKey !== undefined) { await this.configService.setGroqApiKey(s.groqApiKey); }
+                            if (s.groqEndpoint !== undefined) { await this.configService.setGroqEndpoint(s.groqEndpoint); }
+                            if (s.openrouterApiKey !== undefined) { await this.configService.setOpenrouterApiKey(s.openrouterApiKey); }
+                            if (s.openrouterEndpoint !== undefined) { await this.configService.setOpenrouterEndpoint(s.openrouterEndpoint); }
+                            if (s.model !== undefined) { await this.configService.setModel(s.model); }
 
                             // Refresh settings
                             vscode.window.showInformationMessage('LLM Settings Saved');
-                            // We can trigger a refresh of the settings in the UI
-                            this.postMessage({ command: 'llmSettingsResponse', payload: s });
+                            
+                            // Re-fetch model info to provide accurate maxContextTokens
+                            let modelMaxContext = 0;
+                            try {
+                                const info = await this.llmService.getModelInfo(
+                                    s.llmProvider || 'openai', 
+                                    s.model || '',
+                                    // Pass API key just in case dynamic fetch is needed
+                                    s.llmProvider === 'google' ? s.googleApiKey :
+                                    s.llmProvider === 'openrouter' ? s.openrouterApiKey :
+                                    s.llmProvider === 'ollama' ? s.ollamaApiKey : undefined,
+                                    s.llmProvider === 'ollama' ? s.ollamaEndpoint : undefined
+                                );
+                                modelMaxContext = info.maxContextTokens;
+                            } catch (err) {
+                                console.warn('[ViperView] Failed to fetch model info during save:', err);
+                            }
+
+                            // Echo back with updated context
+                            this.postMessage({ 
+                                command: 'llmSettingsResponse', 
+                                payload: { ...s, modelMaxContext } 
+                            });
                         }
                     } catch (e) {
                          vscode.window.showErrorMessage('Failed to save LLM settings: ' + e);
@@ -476,6 +685,26 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                         vscode.window.showErrorMessage('Failed to set active profile: ' + e);
                     }
                     break;
+
+                case 'insertAttachment':
+                    // Echo back to UI so it can update its local state
+                    this.postMessage({ command: 'insertAttachment', payload: message.payload });
+                    break;
+
+                case 'updatePlanFromUI':
+                    try {
+                        const { steps } = message.payload;
+                        if (Array.isArray(steps)) {
+                            const orchestrator = OrchestratorAgent.getInstance();
+                            if (orchestrator) {
+                                orchestrator.updatePlan(steps);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('[ViperView] updatePlanFromUI failed:', e);
+                    }
+                    break;
+
                 default:
                     this._onDidReceiveMessage.fire(message);
                     break;

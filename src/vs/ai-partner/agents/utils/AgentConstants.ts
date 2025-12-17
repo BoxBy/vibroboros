@@ -6,7 +6,6 @@ export const AgentNames = {
     ORCHESTRATOR: 'OrchestratorAgent',
     BRAINSTORM: 'BrainstormAgent',
     CODE_EDIT: 'CodeEditAgent',
-    CODE_ANALYSIS: 'CodeAnalysisAgent',
     CODE_WATCHER: 'CodeWatcherAgent',
     CONTEXT_MANAGEMENT: 'ContextManagementAgent',
     DOCUMENTATION_GENERATION: 'DocumentationGenerationAgent',

@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { VSCodeCheckbox } from '@vscode/webview-ui-toolkit/react';
 
+
 interface HeaderProps {
     onNewChat: () => void;
     onShowHistory: () => void;
@@ -125,13 +126,16 @@ export const Header: React.FC<HeaderProps> = ({ onNewChat, onShowHistory, onShow
                         <span style={{ fontSize: 12, opacity: 0.8 }}>{usage.total_tokens}</span>
                     </div>
                 )}
-                <VSCodeCheckbox
-                    checked={isAutonomousMode}
-                    onChange={(e: any) => onToggleAutonomousMode(e.target.checked)}
-                    title={"Uroboros Mode:\n- Brainstorm a detailed end-to-end plan with you\n- After you approve, Viper auto-executes the plan"}
-                >
-                    Uroboros Mode
-                </VSCodeCheckbox>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} title={"Uroboros Mode:\n- Brainstorm a detailed end-to-end plan with you\n- After you approve, Viper auto-executes the plan"}>
+                    <VSCodeCheckbox 
+                        checked={isAutonomousMode} 
+                        onChange={(e: any) => onToggleAutonomousMode(e.target.checked)} 
+                        id="uroboros-mode"
+                        style={{ fontSize: '12px' }}
+                    >
+                        Uroboros Mode
+                    </VSCodeCheckbox>
+                </div>
                 <div className="icon-button" onClick={onNewChat} title="New Chat" role="button" tabIndex={0}>
                     <span className="codicon codicon-comment-add" />
                 </div>

@@ -43,6 +43,7 @@ export interface HandlerContext {
         profiles: boolean;
         slashCommands: boolean;
     }>>;
+    setAutonomousMode: (enabled: boolean) => void;
 	vscodeService: any;
 }
 
@@ -94,9 +95,20 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 		},
 		historyList: (payload) => {
 			if (payload) {
-				const { sessions: sess } = payload;
+				const { sessions: sess, activeId } = payload;
 				if (Array.isArray(sess)) context.setSessions(sess);
+				if (typeof activeId === 'string' && activeId) context.setActiveSessionId(activeId);
 			}
+		},
+        setAutonomousMode: (payload) => {
+            if (typeof payload === 'object' && typeof payload.enabled === 'boolean') {
+                context.setAutonomousMode(payload.enabled);
+            } else if (typeof payload === 'boolean') {
+                context.setAutonomousMode(payload);
+            }
+        },
+		responseStart: () => {
+			context.setIsThinking(true);
 		},
 		loadHistory: (payload) => {
 			// While on Welcome, ignore history loads to prevent flicker and keep recent list visible
@@ -425,6 +437,8 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 				context.setMessages(prev => {
 					// Removed aggressive deduplication: We want to show sequence of edits/creations
 					// unique messageId handles react key uniqueness
+                    console.log('[MainView] Processing createFileCard:', payload);
+                    context.vscodeService.postMessage({ command: 'debugLog', payload: { source: 'UI', event: 'createFileCard', meta: payload } });
 
 					return [
 						...prev,

@@ -19,14 +19,14 @@ Rules:
 - Output ONLY valid JSON. No prose. No code fences. No apologies.
 - Determine intent_type first (this is the PRIMARY classification):
   * "info_query": User wants to READ, VIEW, SUMMARIZE, or EXPLAIN existing information without creating or modifying code
-  * "code_implementation": User wants to CREATE, WRITE, or IMPLEMENT new code/files
+  * "code_implementation": User wants to CREATE, WRITE, or IMPLEMENT new code/files (Usually COMPLEX, score 50+)
   * "code_modification": User wants to MODIFY, REFACTOR, or EDIT existing code
   * "conversation": Simple greetings, casual chat, or questions that don't require code/file operations
 - Calculate complexity_score (0-100):
   * 0-30: Simple Q&A, greetings, casual conversation, single file read/view
-  * 31-50: Single file modification, simple code changes, single file info query with multiple files
-  * 51-70: Multiple files, moderate refactoring, feature additions, directory-wide info queries
-  * 71-100: Complex architecture changes, large refactors, multi-step implementations, complex info queries requiring analysis
+  * 31-49: Trivial single-line changes or typo fixes
+  * 50-70: Single file implementation, modification, refactoring, or info query dealing with multiple files
+  * 71-100: Multiple files, architecture changes, multi-step implementations, complex analysis
 - Estimate expected_steps (number of steps if a plan is created):
   * Simple: 1-2 steps
   * Moderate: 3-5 steps
@@ -37,6 +37,8 @@ Rules:
 - Provide complexity_reasons (array of strings explaining why it's complex):
   * Examples: ["Multiple files need modification", "Requires architectural changes", "Needs testing", "Requires reading multiple files"]
 - is_complex_task: true if complexity_score >= 50, false otherwise
+- **CRITICAL**: If intent_type is "code_implementation" (creating new code), default to complexity_score >= 50 unless it is a trivial oneliner.
+- **CRITICAL**: If intent_type is "code_modification" (editing existing code), evaluate complexity based on the scope (e.g., single function vs architectural change).
 - **CRITICAL**: If intent_type is "info_query", the system will use MCP tools (ListDirTool, FileReadTool) directly to provide information without creating any code files. DO NOT treat info queries as code implementation tasks.
 - **CONTEXT AWARENESS**:
   * Analyze the conversation history to understand the full context and intent, not just the current message.

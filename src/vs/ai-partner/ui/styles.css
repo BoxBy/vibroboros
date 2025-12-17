@@ -264,27 +264,40 @@ body {
     color: var(--vscode-input-placeholderForeground);
 }
 
-.input-area button[title="Send"] {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: none;
-    border-radius: 4px;
-    padding: 0; /* Square button */
+/* Unified Action Button (Send & Stop) */
+.input-action-btn {
     width: 28px;
     height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-.input-area button[title="Send"]:hover {
+.input-action-btn.primary {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.input-action-btn.primary:hover {
     background-color: var(--vscode-button-hoverBackground);
 }
 
-.input-area button[title="Send"]:disabled {
+.input-action-btn.primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.input-action-btn.stop {
+    background: var(--vscode-statusBarItem-errorBackground);
+    color: var(--vscode-statusBarItem-errorForeground);
+}
+
+.input-action-btn.stop:hover {
+    opacity: 0.8;
 }
 
 /* Context Menu (Add Context) */
@@ -712,3 +725,5 @@ body {
     border-color: var(--vscode-focusBorder);
     outline: none;
 }
+
+/* .input-area-stop-btn deprecated/removed in favor of .input-action-btn.stop */

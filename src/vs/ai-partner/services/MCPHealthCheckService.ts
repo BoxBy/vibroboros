@@ -14,11 +14,18 @@ export class MCPHealthCheckService {
     private static instance: MCPHealthCheckService;
     private constructor() {}
 
+    private cache: { mcp: Record<string, HealthStatus>; a2a: Record<string, HealthStatus> } | null = null;
     public static getInstance(): MCPHealthCheckService {
         if (!MCPHealthCheckService.instance) {
             MCPHealthCheckService.instance = new MCPHealthCheckService();
         }
         return MCPHealthCheckService.instance;
+    }
+
+    public async warmUp(extensionPath: string) {
+        console.log('[MCPHealthCheck] Warming up cache...');
+        this.cache = await this.checkAllServers(extensionPath, true);
+        console.log('[MCPHealthCheck] Warm-up complete.');
     }
 
     /**
@@ -255,15 +262,20 @@ export class MCPHealthCheckService {
     /**
      * Perform health check for all servers (both MCP and A2A)
      */
-    public async checkAllServers(extensionPath: string): Promise<{
+    public async checkAllServers(extensionPath: string, force: boolean = false): Promise<{
         mcp: Record<string, HealthStatus>;
         a2a: Record<string, HealthStatus>;
     }> {
+        if (!force && this.cache) {
+            return this.cache;
+        }
+
         const [mcp, a2a] = await Promise.all([
             this.checkMCPServers(extensionPath),
             this.checkA2AServers(extensionPath)
         ]);
 
-        return { mcp, a2a };
+        this.cache = { mcp, a2a };
+        return this.cache;
     }
 }

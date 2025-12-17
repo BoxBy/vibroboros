@@ -136,6 +136,7 @@ IF reporting bug/error
 **NEVER ASSUME CODE LOCATION. ALWAYS SEARCH FIRST.**
 
 Before proposing edits:
+- **USE \`get_semantic_context\` FIRST**: Prefer querying the Semantic Map (file relationships, symbol lookups) over blind keyword searching (\`grep_search\`).
 - You MUST include a step to read relevant files
 - If user references function/class NOT in active file → include search step
 - Searching is cheap; guessing is expensive

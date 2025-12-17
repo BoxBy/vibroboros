@@ -28,15 +28,21 @@ export interface ExecutionStep {
 	estimated_time?: string; // e.g., "5min", "2hour"
 }
 
+export const PLANNING_AGENTS = [
+    'CodeEditAgent',
+    'TestGenerationAgent',
+    'DocumentationGenerationAgent',
+    'BrainstormAgent',
+    'ContextManagementAgent',
+    // 'CodeAnalysisAgent' removed
+] as const;
+
 export type AgentName =
 	| 'OrchestratorAgent'
 	| 'CodeEditAgent'
 	| 'TestGenerationAgent'
 	| 'DocumentationGenerationAgent'
 	| 'ReadmeGenerationAgent'
-	| 'CodeAnalysisAgent'
-	| 'SecurityAnalysisAgent'
-	| 'RefactoringSuggestionAgent'
 	| 'BrainstormAgent'
 	| 'ContextManagementAgent'
 	| 'TaskDecompositionAgent'
@@ -109,9 +115,6 @@ export const CREATE_EXECUTION_PLAN_SCHEMA = {
 								'TestGenerationAgent',
 								'DocumentationGenerationAgent',
 								'ReadmeGenerationAgent',
-								'CodeAnalysisAgent',
-								'SecurityAnalysisAgent',
-								'RefactoringSuggestionAgent',
 								'BrainstormAgent',
 								'ContextManagementAgent',
 								'TaskDecompositionAgent',

@@ -1,123 +1,126 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { AgentExecutor, RequestContext, ExecutionEventBus } from "@a2a-js/sdk/server";
-import { AgentCard, Message, Artifact } from "@a2a-js/sdk";
-import { A2AClient } from "@a2a-js/sdk/client";
-import { v4 as uuidv4 } from 'uuid';
+import { SystemPromptFactory } from '../services/SystemPromptFactory';
+import { SessionManager } from '../services/SessionManager';
+import { LLMService } from '../services/LLMService';
 import { ConfigService } from '../config_service';
-import { publishProgressLog } from './utils/sdkProgressHelper';
+import { AgentCard, Message } from "@a2a-js/sdk";
+import { RequestContext, ExecutionEventBus } from "@a2a-js/sdk/server";
+import { v4 as uuidv4 } from 'uuid';
+import { getCoreLLMTools } from '../services/LLMTools';
+import { BaseAgent } from './core/BaseAgent';
 
-export class ContextManagementAgent implements AgentExecutor {
-    private codeAnalysisClient: A2AClient;
-    private configService: ConfigService;
+export class ContextManagementAgent extends BaseAgent {
 
-    constructor(private card: AgentCard) {
-        this.configService = ConfigService.getInstance();
-        const agentBaseUrl = `http://localhost:${this.configService.getA2AServerPort()}`;
-        this.codeAnalysisClient = new A2AClient({ url: `${agentBaseUrl}/agent/codeanalysis` } as any);
+    constructor(card: AgentCard) {
+        super(card);
     }
 
-    async execute(requestContext: RequestContext, eventBus: ExecutionEventBus): Promise<void> {
-        try {
-            // Robust parts extraction across possible wrappers
-            const ctxAny = requestContext as any;
-            const msgObj = ctxAny?.message || ctxAny?.request?.message || ctxAny?.request || ctxAny;
-            const parts = msgObj?.parts || ctxAny?.parts || ctxAny?.request?.parts;
-            const query = Array.isArray(parts) ? (parts.find((p: any) => p && p.kind === 'text' && typeof p.text === 'string')?.text || '').trim() : '';
-            if (!query) { throw new Error('No text part provided for ContextManagementAgent.'); }
-            publishProgressLog(eventBus, `Gathering context for query: ${query}`, requestContext);
+    // --- Unified Flow Implementation ---
 
-            // 1. Gather basic context
-            const activeEditor = vscode.window.activeTextEditor;
-            const openFiles = vscode.workspace.textDocuments.map(doc => doc.uri.fsPath);
-            const activeFilePath = activeEditor ? activeEditor.document.uri.fsPath : 'N/A';
-            const folderOverviewContent = await this.getFolderOverview(activeEditor);
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
+        // 1. Extract Complexity
+        const complexityMatch = userInput.match(/Complexity Level (\d+)/);
+        const assignedComplexity = complexityMatch ? parseInt(complexityMatch[1], 10) : 30; // Default to Lv 1 (Simple)
 
-            let basicContext: any = {
-                originalQuery: query,
-                activeFilePath,
-                uiLanguage: vscode.env.language,
-                contentPreview: activeEditor ? activeEditor.document.getText().substring(0, 2000) : 'N/A',
-                openFiles,
-                folderOverview: folderOverviewContent,
-            };
+        // 2. Generate Prompt via Factory
+        let targetContent = '';
+        let excludeHistory = false;
+        let dynamicRules: string[] = [];
+        let examples = '';
 
-            // 2. Search for symbols in the query
-            const symbolMatch = query.match(/\b([A-Za-z_][A-Za-z0-9_]{4,})\b/); // Match longer symbols
-            const symbolName = symbolMatch ? symbolMatch[1] : null;
+        // Extract payload if present (passed via BaseAgent delegation)
+        const anyCtx = requestContext as any;
+        const payload = anyCtx?.request?.message?.parts?.find((p: any) => p.kind === 'data')?.data 
+                     || anyCtx?.message?.parts?.find((p: any) => p.kind === 'data')?.data;
 
-            // 3. If symbol found, call CodeAnalysisAgent
-            if (symbolName) {
-                publishProgressLog(eventBus, `Found potential symbol '${symbolName}', searching codebase.`, requestContext);
-                try {
-                    const searchTask = await this.codeAnalysisClient.sendMessage({
-                        message: {
-                            content: {
-                                type: 'search',
-                                symbolName
-                            }
-                        }
-                    });
-                    (basicContext as any).codebaseSearchResults = (searchTask as any).artifacts;
-                    publishProgressLog(eventBus, `Codebase search completed.`, requestContext);
-                } catch(e: any) {
-                    publishProgressLog(eventBus, `Codebase search failed: ${e.message}`, requestContext);
+        if (payload?.mode === 'summarize' || payload?.task?.includes('summarize')) {
+            // User Correction: A2A calls SHOULD retain their own history (context of the request).
+            // excludeHistory = true; // Removed
+            
+            try {
+                // Fetch Active Session History from SessionManager
+                const sessionManager = SessionManager.getInstance();
+                const state = sessionManager.getState();
+                if (state && state.messages) {
+                    targetContent = JSON.stringify(state.messages.map(m => ({
+                        role: m.author,
+                        sender: m.senderName,
+                        text: m.content.map((c: any) => c.text).join(' '),
+                        timestamp: m.timestamp
+                    })), null, 2);
+                } else {
+                    targetContent = "No active session history found to summarize.";
                 }
+            } catch (e) {
+                targetContent = `Error fetching history: ${e}`;
             }
 
-            // 4. Create final artifact
-            const artifact: Artifact = {
-                kind: 'artifact',
-                artifactId: uuidv4(),
-                mimeType: 'application/json',
-                data: basicContext,
-                description: 'Combined context for the user query'
-            };
-            (eventBus as any).publish(artifact as any);
+            // LOGIC-DRIVEN RULE INJECTION
+            const configService = ConfigService.getInstance();
+            const summarizeRatio = configService.getSummarizeTokenLimit(); // e.g. 0.75
 
-            const finalMessage: Message = {
-                kind: "message",
-                messageId: uuidv4(),
-                role: "agent",
-                parts: [{ kind: "text", text: 'Context gathered successfully.' }],
-                contextId: requestContext.contextId,
-            };
-            (eventBus as any).publish(finalMessage as any);
+            // User Formula: max_token * summarize_token_limit * 0.7
+            const MAX_CONTEXT = 20000; // Ideally fetch from ModelInfo, but keeping alignment for now.
+            const targetTokens = Math.floor(MAX_CONTEXT * summarizeRatio * 0.7);
+            
+            // Heuristic: 12 tokens/line
+            const SAFE_LINES = Math.max(50, Math.floor(targetTokens / 12));
 
-        } catch (e: any) {
-            const errorMessage: Message = {
-                kind: "message",
-                messageId: uuidv4(),
-                role: "agent",
-                parts: [{ kind: "text", text: `An error occurred while gathering context: ${e.message}` }],
-                contextId: requestContext.contextId,
-            };
-            (eventBus as any).publish(errorMessage as any);
-        } finally {
-            try {
-                if (typeof (eventBus as any).finished === 'function') {
-                    (eventBus as any).finished();
+            dynamicRules.push(`**Line Limit**: When reading files for summarization, YOU MUST READ NO MORE THAN ${SAFE_LINES} LINES per file (Calculated Limit: ${targetTokens} tokens).`);
+
+            examples = `
+## EXAMPLES (Dynamic Injection)
+### Session Summarization (Lv 2)
+- **Goal**: Summarize active session work.
+- **Action**:
+  - 1. Read Active Chat History (Target Content provided below).
+  - 2. (Optional) Read \`summary_history.md\` to see previous context.
+  - 3. Generate concise summary.
+  - 4. Append to \`.agent/summary_history.md\`.
+`;
+        }
+
+        return await SystemPromptFactory.generate('ContextManagementAgent', 'ContextManagementAgent', assignedComplexity, userInput, {
+            excludeHistory,
+            targetContent,
+            dynamicRules,
+            examples
+        });
+    }
+
+    protected async getTools(userInput: string, requestContext: RequestContext): Promise<any[]> {
+        const { provider } = await this.getLLMConfig();
+        // Use standard core tools (read_file, write_to_file, list_dir)
+        return getCoreLLMTools(provider);
+    }
+
+    protected async handleExecutionResult(result: string, requestContext: RequestContext, eventBus: ExecutionEventBus, correlationId?: string): Promise<void> {
+        // A2A Standard Response
+        // Actual work (cleaning/summarizing) is done via tool side-effects.
+        
+        const response: Message = {
+            kind: 'message',
+            messageId: uuidv4(),
+            role: 'agent',
+            parts: [{
+                kind: 'data',
+                mimeType: 'application/vnd.a2a+json',
+                data: {
+                    toolName: 'ContextManagementAgent',
+                    command: 'response-code-execution',
+                    payload: {
+                        success: true,
+                        status: 'ok',
+                        message: "Context management task completed.",
+                        correlation: correlationId
+                    }
                 }
-            } catch {}
-        }
+            }],
+            contextId: (requestContext as any)?.contextId
+        } as any;
+        eventBus.publish(response);
     }
 
-    async cancelTask(): Promise<void> {
-        // no-op
-    }
-
-    private async getFolderOverview(activeEditor: vscode.TextEditor | undefined): Promise<string> {
-        if (!activeEditor) {
-            return 'N/A';
-        }
-        const dirPath = path.dirname(activeEditor.document.uri.fsPath);
-        const overviewPath = path.join(dirPath, '_folder_overview.md');
-        try {
-            const overviewUri = vscode.Uri.file(overviewPath);
-            const overviewContentBytes = await vscode.workspace.fs.readFile(overviewUri);
-            return Buffer.from(overviewContentBytes).toString('utf-8');
-        } catch (error) {
-            return 'No folder overview file found for the current directory.';
-        }
+    public async cancelTask(): Promise<void> {
+        // No-op
     }
 }

@@ -1,6 +1,25 @@
 import { LlmMessage } from '../../services/LLMService';
 
-export const getConversationalPrompt = (userText: string, conversationHistory?: LlmMessage[], availableTools?: any[], userLanguage: string = 'en') => {
+export interface ConversationalOptions {
+    provider?: string;
+    model?: string;
+    locale?: string;
+    ideLanguage?: string;
+    mcpEnabled?: boolean;
+    workspaceRoots?: string[];
+    uroborosMode?: boolean;
+}
+
+export const getConversationalPrompt = (
+    userText: string, 
+    conversationHistory?: LlmMessage[], 
+    availableTools?: any[], 
+    languageOrOptions: string | ConversationalOptions = 'en'
+) => {
+    const userLanguage = typeof languageOrOptions === 'string' 
+        ? languageOrOptions 
+        : (languageOrOptions.locale || languageOrOptions.ideLanguage || 'en');
+
     const contextSection = conversationHistory && conversationHistory.length > 0
         ? `\n\n**Previous Conversation Context (last ${Math.min(conversationHistory.length, 10)} messages):**\n${conversationHistory.slice(-10).map((msg) => {
             const role = msg.role === 'user' ? 'User' : (msg.role === 'assistant' ? 'Assistant' : 'System');
@@ -8,6 +27,9 @@ export const getConversationalPrompt = (userText: string, conversationHistory?: 
             return `${role}: ${content}`;
         }).join('\n\n')}`
         : '';
+
+    // Use the provided locale/language code directly as requested by the user
+    const targetLanguageName = userLanguage;
 
     return `System: You are Viper, an expert coding partner.
 Style:
@@ -30,6 +52,11 @@ Formatting:
 Task:
 Respond to the user. If the request is a simple greeting, reply briefly and ask what to do next.
 If you need internal analysis, include it inside <THOUGHT>...</THOUGHT> and do NOT include it in the final user-facing text.
+
+LANGUAGE RULES:
+1. **USER-FACING OUTPUT**: When speaking to the User (final responses, questions, chat bubbles), YOU MUST USE "${targetLanguageName}".
+   - Do NOT use English for explanations unless the target language IS English.
+2. **INTERNAL THOUGHTS & TOOLS**: For internal reasoning (Thinking) and Tool execution/arguments, you MAY use English.
 
 **CRITICAL: Tool Calling Rules**
 - When the user requests file creation/modification (e.g., "make a file", "create", "save as file"), you MUST use FileWriteTool via tool_calls - DO NOT respond with text or code blocks
@@ -67,6 +94,5 @@ ${availableTools.map((tool: any) => {
 }).join('\n\n')}
 ` : ''}
 
-User locale: '${userLanguage}' (Speak in this language)
-User: "${userText}"${contextSection}`;
+User (Language Reference: ${targetLanguageName}): "${userText}"${contextSection}`;
 };

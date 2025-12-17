@@ -151,6 +151,12 @@ const MainViewContent: React.FC = () => {
     const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
     const [profiles, setProfiles] = useState<Array<{ id: string; name: string; provider?: string; endpoint?: string; model?: string }>>([]);
     const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+    const [loadingStatus, setLoadingStatus] = useState({
+        llmSettings: true,
+        models: true,
+        profiles: true,
+        slashCommands: true
+    });
 
 	const [isThinking, setIsThinking] = useState(false);
 	const [uroborosProposal, setUroborosProposal] = useState<{
@@ -225,7 +231,7 @@ const MainViewContent: React.FC = () => {
 			}
 
 			return baseMsg;
-		});
+		}).filter(msg => msg.kind !== 'tool_trace');
 	};
 
 	// Create handler context and registry following SDK pattern (similar to toolRegistry in MCPServer)
@@ -244,12 +250,14 @@ const MainViewContent: React.FC = () => {
 		setIsThinking,
 		setPendingDiffs,
 		setShowDiffSummary,
-		setUroborosProposal,
+        setUroborosProposal,
 		mapHistoryToDisplayMessages,
 		welcomeLockRef,
 		viewRef,
 		dropIncomingRef,
 		lastUserAttachmentsRef,
+        setLoadingStatus,
+        setAutonomousMode,
 		vscodeService
 	};
 
@@ -497,7 +505,7 @@ const handleNewChat = () => {
 	const renderCentralContent = () => {
 		if (view === 'settings') return <SettingsPage />;
 		if (error) return <ErrorDisplay error={error} />;
-		if (view === 'welcome' || messages.length === 0) {
+		if (view === 'welcome') {
 			const recent = [...sessions].reverse().slice(0, 2); // 최근 2개
 			return <WelcomeScreen onSendMessage={handleSendMessage} recentSessions={recent} onPickSession={handleSelectSession} />;
 		}
@@ -506,6 +514,12 @@ const handleNewChat = () => {
 				messages={messages}
 				isThinking={isThinking}
                 onAction={() => setIsThinking(true)}
+                onRollback={(messageId, timestamp) => {
+                    const confirmation = window.confirm('Are you sure you want to time travel to this message? All subsequent history will be lost.');
+                    if (confirmation) {
+                        vscodeService.postMessage({ command: 'rollbackTo', payload: { messageId, timestamp } });
+                    }
+                }}
 			/>
 		);
 	};
@@ -617,9 +631,13 @@ const handleNewChat = () => {
                     onShowHistory={handleShowHistory}
                     onShowSettings={() => {
                         setView(prev => {
-                            const next = prev === 'settings' ? 'chat' : 'settings';
-                            if (next === 'settings') { setPlan([]); }
-                            return next;
+                            if (prev === 'settings') {
+                                // Return to previous view (welcome or chat) based on active session
+                                return activeSessionId ? 'chat' : 'welcome';
+                            }
+                            // Enter settings
+                            setPlan([]);
+                            return 'settings';
                         });
                     }}
                     isAutonomousMode={isAutonomousMode}
@@ -723,6 +741,10 @@ const handleNewChat = () => {
                                 attachments={attachments}
                                 onRemoveAttachment={(label: string) => setAttachments(prev => prev.filter(a => a.label !== label))}
                                 onClearAttachments={() => setAttachments([])}
+                                isProcessing={isThinking}
+                                onStop={() => {
+                                    vscodeService.postMessage({ command: 'stop' });
+                                }}
                             />
                         </div>
                     </>

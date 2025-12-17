@@ -20,6 +20,7 @@ import { getListDirToolDefinition } from './tools/ListDirTool';
 import { getStatToolDefinition } from './tools/StatTool';
 import { getLintToolDefinition } from './tools/LintTool';
 import { getBrowserOpenToolDefinition } from './tools/BrowserOpenTool';
+import { getStorePreferenceToolDefinition, getGetPreferenceToolDefinition } from './tools/PreferenceTool';
 
 // Define a generic interface for a tool definition
 export interface ToolDefinition<TInput extends ZodSchema, TOutput extends ZodSchema> {
@@ -68,6 +69,8 @@ export function createMCPServer(): Server {
         getGitignoreToolDefinition(),
         getLintToolDefinition(),
         getBrowserOpenToolDefinition(),
+        getStorePreferenceToolDefinition(),
+        getGetPreferenceToolDefinition(),
     ];
 
     for (const tool of toolDefinitions) {

@@ -5,22 +5,24 @@ import { z } from 'zod';
 
 const inputSchema = z.object({
     filePath: z.string().describe("The relative path to the file from the workspace root (e.g., 'src/utils.ts')."),
+    startLine: z.number().optional().describe("The 1-based start line number to read from."),
+    endLine: z.number().optional().describe("The 1-based end line number to read up to (inclusive)."),
 });
 
 const outputSchema = z.object({
-    content: z.string().describe("The raw content of the file."),
+    content: z.string().describe("The content of the file (or partial content)."),
 });
 
 export function getFileReadToolDefinition() {
     return {
-        name: 'FileReadTool',
+        name: 'read_file',
         description: {
             title: "Read File",
-            description: "Reads the entire content of a specified file within the project workspace.",
+            description: "Reads the content of a specified file within the project workspace. Supports reading specific line ranges.",
             inputSchema: inputSchema,
             outputSchema: outputSchema,
         },
-        handler: async ({ filePath }: z.infer<typeof inputSchema>): Promise<z.infer<typeof outputSchema>> => {
+        handler: async ({ filePath, startLine, endLine }: z.infer<typeof inputSchema>): Promise<z.infer<typeof outputSchema>> => {
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (!workspaceFolders || workspaceFolders.length === 0) {
                 throw new Error('No workspace folder is open.');
@@ -40,6 +42,21 @@ export function getFileReadToolDefinition() {
 
             try {
                 const content = await fs.readFile(candidateAbs, 'utf-8');
+                
+                if (startLine !== undefined || endLine !== undefined) {
+                    const lines = content.split('\n');
+                    const start = (startLine !== undefined && startLine > 0) ? startLine - 1 : 0;
+                    const end = (endLine !== undefined && endLine > 0) ? endLine : lines.length;
+                    
+                    // Validate range
+                    if (start >= lines.length) {
+                         return { content: '' };
+                    }
+                    
+                    const sliced = lines.slice(start, end);
+                    return { content: sliced.join('\n') };
+                }
+
                 return { content };
             } catch (error: any) {
                 if (error.code === 'ENOENT') {

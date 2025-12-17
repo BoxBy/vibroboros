@@ -42,6 +42,15 @@ export function getFileWriteToolDefinition() {
             try {
                 await fs.mkdir(path.dirname(candidateAbs), { recursive: true });
                 await fs.writeFile(candidateAbs, content, 'utf-8');
+                
+                // Trigger Semantic Graph Update (Centralized for all agents)
+                try {
+                    const { SemanticModelService } = require('../../services/SemanticModelService');
+                    if (SemanticModelService) {
+                        SemanticModelService.getInstance().updateFile(candidateAbs);
+                    }
+                } catch {}
+
                 const relForMsg = path.relative(matchedRoot, candidateAbs) || candidateAbs;
                 const message = `Successfully wrote content to ${relForMsg}`;
                 return { message };

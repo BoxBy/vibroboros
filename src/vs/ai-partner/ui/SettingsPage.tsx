@@ -5,7 +5,7 @@ import { vscodeService } from './services/vscode';
 import { ProviderSettings } from './components/LLMProviderSettings';
 import { validateApiKey, validateEndpoint, getDefaultEndpoint } from './utils/validation';
 
-// Defimport { VSCodeCheckbox } from '@vscode/webview-ui-toolkit/react'; // 추가
+
 
 // Agent interface for internal Viper agents (from ConfigService.getInternalAgents())
 interface InternalAgent {
@@ -43,6 +43,7 @@ interface LlmSettings {
   openrouterApiKey: string;
   openrouterEndpoint: string;
   model: string;
+  modelMaxContext?: number;
 }
 
 interface SettingsPageProps {
@@ -96,8 +97,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   // Feature toggles
   const [streamingEnabled, setStreamingEnabled] = useState<boolean>(false);
   const [advancedHistorySummaryEnabled, setAdvancedHistorySummaryEnabled] = useState<boolean>(false);
-  const [agentOverridesDraft, setAgentOverridesDraft] = useState<Record<string, { useDefault: boolean; model: string; profileId?: string }>>({});
+  const [agentOverridesDraft, setAgentOverridesDraft] = useState<Record<string, { useDefault: boolean; model: string; profileId?: string; useExternal?: boolean; externalUrl?: string }>>({});
   const [showAgentOverrides, setShowAgentOverrides] = useState<boolean>(false);
+  
+  // New Settings
+  const [summarizeTokenLimit, setSummarizeTokenLimit] = useState<number>(0.75);
+
+  const [thinkingLanguage, setThinkingLanguage] = useState<string>('Korean');
+  const [maxContextOverride, setMaxContextOverride] = useState<number | undefined>(undefined);
+  const [useVSCodeThinkingLang, setUseVSCodeThinkingLang] = useState<boolean>(false);
 
   // startModelPolling은 더 이상 필요 없음 (MainView가 models를 관리)
   const startModelPolling = useCallback((durationMs: number = 20000, intervalMs: number = 2000) => {
@@ -124,6 +132,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         const p = message.payload || {};
         setStreamingEnabled(!!p.streamingEnabled);
         setAdvancedHistorySummaryEnabled(!!p.advancedHistorySummaryEnabled);
+        if (typeof p.summarizeTokenLimit === 'number') setSummarizeTokenLimit(p.summarizeTokenLimit);
+
+        if (typeof p.thinkingLanguage === 'string') setThinkingLanguage(p.thinkingLanguage);
+        if (p.maxContextOverride !== undefined) setMaxContextOverride(p.maxContextOverride);
+        if (p.useVSCodeThinkingLang !== undefined) setUseVSCodeThinkingLang(p.useVSCodeThinkingLang);
       } else if (message.command === 'profilesResponse') {
         setProfiles(message.payload?.profiles || []);
         setActiveProfileId(typeof message.payload?.activeProfileId === 'string' ? message.payload.activeProfileId : null);
@@ -180,6 +193,62 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   const [mcpHealthStatus, setMcpHealthStatus] = useState<Record<string, { status: 'healthy' | 'unhealthy' | 'unknown'; message?: string; tools?: string[] }>>({});
   const [a2aHealthStatus, setA2aHealthStatus] = useState<Record<string, { status: 'healthy' | 'unhealthy' | 'unknown'; message?: string }>>({});
   const [expandedServerTools, setExpandedServerTools] = useState<Record<string, boolean>>({});
+  
+  // MCP Enable/Disable State
+  const [mcpEnabledState, setMcpEnabledState] = useState<{
+      servers: Record<string, boolean>;
+      tools: Record<string, Record<string, boolean>>;
+  }>({ servers: {}, tools: {} });
+
+  // Initialize enabled state when health status updates
+  useEffect(() => {
+    setMcpEnabledState(prev => {
+        const newServers = { ...prev.servers };
+        const newTools = { ...prev.tools };
+        
+        configuredItems.mcp.forEach(server => {
+            if (newServers[server] === undefined) {
+                newServers[server] = true; // Default enabled
+            }
+            const tools = mcpHealthStatus[server]?.tools || [];
+            if (!newTools[server]) {
+                newTools[server] = {};
+            }
+            tools.forEach(tool => {
+                if (newTools[server][tool] === undefined) {
+                    newTools[server][tool] = true; // Default enabled
+                }
+            });
+        });
+        return { servers: newServers, tools: newTools };
+    });
+  }, [configuredItems.mcp, mcpHealthStatus]);
+
+  const toggleServerEnabled = (server: string, current: boolean) => {
+      const newState = !current;
+      setMcpEnabledState(prev => ({
+          ...prev,
+          servers: { ...prev.servers, [server]: newState }
+      }));
+      // Also updates backend
+      vscodeService.postMessage({ command: 'updateMcpServerState', payload: { server, enabled: newState } });
+  };
+
+  const toggleToolEnabled = (server: string, tool: string, current: boolean) => {
+      const newState = !current;
+      setMcpEnabledState(prev => ({
+          ...prev,
+          tools: {
+              ...prev.tools,
+              [server]: {
+                  ...(prev.tools[server] || {}),
+                  [tool]: newState
+              }
+          }
+      }));
+       // Also updates backend
+       vscodeService.postMessage({ command: 'updateMcpToolState', payload: { server, tool, enabled: newState } });
+  };
 
   const toggleServerTools = (serverId: string) => {
       setExpandedServerTools(prev => ({
@@ -447,6 +516,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
     if (llmSectionRef.current) {
       llmSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+    // Refresh models since we might be switching context/provider
+    vscodeService.postMessage({ command: 'requestModels' });
   };
   const cancelEditProfile = () => {
     setIsEditing(false);
@@ -520,6 +591,30 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
               vscodeService.postMessage({ command: 'setAdvancedHistorySummaryEnabled', payload: { enabled: val } });
             }}
           />
+        </div>
+        
+        <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>Thinking Language</div>
+            <div style={{ opacity: 0.8, fontSize: 12 }}>
+              {useVSCodeThinkingLang 
+                ? 'Thinking process will match your VS Code display language.' 
+                : 'Thinking process will be in English (Recommended for accuracy).'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+             <VSCodeCheckbox
+                checked={useVSCodeThinkingLang}
+                onChange={(e: any) => {
+                    const checked = !!e.target.checked;
+                    setUseVSCodeThinkingLang(checked);
+                    vscodeService.postMessage({ command: 'setUseVSCodeThinkingLang', payload: { use: checked } });
+                    // Also update Legacy setting for backward compatibility/logging if needed
+                    vscodeService.postMessage({ command: 'setThinkingLanguage', payload: { lang: checked ? 'VSCode' : 'English' } });
+                }}
+             />
+             <span style={{ fontSize: '12px' }}>Sync with VS Code</span>
+          </div>
         </div>
       </div>
 
@@ -638,6 +733,83 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
           </div>
         </div>
 
+        {/* Max Context Window Setting */}
+        <div className="setting-item" style={{ display: 'flex', flexDirection: 'column', marginBottom: '10px' }}>
+             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <label style={{ minWidth: '120px', fontSize: '13px' }}>Max Context:</label>
+                <VSCodeTextField
+                    value={maxContextOverride !== undefined ? String(maxContextOverride) : ''}
+                    onInput={(e: any) => {
+                        const val = parseInt(e.target.value);
+                        const newVal = isNaN(val) ? undefined : val;
+                        setMaxContextOverride(newVal);
+                        vscodeService.postMessage({ command: 'setMaxContextOverride', payload: { limit: newVal } });
+                    }}
+                    placeholder={String(llmSettings.modelMaxContext || 4096)}
+                    style={{ width: '120px' }}
+                />
+                <span style={{ fontSize: '12px', opacity: 0.7 }}>tokens</span>
+             </div>
+             {!maxContextOverride && (!llmSettings.modelMaxContext || llmSettings.modelMaxContext === 4096) && (
+                <div style={{ color: 'var(--vscode-charts-yellow)', fontSize: '11px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '130px' }}>
+                     <span className="codicon codicon-warning"></span>
+                     <span>Default limit (4096). Enter manually above if model supports more.</span>
+                </div>
+            )}
+            <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '2px', marginLeft: '130px' }}>
+                Leave empty to use auto-detected limit.
+            </div>
+        </div>
+
+
+        <div className="setting-item" style={{ display: 'flex', flexDirection: 'column', marginBottom: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+             <label style={{ minWidth: '120px', marginRight: '10px', flexShrink: 0 }}>Summarize %:</label>
+             <VSCodeTextField
+               value={(summarizeTokenLimit * 100).toString()}
+               onInput={(e: any) => {
+                   let val = parseFloat(e.target.value);
+                   if (!isNaN(val)) {
+                       if (val > 100) val = 100;
+                       if (val < 0) val = 0;
+                       setSummarizeTokenLimit(val / 100);
+                   }
+               }}
+               onChange={(e: any) => {
+                   let val = parseFloat(e.target.value);
+                   if (!isNaN(val)) {
+                       if (val > 100) val = 100;
+                       if (val < 0) val = 0;
+                       vscodeService.postMessage({ command: 'setSummarizeTokenLimit', payload: { limit: val / 100 } });
+                   }
+               }}
+               placeholder="75"
+               style={{ width: '60px', marginRight: '12px', flexShrink: 0 }}
+             />
+             <span style={{ opacity: 0.8, fontSize: '12px', flexShrink: 0, whiteSpace: 'nowrap' }}>% of context allocated.</span>
+          </div>
+          
+            <div style={{ marginLeft: '130px', fontSize: '12px', opacity: 0.9, backgroundColor: 'var(--vscode-textBlockQuote-background)', padding: '8px', borderRadius: '4px' }}>
+            {(() => {
+                const maxCtx = maxContextOverride || llmSettings.modelMaxContext || 4096;
+                const sysPromptEst = 2000; // Estimated system prompt size
+                const usableCtx = Math.max(0, maxCtx - sysPromptEst);
+                const historyLimit = Math.floor(usableCtx * summarizeTokenLimit);
+                
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <div><strong>Token Usage Estimate:</strong></div>
+                        <div>Model Context: <strong>{maxCtx.toLocaleString()}</strong> tokens</div>
+                        <div>System Prompt (Est.): <strong>~{sysPromptEst.toLocaleString()}</strong> tokens</div>
+                        <div style={{ marginTop: '4px', borderTop: '1px solid var(--vscode-editor-foreground)', paddingTop: '2px' }}>
+                            Available for Chat History: <strong style={{ color: 'var(--vscode-textLink-foreground)' }}>{historyLimit.toLocaleString()}</strong> tokens
+                        </div>
+                    </div>
+                );
+            })()}
+          </div>
+        </div>
+
         {llmSettings.llmProvider === 'openai' && (
           <ProviderSettings
             apiKey={llmSettings.openaiApiKeys}
@@ -735,6 +907,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             apiKeyLabel="OpenRouter API Key:"
           />
         )}
+
+
 
         {llmSettings.llmProvider !== 'ollama' && (
           <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '16px' }}>
@@ -953,7 +1127,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ marginTop: 0 }}>Model Context Protocol (MCP)</h3>
             <div style={{ display: 'flex', gap: '4px' }}>
-                <VSCodeButton appearance="icon" onClick={() => vscodeService.postMessage({ command: 'refreshConfiguredItems' })} title="Refresh MCP configs">
+                <VSCodeButton appearance="icon" onClick={() => vscodeService.postMessage({ command: 'refreshConfiguredItems', payload: { force: true } })} title="Refresh MCP configs">
                     <span className="codicon codicon-refresh"></span>
                 </VSCodeButton>
             </div>
@@ -994,9 +1168,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                           
                           return (
                               <div key={server} style={{ display: 'flex', flexDirection: 'column' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', fontSize: '13px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', fontSize: '13px' }}>
+                                    <div style={{ marginRight: '8px' }} onClick={(e) => e.stopPropagation()}>
+                                        <VSCodeCheckbox 
+                                            checked={mcpEnabledState.servers[server] !== false}
+                                            onChange={() => toggleServerEnabled(server, mcpEnabledState.servers[server] !== false)} 
+                                            title={mcpEnabledState.servers[server] !== false ? "Disable Server" : "Enable Server"}
+                                        />
+                                    </div>
                                     <span className={`codicon ${iconClass}`} style={{ fontSize: '12px', marginRight: '6px', color: iconColor }} title={health.message || statusText}></span>
-                                    <span>{server}</span>
+                                    <span style={{ opacity: mcpEnabledState.servers[server] !== false ? 1 : 0.5 }}>{server}</span>
                                     <span style={{ fontSize: '11px', opacity: 0.6, marginLeft: '8px' }}>({statusText})</span>
                                     {health.message && health.status === 'unhealthy' && (
                                         <span style={{ fontSize: '11px', opacity: 0.8, marginLeft: '8px', color: 'var(--vscode-errorForeground)' }}>- {health.message}</span>
@@ -1013,16 +1194,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                                     )}
                                 </div>
                                 {hasTools && expandedServerTools[server] && (
-                                    <div style={{ margin: '4px 0 8px 20px', fontSize: '11px', opacity: 0.8, display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                    <div style={{ margin: '4px 0 8px 46px', fontSize: '12px', opacity: 0.9, display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                         {health.tools?.map(tool => (
-                                            <span key={tool} style={{ 
-                                                backgroundColor: 'var(--vscode-badge-background)', 
-                                                color: 'var(--vscode-badge-foreground)', 
-                                                padding: '2px 6px', 
-                                                borderRadius: '3px' 
-                                            }}>
-                                                {tool}
-                                            </span>
+                                            <div key={tool} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <VSCodeCheckbox 
+                                                    checked={mcpEnabledState.tools[server]?.[tool] !== false}
+                                                    onChange={() => toggleToolEnabled(server, tool, mcpEnabledState.tools[server]?.[tool] !== false)}
+                                                    disabled={mcpEnabledState.servers[server] === false}
+                                                />
+                                                <span style={{ opacity: (mcpEnabledState.tools[server]?.[tool] !== false && mcpEnabledState.servers[server] !== false) ? 1 : 0.5 }}>
+                                                    {tool}
+                                                </span>
+                                            </div>
                                         ))}
                                     </div>
                                 )}
@@ -1046,7 +1229,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ marginTop: 0 }}>Agents to Agents (A2A)</h3>
             <div style={{ display: 'flex', gap: '4px' }}>
-                <VSCodeButton appearance="icon" onClick={() => vscodeService.postMessage({ command: 'refreshConfiguredItems' })} title="Refresh A2A configs">
+                <VSCodeButton appearance="icon" onClick={() => vscodeService.postMessage({ command: 'refreshConfiguredItems', payload: { force: true } })} title="Refresh A2A configs">
                     <span className="codicon codicon-refresh"></span>
                 </VSCodeButton>
             </div>
@@ -1111,7 +1294,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ marginTop: 0 }}>Prompt Settings</h3>
             <div style={{ display: 'flex', gap: '4px' }}>
-                <VSCodeButton appearance="icon" onClick={() => vscodeService.postMessage({ command: 'refreshConfiguredItems' })} title="Refresh Prompt configs">
+                <VSCodeButton appearance="icon" onClick={() => vscodeService.postMessage({ command: 'refreshConfiguredItems', payload: { force: true } })} title="Refresh Prompt configs">
                     <span className="codicon codicon-refresh"></span>
                 </VSCodeButton>
             </div>

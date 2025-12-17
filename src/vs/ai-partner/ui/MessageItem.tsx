@@ -9,6 +9,7 @@ import { vscodeService } from './services/vscode';
 interface MessageItemProps {
     message: DisplayMessage;
     onAction?: () => void;
+    onRollback?: (messageId: string | undefined, timestamp: string) => void;
 }
 
 const CollapsibleCode: React.FC<{ language: string; children: React.ReactNode }> = ({ language, children }) => {
@@ -134,7 +135,7 @@ const ProgressLogItem: React.FC<{ message: any }> = ({ message }) => {
     );
 };
 
-export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction }) => {
+export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onRollback }) => {
     const handleFileNameClick = () => {
         if ((message as any).filePath) {
             vscodeService.postMessage({ command: 'openFile', filePath: (message as any).filePath });
@@ -144,6 +145,43 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction }) =
     // Progress log rendering with collapse support
     if ((message as any).kind === 'progress') {
         return <ProgressLogItem message={message} />;
+    }
+
+    // Task UI rendering
+    if ((message as any).kind === 'task') {
+        const tasks: string[] = (message as any).tasks || [];
+        // Fallback: parse text if tasks array is missing but kind is task
+        const parsedTasks = tasks.length > 0 ? tasks : (message.content[0].text || '').split('\n').filter((l: string) => /^\s*(?:-|\d+\.|\[ \]|\[x\])\s+/.test(l));
+
+        return (
+            <div className="message-group" style={{ marginBottom: 16, width: '100%' }}>
+                <div className="message model-message" style={{ padding: '12px', background: 'var(--vscode-editor-background)', border: '1px solid var(--vscode-widget-border)', borderRadius: 6, width: '100%' }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className="codicon codicon-checklist" />
+                        <span>Task List</span>
+                    </div>
+                    <div className="task-list" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {parsedTasks.map((task: string, idx: number) => {
+                            const isCompleted = /\[x\]/i.test(task) || (task.includes('✅') && !task.includes('❌')); // simplistic check
+                            const cleanText = task.replace(/^\s*(?:-|\d+\.|\[ \]|\[x\])\s*/, '').replace(/✅/g, '').trim();
+                            return (
+                                <div key={idx} style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'start', 
+                                    gap: 8, 
+                                    opacity: isCompleted ? 0.6 : 1,
+                                    textDecoration: isCompleted ? 'line-through' : 'none'
+                                }}>
+                                    <span className={`codicon ${isCompleted ? 'codicon-pass' : 'codicon-circle-outline'}`} 
+                                          style={{ marginTop: 3, color: isCompleted ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-descriptionForeground)' }} />
+                                    <span>{cleanText}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     // codeEditFile: 파일 생성/수정 카드 (SDK 표준 UI 구조)
@@ -483,7 +521,35 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction }) =
                 </div>
             )}
             {(showAgentBubble || !isModel) && (
-            <div className={`message ${isModel ? 'model-message' : 'user-message'}`}>
+            <div className={`message ${isModel ? 'model-message' : 'user-message'}`} style={{ position: 'relative' }}>
+                {!isModel && onRollback && (
+                    <div className="rollback-btn" 
+                         title="Time Travel: Rollback to this message"
+                         onClick={() => onRollback(message.messageId, message.timestamp || '')}
+                         style={{
+                             position: 'absolute',
+                             top: -8,
+                             left: -8,
+                             width: 20,
+                             height: 20,
+                             borderRadius: '50%',
+                             background: 'var(--vscode-editor-background)',
+                             border: '1px solid var(--vscode-widget-border)',
+                             color: 'var(--vscode-descriptionForeground)',
+                             display: 'flex',
+                             alignItems: 'center',
+                             justifyContent: 'center',
+                             cursor: 'pointer',
+                             opacity: 0, // Hover to show handled via CSS in MainView or simpler inline hover
+                             transition: 'opacity 0.2s',
+                             zIndex: 10
+                         }}
+                         onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                         onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+                    >
+                        <span className="codicon codicon-history" style={{ fontSize: '12px' }} />
+                    </div>
+                )}
                 <div className="sender-info">
                     {/* Agent 이름 제거 - bubble 외부에만 표시 */}
                     <span className="timestamp">{formatTimestamp(message.timestamp)}</span>

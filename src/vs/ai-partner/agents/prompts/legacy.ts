@@ -1,4 +1,4 @@
-import { LlmMessage } from '../services/LLMService';
+import { LlmMessage } from '../../services/LLMService';
 
 export const getTaskTypePrompt = (userText: string, conversationHistory?: LlmMessage[]) => {
     const contextSection = conversationHistory && conversationHistory.length > 0
@@ -37,7 +37,7 @@ Rules:
 - Provide complexity_reasons (array of strings explaining why it's complex):
   * Examples: ["Multiple files need modification", "Requires architectural changes", "Needs testing", "Requires reading multiple files"]
 - is_complex_task: true if complexity_score >= 50, false otherwise
-- **CRITICAL**: If intent_type is "info_query", the system will use MCP tools (ListDirTool, FileReadTool) directly to provide information without creating any code files. DO NOT treat info queries as code implementation tasks.
+- **CRITICAL**: If intent_type is "info_query", the system will use MCP tools (ListDirTool, read_file) directly to provide information without creating any code files. DO NOT treat info queries as code implementation tasks.
 - **CONTEXT AWARENESS**:
   * Analyze the conversation history to understand the full context and intent, not just the current message.
   * If the user's input is a short confirmation, continuation, or agreement to a previous coding topic, and the previous context implies a pending implementation/modification task, classify accordingly.

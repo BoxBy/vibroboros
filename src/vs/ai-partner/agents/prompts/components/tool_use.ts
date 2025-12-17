@@ -1,6 +1,6 @@
 import { SystemPromptContext } from '../types';
-import { viperToolRegistry, toolSpecToOpenAITool } from '../tools';
-import { ViperToolSpec } from '../tools/ViperToolSpec';
+// import { viperToolRegistry, toolSpecToOpenAITool } from '../tools';
+// import { ViperToolSpec } from '../tools/ViperToolSpec';
 
 /**
  * Tool usage rules and dynamic list of available tools
@@ -13,7 +13,7 @@ export function buildToolUseSection(context: SystemPromptContext, availableTools
 
 **When to Use Tools**:
 - File creation/modification: When user requests file creation (e.g., "make a file", "create", "save as file"), you MUST use the file write tool via tool_calls
-- Directory/file reading: When user asks about files/directories (e.g., "what's in src?", "read config"), use directory listing or file read tools via tool_calls
+- Directory/file reading: When user asks about files/directories (e.g., "what's in src?", "read config"), use directory listing or file read tools (read_file) via tool_calls
 - Information retrieval: When user needs information that requires file system access, use appropriate tools
 
 **How to Use Tools**:

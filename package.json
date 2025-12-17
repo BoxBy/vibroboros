@@ -38,6 +38,10 @@
       {
         "command": "viper.toViperActiveFile",
         "title": "Send File to Viper"
+      },
+      {
+        "command": "viper.refreshSemanticGraph",
+        "title": "Viper: Refresh Semantic Graph"
       }
     ],
     "viewsContainers": {
@@ -159,11 +163,18 @@
             "description": "Timeout in milliseconds for requests to the Refactoring Agent.",
             "scope": "resource"
           },
+
           "viper.agent.codeAnalysis.requestTimeout": {
             "type": "number",
             "default": 45000,
             "description": "Timeout in milliseconds for requests to the Code Analysis Agent.",
             "scope": "resource"
+          },
+          "viper.agent.contextManagement.summarizeTokenLimit": {
+            "type": "number",
+            "default": 0.75,
+            "description": "Ratio of total context window to allocate for summarization reading (e.g. 0.75 = 75% of context window).",
+            "scope": "application"
           },
           "viper.agent.orchestrator.contextTokenThreshold": {
             "type": "number",
@@ -242,6 +253,23 @@
             "default": false,
             "description": "When enabled, Viper creates a safety checkpoint under .viper/checkpoints before applying file writes or running commands.",
             "scope": "application"
+          },
+          "viper.agent.orchestrator.thinkingLanguage": {
+            "type": "string",
+            "default": "Korean",
+            "description": "The language used for the agent's internal thinking process.",
+            "scope": "application"
+          },
+          "viper.agent.orchestrator.useVSCodeThinkingLang": {
+            "type": "boolean",
+            "default": false,
+            "description": "Sync the agent's thinking language with the VS Code display language.",
+            "scope": "application"
+          },
+          "viper.llm.maxContextOverride": {
+            "type": "number",
+            "description": "Manually override the maximum context window size (tokens). Leave empty to use auto-detection.",
+            "scope": "application"
           }
         }
       }
@@ -284,6 +312,9 @@
     "@types/uuid": "^10.0.0",
     "diff": "^8.0.2",
     "express": "^4.21.1",
+    "fetch-mcp": "^0.0.5",
+    "js-tiktoken": "^1.0.21",
+    "mcp-terminal": "^0.1.10",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^15.6.6",
     "remark-gfm": "^4.0.1",

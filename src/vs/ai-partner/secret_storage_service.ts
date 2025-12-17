@@ -29,8 +29,40 @@ export class SecretStorageService {
         return `${SecretStorageService.PROFILE_PREFIX}${profileId}.apiKey`;
     }
 
+    // Helper for safe retrieval with timeout
+    private async getWithTimeout(key: string): Promise<string | undefined> {
+        return new Promise<string | undefined>((resolve) => {
+            let completed = false;
+            
+            // Timeout safeguard
+            const timer = setTimeout(() => {
+                if (!completed) {
+                    completed = true;
+                    console.error(`[SecretStorageService] TIMEOUT reading key for: ${key}`);
+                    resolve(undefined);
+                }
+            }, 2000); // 2s timeout is generous for local storage
+
+            // Actual read
+            this.secretStorage.get(key).then(val => {
+                if (!completed) {
+                    completed = true;
+                    clearTimeout(timer);
+                    resolve(val);
+                }
+            }).catch(err => {
+                if (!completed) {
+                    completed = true;
+                    clearTimeout(timer);
+                    console.error(`[SecretStorageService] Error reading key for: ${key}`, err);
+                    resolve(undefined);
+                }
+            });
+        });
+    }
+
     public async getApiKey(provider: string): Promise<string | undefined> {
-        return this.secretStorage.get(this.getKey(provider));
+        return this.getWithTimeout(this.getKey(provider));
     }
 
     public async setApiKey(provider: string, key: string): Promise<void> {
@@ -54,7 +86,7 @@ export class SecretStorageService {
 
     // Profile-scoped API keys
     public async getProfileApiKey(profileId: string): Promise<string | undefined> {
-        return this.secretStorage.get(this.getProfileKey(profileId));
+        return this.getWithTimeout(this.getProfileKey(profileId));
     }
 
     public async setProfileApiKey(profileId: string, key: string): Promise<void> {
