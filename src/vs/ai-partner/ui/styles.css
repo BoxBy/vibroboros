@@ -456,7 +456,7 @@ body {
 .message-list {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 0; /* individual items handle their own margins */
     padding-bottom: 20px;
 }
 
@@ -464,7 +464,57 @@ body {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    max-width: 80%; /* Reduce max-width for better chat feel */
+    max-width: 80%;
+    margin-bottom: 16px; /* spacing between bubbles */
+    animation: fadeIn 0.3s ease;
+}
+
+/* Progress Group Styles */
+.progress-group {
+    border-radius: 6px;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.progress-group-header {
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.progress-group-header:hover {
+    background: rgba(0, 0, 0, 0.08) !important;
+}
+
+.progress-group-content {
+    animation: slideDown 0.25s ease-out;
+    padding-left: 12px; /* Reduce from default */
+}
+
+/* Reduce markdown indentation in progress logs */
+.progress-group-content .markdown-content p {
+    margin-left: 0;
+    padding-left: 0;
+}
+
+.progress-group-content .markdown-content ul, 
+.progress-group-content .markdown-content ol {
+    padding-left: 16px;
+    margin-left: 0;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 .message-item.user {

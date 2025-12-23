@@ -1,99 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DisplayMessage } from './MainView';
 import ReactMarkdown, { Components } from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
 import { vscodeService } from './services/vscode';
+import { diffLines } from 'diff';
 
 interface MessageItemProps {
     message: DisplayMessage;
     onAction?: () => void;
     onRollback?: (messageId: string | undefined, timestamp: string) => void;
+    isLast?: boolean;
+    isThinking?: boolean;
+    hasSubsequentUserMessage?: boolean;
 }
 
-const CollapsibleCode: React.FC<{ language: string; children: React.ReactNode }> = ({ language, children }) => {
-    const [isCollapsed, setIsCollapsed] = useState(true);
 
-    return (
-        <div className="collapsible-code" style={{ 
-            border: '1px solid var(--vscode-widget-border)', 
-            borderRadius: '6px',
-            margin: '8px 0',
-            overflow: 'hidden',
-            minWidth: '300px'
-        }}>
-            <div 
-                onClick={() => setIsCollapsed(!isCollapsed)}
-                style={{
-                    padding: '6px 12px',
-                    background: 'var(--vscode-editor-inactiveSelectionBackground)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    fontSize: '12px',
-                    userSelect: 'none'
-                }}
-            >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span className={`codicon ${isCollapsed ? 'codicon-chevron-right' : 'codicon-chevron-down'}`} />
-                    <span style={{ fontWeight: 600 }}>{language || 'code'}</span>
-                </div>
-                <span style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                    {isCollapsed ? 'Click to expand' : 'Click to collapse'}
-                </span>
-            </div>
-            {!isCollapsed && (
-                <div style={{ padding: 0 }}>
-                    <SyntaxHighlighter
-                        children={String(children).replace(/\n$/, '')}
-                        style={vscDarkPlus as any}
-                        language={language}
-                        PreTag="div"
-                        customStyle={{ margin: 0, borderRadius: 0 }}
-                    />
-                </div>
-            )}
-        </div>
-    );
-};
 
-const markdownComponents: Components = {
-    code({ node, className, children, ...props }) {
-        const match = /language-(\w+)/.exec(className || '');
-        const inline = !match;
 
-        return !inline && match ? (
-            <CollapsibleCode language={match[1]}>
-                {children}
-            </CollapsibleCode>
-        ) : (
-            <code className={className} {...props}>
-                {children}
-            </code>
-        );
-    },
-    a({ href, children, ...props }) {
-        const isFile = typeof href === 'string' && /^file:\/\//i.test(href);
-        if (isFile) {
-            return (
-                <a
-                    href={href}
-                    onClick={(e) => { e.preventDefault(); try { vscodeService.postMessage({ command: 'openAttachment', payload: { uri: href } }); } catch {} }}
-                    {...props}
-                >
-                    {children}
-                </a>
-            );
-        }
-        return (
-            <a href={href} target="_blank" rel="noreferrer noopener" {...props}>
-                {children}
-            </a>
-        );
-    }
-};
 
 const formatTimestamp = (isoString: string | undefined): string => {
     if (!isoString) return '';
@@ -105,53 +30,398 @@ const formatTimestamp = (isoString: string | undefined): string => {
 };
 
 
-const ProgressLogItem: React.FC<{ message: any }> = ({ message }) => {
-    const [isCollapsed, setIsCollapsed] = useState(false);
+
+// Common markdown components
+const markdownComponents: Components = {
+    code({node, className, children, ...props}: any) {
+        const match = /language-(\w+)/.exec(className || '')
+        return !className?.includes('language-carousel') ? (
+        match ? (
+            <SyntaxHighlighter
+                children={String(children).replace(/\n$/, '')}
+                style={vscDarkPlus as any}
+                language={match[1]}
+                PreTag="div"
+                customStyle={{ margin: 0, borderRadius: 0 }}
+                {...props}
+            />
+        ) : (
+            <code className={className} {...props}>
+                {children}
+            </code>
+        )
+        ) : (
+            <div className="carousel-placeholder">[Carousel]</div> 
+            // Carousel not fully implemented in this view or needs recursive import handling
+        )
+    }
+};
+
+interface ProgressLogItemProps {
+    message: DisplayMessage;
+    isLast: boolean;
+    depth?: number;
+}
+
+const ProgressLogItem: React.FC<ProgressLogItemProps> = ({ message, isLast, depth = 0 }) => {
+    // [UI Fix] Requirement 5: Auto-collapse if not the latest log
+    // Only set default state on mount. If user expands/collapses, respect that.
+    const [isCollapsed, setIsCollapsed] = useState(!isLast);
     
+    useEffect(() => {
+        if (!isLast) {
+            setIsCollapsed(true);
+        }
+    }, [isLast]);
+
+    // [UI Fix] Requirement 1 & 2 & 4: Routing parsing & Visual Separation
+    // Parse text to see if it contains "Routing to ..."
+    const { preRouting, routingLine, postRouting } = useMemo(() => {
+        const text = message.text || '';
+        const routingRegex = /^(Routing to .*?)(?:\.\.\.|…)?$/m;
+        const match = text.match(routingRegex);
+
+        if (match && match.index !== undefined) {
+             const routingLine = match[1] + '...'; // Ensure ellipsis
+             const pre = text.slice(0, match.index).trim();
+             const post = text.slice(match.index + match[0].length).trim();
+             return { preRouting: pre, routingLine, postRouting: post };
+        }
+        return { preRouting: text, routingLine: null, postRouting: null };
+    }, [message.text]);
+
+    // Clean text for collapsed preview
+    const collapsedPreview = useMemo(() => {
+        if (routingLine) return routingLine; // Req 1: Show only Routing line if present
+        
+        // Req 3: Show "Thinking..." header if present
+        const headerMatch = message.text.match(/^\[.*?\] Thinking\.\.\./);
+        if (headerMatch) return headerMatch[0];
+
+        // Fallback: first line or stripped
+        const clean = message.text
+             .replace(/<\/?thinking>/g, '')
+             .replace(/^>\s*/gm, ''); // Keep emojis
+        return clean.split('\n')[0].substring(0, 100) + (clean.length > 100 ? '...' : '');
+    }, [message.text, routingLine]);
+
+    const formatBlock = (content: string) => {
+        return content
+            .replace(/<thinking>/g, '\n> ')
+            .replace(/<\/thinking>/g, '\n');
+    };
+
     return (
-        <div className="progress-log-item" 
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            style={{
-            padding: '0 0 0 8px',
-            margin: isCollapsed ? '0 0 2px 0' : '0', // Connect lines when expanded
-            fontSize: '0.9em', // 이미지 기준 폰트 크기
-            color: 'var(--vscode-descriptionForeground)',
-            fontFamily: 'var(--vscode-font-family)',
-            borderLeft: isCollapsed ? 'none' : '2px solid var(--vscode-textBlockQuote-border)',
-            lineHeight: '1.2em',
-            position: 'relative',
-            cursor: 'pointer'
-        }}>
-            <span style={{
-                position: 'absolute',
-                left: isCollapsed ? '0px' : '-1px',
-                color: 'var(--vscode-editorGuide-activeBackground)',
-                fontWeight: isCollapsed ? 'bold' : 'normal'
-            }}>{isCollapsed ? '>' : ''}</span>
-            <span style={{ paddingLeft: isCollapsed ? '12px' : '4px', display: 'block', whiteSpace: isCollapsed ? 'nowrap' : 'pre-wrap', overflow: isCollapsed ? 'hidden' : 'visible', textOverflow: isCollapsed ? 'ellipsis' : 'clip' }}>
-                {message.text.replace(/^>\s*/gm, '').replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}\u{2B06}\u{2B07}\u{2B05}\u{27A1}\u{2194}-\u{21AA}\u{2934}\u{2935}\u{25AA}\u{25AB}\u{25FE}\u{25FD}\u{25FC}\u{25FB}\u{25FA}\u{221A}\u{2714}\u{2705}\u{274C}\u{274E}\u{2716}\u{2795}\u{2796}\u{2797}\u{27B0}\u{27BF}\u{1F191}-\u{1F19A}]/gu, '')}
-            </span>
+        <div className="progress-log-container">
+            {/* Main/Parent Block */}
+            <div className="progress-log-item" 
+                onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest('a, pre, code, button, .collapsible-code, img')) return;
+                    setIsCollapsed(!isCollapsed);
+                }}
+                style={{
+                    padding: '2px 0 2px 8px',
+                    margin: depth > 0 ? `4px 0 4px ${depth * 20}px` : '0', // Recursive indentation
+                    fontSize: '0.93em', 
+                    color: 'var(--vscode-descriptionForeground)',
+                    fontFamily: 'var(--vscode-font-family)',
+                    borderLeft: isCollapsed ? 'none' : '2px solid var(--vscode-textBlockQuote-border)', // Vertical Line 1
+                    lineHeight: '1.4em',
+                    position: 'relative',
+                    cursor: 'pointer',
+                    opacity: 0.95
+                }}>
+                <span style={{
+                    position: 'absolute',
+                    left: isCollapsed ? '0px' : '-1px',
+                    top: '4px',
+                    color: 'var(--vscode-editorGuide-activeBackground)',
+                    fontWeight: isCollapsed ? 'bold' : 'normal'
+                }}>{isCollapsed ? '>' : ''}</span>
+                
+                {isCollapsed ? (
+                    <span style={{ paddingLeft: '12px', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {collapsedPreview}
+                    </span>
+                ) : (
+                    <div style={{ paddingLeft: '4px', overflow: 'hidden' }} className="markdown-content dense-markdown">
+                        {preRouting && <ReactMarkdown 
+                            children={formatBlock(preRouting)}
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                ...markdownComponents,
+                                p: ({node, ...props}) => <p style={{margin: '0 0 4px 0'}} {...props} />
+                            }}
+                        />}
+                        
+                        {routingLine && (
+                            <div style={{
+                                margin: '8px 0', 
+                                fontStyle: 'italic', 
+                                color: 'var(--vscode-textLink-foreground)'
+                            }}>
+                                {routingLine}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Part 3: Nested/Indented Block (Worker Agent) */}
+            {!isCollapsed && postRouting && (
+                <div className="progress-log-nested" style={{
+                    marginLeft: `${(depth + 1) * 20}px`, // Indent further relative to current depth
+                    paddingLeft: '8px',
+                    borderLeft: '2px solid var(--vscode-textBlockQuote-border)', // Vertical Line 2 (Separated)
+                    marginTop: '4px',
+                    fontSize: '0.93em',
+                    color: 'var(--vscode-descriptionForeground)'
+                }}>
+                     <ReactMarkdown 
+                        children={formatBlock(postRouting)}
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                            ...markdownComponents,
+                            p: ({node, ...props}) => <p style={{margin: '0 0 4px 0'}} {...props} />
+                        }}
+                    />
+                </div>
+            )}
         </div>
     );
 };
 
-export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onRollback }) => {
+
+
+const ProgressGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boolean }> = ({ group, hasSubsequentUserMessage }) => {
+    // Initial state: fold if there is a subsequent user message
+    const [isCollapsed, setIsCollapsed] = useState(!!hasSubsequentUserMessage);
+    const [userInteracted, setUserInteracted] = useState(false);
+
+    // Auto-folding logic: collapse when a user message appears after this group
+    useEffect(() => {
+        if (!userInteracted && hasSubsequentUserMessage) {
+            setIsCollapsed(true);
+        }
+    }, [hasSubsequentUserMessage, userInteracted]);
+
+    const logs = group.messages || [];
+    const lastLog = logs[logs.length - 1];
+    const logCount = logs.length;
+
+    // Clean text for summary preview
+    const stripEmojis = (text: string) => text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}\u{2B06}\u{2B07}\u{2B05}\u{27A1}\u{2194}-\u{21AA}\u{2934}\u{2935}\u{25AA}\u{25AB}\u{25FE}\u{25FD}\u{25FC}\u{25FB}\u{25FA}\u{221A}\u{2714}\u{2705}\u{274C}\u{274E}\u{2716}\u{2795}\u{2796}\u{2797}\u{27B0}\u{27BF}\u{1F191}-\u{1F19A}]/gu, '');
+    const cleanSummary = lastLog ? stripEmojis(lastLog.text.replace(/^>\s*/gm, '')) : '';
+
+    return (
+        <div className="progress-group" style={{ marginBottom: 12 }}>
+            <div 
+                className="progress-group-header"
+                onClick={() => {
+                    setIsCollapsed(!isCollapsed);
+                    setUserInteracted(true);
+                }}
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '4px 8px',
+                    fontSize: '0.85em',
+                    color: 'var(--vscode-descriptionForeground)',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    background: isCollapsed ? 'rgba(0,0,0,0.05)' : 'transparent',
+                    borderRadius: '4px'
+                }}
+            >
+                <span className={`codicon ${isCollapsed ? 'codicon-triangle-right' : 'codicon-chevron-down'}`} style={{ fontSize: '12px' }} />
+                <span style={{ fontWeight: 600 }}>{logCount} steps</span>
+                {isCollapsed && (
+                    <span style={{ 
+                        opacity: 0.7, 
+                        whiteSpace: 'nowrap', 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis',
+                        marginLeft: '4px'
+                    }}>
+                        {cleanSummary}
+                    </span>
+                )}
+            </div>
+            
+            {!isCollapsed && (
+                <div className="progress-group-content" style={{ marginTop: '2px' }}>
+                    {(() => {
+                        // Stack-based indentation logic
+                        const depths: number[] = [];
+                        // Initial stack with the root agent (usually Orchestrator or the first sender)
+                        const rootAgent = logs[0]?.senderName || 'OrchestratorAgent';
+                        const stack: string[] = [rootAgent];
+
+                        logs.forEach((log: any) => {
+                            const text = log.text || '';
+                            
+                            // 1. Identify Speaker & Unwind Stack
+                            const agentMatch = text.match(/^\[(.*?)\]/);
+                            if (agentMatch) {
+                                const speaker = agentMatch[1].trim();
+                                const stackIdx = stack.indexOf(speaker);
+                                if (stackIdx !== -1) {
+                                    // Speaker found in stack -> Unwind back to this speaker
+                                    // e.g. [A, B, C] -> Speaker B -> [A, B]
+                                    stack.splice(stackIdx + 1);
+                                } else {
+                                    // Speaker not in stack?
+                                    // Could be a new agent implicitly starting without "Routing to" log
+                                    // Or mis-parsed name.
+                                    // For visual continuity, we don't push automatically unless likely.
+                                    // But typically, we just stick to current level if unknown.
+                                }
+                            }
+
+                            // 2. Record Depth for this log
+                            // Depth is simply (stack.length - 1)
+                            depths.push(Math.max(0, stack.length - 1));
+
+                            // 3. Check for Routing *after* recording depth (since "Routing" log belongs to current speaker)
+                            const routingMatch = text.match(/Routing to (.*?)(?:\.\.\.|…|$)/i);
+                            if (routingMatch) {
+                                const targetAgent = routingMatch[1].trim();
+                                // Push new agent to stack for *subsequent* logs
+                                stack.push(targetAgent);
+                            }
+                        });
+
+                        return logs.map((log: any, idx: number) => (
+                            <ProgressLogItem 
+                                key={idx} 
+                                message={log} 
+                                isLast={idx === logs.length - 1} 
+                                depth={depths[idx]} 
+                            />
+                        ));
+                    })()}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const AgentGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boolean; onAction?: () => void; onRollback?: (messageId: string | undefined, timestamp: string) => void; isLast?: boolean; isThinking?: boolean }> = ({ group, hasSubsequentUserMessage, onAction, onRollback, isLast, isThinking }) => {
+    const [isCollapsed, setIsCollapsed] = useState(!!hasSubsequentUserMessage);
+    const [userInteracted, setUserInteracted] = useState(false);
+
+    useEffect(() => {
+        if (!userInteracted && hasSubsequentUserMessage) {
+            setIsCollapsed(true);
+        }
+    }, [hasSubsequentUserMessage, userInteracted]);
+
+    const messages = group.messages || [];
+    const agentName = messages[0]?.senderName || 'Agent';
+
+    return (
+        <div className="agent-group" style={{ marginBottom: 16 }}>
+            <div 
+                className="agent-group-header"
+                onClick={() => {
+                    setIsCollapsed(!isCollapsed);
+                    setUserInteracted(true);
+                }}
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 10px',
+                    fontSize: '0.9em',
+                    color: 'var(--vscode-descriptionForeground)',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    background: 'rgba(0, 0, 0, 0.03)',
+                    border: '1px solid var(--vscode-widget-border)',
+                    borderRadius: '6px',
+                    marginBottom: isCollapsed ? 0 : '10px'
+                }}
+            >
+                <span className={`codicon ${isCollapsed ? 'codicon-chevron-right' : 'codicon-chevron-down'}`} style={{ fontSize: '14px' }} />
+                <span className="codicon codicon-robot" style={{ fontSize: '14px' }} />
+                <span style={{ fontWeight: 600 }}>{agentName} Discussing ({messages.length} messages)</span>
+            </div>
+            
+            {!isCollapsed && (
+                <div className="agent-group-content" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                    {messages.map((msg: any, idx: number) => (
+                        <MessageItem 
+                            key={idx} 
+                            message={msg} 
+                            onAction={onAction} 
+                            onRollback={onRollback} 
+                            isLast={isLast && idx === messages.length - 1}
+                            isThinking={isThinking}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onRollback, isLast, isThinking, hasSubsequentUserMessage }) => {
+    // Hooks moved to top
+	const [showThought, setShowThought] = useState(false);
+	const isModel = message.sender === 'ai';
+    const isOrchestrator = (!message.senderName || (message.senderName || '').trim() === 'OrchestratorAgent');
+    const [showAgentBubble, setShowAgentBubble] = useState<boolean>(true);
+    const [chipsOpen, setChipsOpen] = useState(false);
+    // renderedDiffHtml may still be used if some other part needs it, but mostly we use stats now for CodeEditFile
+    const [renderedDiffHtml, setRenderedDiffHtml] = useState<string | null>(null);
+    const prevDiffRef = useRef(message.diff);
+
+    useEffect(() => {
+        if (message.diff && message.diff.diffHtml) {
+            setRenderedDiffHtml(message.diff.diffHtml);
+        } else {
+            setRenderedDiffHtml(null);
+        }
+
+        // Auto-collapse if diff was present but is now gone (action taken)
+        if (prevDiffRef.current && !message.diff) {
+            setShowAgentBubble(false);
+        }
+        prevDiffRef.current = message.diff;
+    }, [message.diff]);
+
+    useEffect(() => {
+        if (isModel && !isOrchestrator) {
+            if ((message as any).requiresUserInput && !showAgentBubble) {
+                setShowAgentBubble(true);
+            }
+        }
+    }, [message]);
+
     const handleFileNameClick = () => {
         if ((message as any).filePath) {
             vscodeService.postMessage({ command: 'openFile', filePath: (message as any).filePath });
         }
     };
 
-    // Progress log rendering with collapse support
+    // Unified handling for logs and group logs
+    if ((message as any).kind === 'progressGroup') {
+        return <ProgressGroupItem group={message} hasSubsequentUserMessage={hasSubsequentUserMessage} />;
+    }
+    if ((message as any).kind === 'agentGroup') {
+        return <AgentGroupItem group={message} hasSubsequentUserMessage={hasSubsequentUserMessage} onAction={onAction} onRollback={onRollback} isLast={isLast} isThinking={isThinking} />;
+    }
     if ((message as any).kind === 'progress') {
-        return <ProgressLogItem message={message} />;
+        return <ProgressLogItem message={message} isLast={!!isLast} />;
     }
 
     // Task UI rendering
     if ((message as any).kind === 'task') {
         const tasks: string[] = (message as any).tasks || [];
         // Fallback: parse text if tasks array is missing but kind is task
-        const parsedTasks = tasks.length > 0 ? tasks : (message.content[0].text || '').split('\n').filter((l: string) => /^\s*(?:-|\d+\.|\[ \]|\[x\])\s+/.test(l));
+        const parsedTasks = tasks.length > 0 ? tasks : ((message as any).content?.[0]?.text || '').split('\n').filter((l: string) => /^\s*(?:-|\d+\.|\[ \]|\[x\])\s+/.test(l));
 
         return (
             <div className="message-group" style={{ marginBottom: 16, width: '100%' }}>
@@ -164,6 +434,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                         {parsedTasks.map((task: string, idx: number) => {
                             const isCompleted = /\[x\]/i.test(task) || (task.includes('✅') && !task.includes('❌')); // simplistic check
                             const cleanText = task.replace(/^\s*(?:-|\d+\.|\[ \]|\[x\])\s*/, '').replace(/✅/g, '').trim();
+                            // Render Task Item with Markdown
                             return (
                                 <div key={idx} style={{ 
                                     display: 'flex', 
@@ -174,7 +445,16 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                                 }}>
                                     <span className={`codicon ${isCompleted ? 'codicon-pass' : 'codicon-circle-outline'}`} 
                                           style={{ marginTop: 3, color: isCompleted ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-descriptionForeground)' }} />
-                                    <span>{cleanText}</span>
+                                    <div className="markdown-content task-content" style={{ flex: 1 }}>
+                                        <ReactMarkdown
+                                            children={cleanText}
+                                            remarkPlugins={[remarkGfm]}
+                                            components={{
+                                                ...markdownComponents,
+                                                p: ({node, ...props}) => <p style={{margin: 0}} {...props} />
+                                            }}
+                                        />
+                                    </div>
                                 </div>
                             );
                         })}
@@ -192,19 +472,26 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
         const isEdit = (message as any).suggestionType === 'edit-file' || (message as any).description === 'File updated';
         const badgeText = isEdit ? 'Modified' : 'Created';
         
-        // If lintSummary is present, use it. Otherwise, use badgeText as status if we want to show it on left too, or just empty.
-        // Actually, user wants to remove duplication.
-        // Let's show Lint info on the left (if available), and Created/Modified badge on the right.
-        // If no lint info is available (e.g. just created without lint check), we can show "Checked" or nothing on left?
-        // The issue was "Created" on left AND "Modified" on right.
-        
-        // New logic:
-        // Left side: Lint status (if available) OR "Success"
-        // Right side: Created/Modified badge
-        
         const lintSummary = message.lintSummary;
         const hasLintErrors = lintSummary && !lintSummary.includes('0 lint');
-        const leftStatusText = lintSummary || 'Ready'; // Default to Ready or similar if no lint info
+        const leftStatusText = lintSummary;
+
+        // Calculate diff stats
+        const diffStats = useMemo(() => {
+            if (!message.diff || !message.diff.originalCode || !message.diff.modifiedCode) return null;
+            try {
+                const changes = diffLines(message.diff.originalCode, message.diff.modifiedCode);
+                let added = 0;
+                let removed = 0;
+                changes.forEach((part: any) => {
+                    if (part.added) added += part.count || 0;
+                    if (part.removed) removed += part.count || 0;
+                });
+                return { added, removed };
+            } catch (e) {
+                return null;
+            }
+        }, [message.diff]);
         
         return (
             <div className="message-group" style={{ marginBottom: 16, width: '100%' }}>
@@ -264,73 +551,68 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                             </span>
                         </div>
 
-                        {/* 두 번째 줄: lint errors (좌) + Created/Modified 태그 (우) */}
+                        {/* 두 번째 줄: lint errors (좌) + Diff Stats + Created/Modified 태그 (우) */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                {hasLintErrors ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {hasLintErrors && (
                                     <>
                                         <span className="codicon codicon-warning" style={{ fontSize: 14, color: 'var(--vscode-errorForeground)' }} />
-                                        <span style={{ fontSize: '11px', color: 'var(--vscode-errorForeground)' }}>
-                                            {leftStatusText}
-                                        </span>
+                                        <div className="markdown-content" style={{ fontSize: '11px', color: 'var(--vscode-errorForeground)' }}>
+                                            <ReactMarkdown
+                                                children={leftStatusText || ''}
+                                                remarkPlugins={[remarkGfm]}
+                                                components={{
+                                                    ...markdownComponents,
+                                                    p: ({node, ...props}) => <p style={{margin: 0}} {...props} />
+                                                }}
+                                            />
+                                        </div>
                                     </>
-                                ) : (
-                                    <>
+                                )}
+                                {!hasLintErrors && leftStatusText && (
+                                     <>
                                         <span className="codicon codicon-check" style={{ fontSize: 14, color: 'var(--vscode-testing-iconPassed)' }} />
-                                        <span style={{ fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
-                                            {leftStatusText}
-                                        </span>
+                                        <div className="markdown-content" style={{ fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>
+                                                <ReactMarkdown
+                                                children={leftStatusText}
+                                                remarkPlugins={[remarkGfm]}
+                                                components={{
+                                                    ...markdownComponents,
+                                                    p: ({node, ...props}) => <p style={{margin: 0}} {...props} />
+                                                }}
+                                            />
+                                        </div>
                                     </>
                                 )}
                             </div>
-                            <span style={{
-                                fontSize: '11px',
-                                color: 'var(--vscode-descriptionForeground)',
-                                padding: '2px 6px',
-                                borderRadius: 3,
-                                background: 'var(--vscode-button-secondaryBackground)',
-                                border: '1px solid var(--vscode-button-secondaryBorder)',
-                                flexShrink: 0
-                            }}>
-                                {badgeText}
-                            </span>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                {diffStats && (
+                                    <div style={{ fontSize: '11px', display: 'flex', gap: 6 }}>
+                                        <span style={{ color: 'var(--vscode-gitDecoration-addedResourceForeground)' }}>+{diffStats.added}</span>
+                                        <span style={{ color: 'var(--vscode-gitDecoration-deletedResourceForeground)' }}>-{diffStats.removed}</span>
+                                    </div>
+                                )}
+                                <span style={{
+                                    fontSize: '11px',
+                                    color: 'var(--vscode-descriptionForeground)',
+                                    padding: '2px 6px',
+                                    borderRadius: 3,
+                                    background: 'var(--vscode-button-secondaryBackground)',
+                                    border: '1px solid var(--vscode-button-secondaryBorder)',
+                                    flexShrink: 0
+                                }}>
+                                    {badgeText}
+                                </span>
+                            </div>
                         </div>
+                        
+                        {/* Actions Row Removed */}
                     </div>
                 </div>
             </div>
         );
     }
-
-	const [showThought, setShowThought] = useState(false);
-	const isModel = message.sender === 'ai';
-    const isOrchestrator = (!message.senderName || (message.senderName || '').trim() === 'OrchestratorAgent');
-    // 모든 Agent bubble은 항상 펼쳐진 상태로 표시
-    const [showAgentBubble, setShowAgentBubble] = useState<boolean>(true);
-    const [chipsOpen, setChipsOpen] = useState(false);
-    const [renderedDiffHtml, setRenderedDiffHtml] = useState<string | null>(null);
-    const prevDiffRef = useRef(message.diff);
-
-    useEffect(() => {
-        if (message.diff && message.diff.diffHtml) {
-            setRenderedDiffHtml(message.diff.diffHtml);
-        } else {
-            setRenderedDiffHtml(null);
-        }
-
-        // Auto-collapse if diff was present but is now gone (action taken)
-        if (prevDiffRef.current && !message.diff) {
-            setShowAgentBubble(false);
-        }
-        prevDiffRef.current = message.diff;
-    }, [message.diff]);
-
-    useEffect(() => {
-        if (isModel && !isOrchestrator) {
-            if ((message as any).requiresUserInput && !showAgentBubble) {
-                setShowAgentBubble(true);
-            }
-        }
-    }, [message]);
 
 	return (
 		<div className={`message-item ${isModel ? 'ai' : 'user'}`}>
@@ -574,6 +856,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                                 title="Referenced files"
                             >
                                 <span className={`codicon ${chipsOpen ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
+                                <span className={`codicon ${chipsOpen ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
                                 <span>Referenced ({message.attachments.length})</span>
                             </button>
                             {chipsOpen && (
@@ -700,15 +983,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                     )}
                     {message.diff && (
                         <div>
-                            {renderedDiffHtml ? (
-                                <div dangerouslySetInnerHTML={{ __html: renderedDiffHtml }} />
-                            ) : (
-                                <div style={{ fontSize: '0.95em', color: 'var(--vscode-descriptionForeground)', marginBottom: 6 }}>
-                                    <a href="#" onClick={(e) => { e.preventDefault(); vscodeService.postMessage({ command: 'focusDiffSummary' }); }}>
-                                        View diff in summary
-                                    </a>
-                                </div>
-                            )}
+                            {/* Hidden diff body in favor of simple stats in the header */}
                             <div className="action-buttons">
                                 <button className="action-btn edit-btn" onClick={() => { if (!message.diff) return; vscodeService.postMessage({
                                     command: 'showDiff',

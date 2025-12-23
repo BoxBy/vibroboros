@@ -14,7 +14,7 @@ const outputSchema = z.object({
 
 export function getFileWriteToolDefinition() {
     return {
-        name: 'FileWriteTool',
+        name: 'write_to_file',
         description: {
             title: "Write File",
             description: "Writes or overwrites a file with the specified content within the project workspace. Use this tool when the user wants to create or save a file, especially when there is code in the conversation history that needs to be saved. Extract the code from previous messages and save it with an appropriate filename based on the code context (e.g., Python BFS code -> 'bfs.py', JavaScript function -> 'function.js').",

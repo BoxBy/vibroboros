@@ -30,7 +30,7 @@ import { DeveloperLogService } from "src/vs/ai-partner/services/DeveloperLogServ
 import { AgentCard } from '@a2a-js/sdk';
 
 // Factory map to construct agents with correct dependencies
-const createAgentFactory = (dispatch: (message: A2AMessage<any>) => Promise<void>, mcpServer: Server, llmService: LLMService, authService: AuthService, configService: ConfigService, workspaceState: vscode.Memento, diagnostics: vscode.DiagnosticCollection, devLogService: DeveloperLogService) => ({
+const createAgentFactory = (dispatch: (message: A2AMessage<any>) => Promise<any>, mcpServer: Server, llmService: LLMService, authService: AuthService, configService: ConfigService, workspaceState: vscode.Memento, diagnostics: vscode.DiagnosticCollection, devLogService: DeveloperLogService) => ({
     // './agents/CodeAnalysisAgent.ts' removed
     './agents/CodeEditAgent.ts': (card: AgentCard) => new CodeEditAgent(card),
     './agents/ContextManagementAgent.ts': (card: AgentCard) => new ContextManagementAgent(card),
@@ -56,7 +56,7 @@ const DEFAULT_AGENT_CONFIGS: any[] = [
     { path: './agents/specialized/BugFixAgent.ts', card: { name: 'BugFixAgent', description: 'Analyzes and fixes bugs in the codebase.', capabilities: {} as any } }
 ];
 
-export const startA2AServer = async (context: vscode.ExtensionContext, _agentBaseUrl: string, dispatch: (message: A2AMessage<any>) => Promise<void>, mcpServer: Server, llmService: LLMService, authService: AuthService, configService: ConfigService, diagnostics: vscode.DiagnosticCollection, devLogService: DeveloperLogService, orchestratorAgent?: any) => {
+export const startA2AServer = async (context: vscode.ExtensionContext, _agentBaseUrl: string, dispatch: (message: A2AMessage<any>) => Promise<any>, mcpServer: Server, llmService: LLMService, authService: AuthService, configService: ConfigService, diagnostics: vscode.DiagnosticCollection, devLogService: DeveloperLogService, orchestratorAgent?: any) => {
     return new Promise(async (resolve, reject) => {
         try {
             const server = express();
@@ -366,6 +366,11 @@ export const startA2AServer = async (context: vscode.ExtensionContext, _agentBas
                                                         messageId: event.messageId || uuidv4(),
                                                         type: inferredCommand,
                                                         payload: payload || {},
+                                                        parts: event.parts || [{
+                                                            kind: 'data',
+                                                            mimeType: part.mimeType || 'application/vnd.a2a+json',
+                                                            data: payload || {}
+                                                        }],
                                                         sender: config.card.name,
                                                         recipient: inferredToolName,
                                                         timestamp: new Date().toISOString()
@@ -405,25 +410,34 @@ export const startA2AServer = async (context: vscode.ExtensionContext, _agentBas
                                             }
                                         }
                                     }
-                                    // Handle progress log events - forward ALL logs (SDK standard compliance)
+                                    // Handle progress log and event forwarding - forward to Orchestrator (SDK standard compliance)
                                     try {
-                                        if (event && event.type === 'log' && event.message) {
-                                            // SDK standard: do not hide or filter any observations
-                                            // Forward ALL log events as A2A messages
-                                            const a2aMessage: A2AMessage<any> = {
-                                                messageId: uuidv4(),
-                                                type: 'log',
-                                                payload: { message: event.message, text: event.message },
-                                                sender: config.card.name,
-                                                recipient: 'OrchestratorAgent',
-                                                timestamp: new Date().toISOString()
-                                            };
-                                            console.log(`[a2a_server] Converting log event from ${config.card.name} to A2A message`);
-                                            dispatch(a2aMessage).catch(err => {
-                                                console.error(`[a2a_server] Failed to dispatch log A2A message:`, err);
-                                            });
-                                            // Still publish to original bus
-                                            return originalPublish(event);
+                                        if (event) {
+                                            const isLog = event.type === 'log' && event.message;
+                                            const isResourceAction = event.type === 'resource-action';
+                                            const isStatusUpdate = event.kind === 'status-update' || event.kind === 'status-stream';
+                                            
+                                            if (isLog || isResourceAction || isStatusUpdate) {
+                                                const forwardType = isResourceAction ? 'resource-action' : (isStatusUpdate ? event.kind : 'log');
+                                                const a2aMessage: A2AMessage<any> = {
+                                                    messageId: uuidv4(),
+                                                    type: forwardType,
+                                                    payload: isResourceAction ? event.data : (isLog ? { message: event.message, text: event.message } : event),
+                                                    parts: [{
+                                                        kind: 'data',
+                                                        mimeType: 'application/vnd.a2a+json',
+                                                        data: isResourceAction ? event.data : (isLog ? { message: event.message, text: event.message } : event)
+                                                    }],
+                                                    sender: config.card.name,
+                                                    recipient: 'OrchestratorAgent',
+                                                    timestamp: new Date().toISOString()
+                                                };
+                                                
+                                                console.log(`[a2a_server] Forwarding ${forwardType} from ${config.card.name} to OrchestratorAgent`);
+                                                dispatch(a2aMessage).catch(err => {
+                                                    console.error(`[a2a_server] Failed to dispatch forwarded event:`, err);
+                                                });
+                                            }
                                         }
                                     } catch {}
                                     // Bridge plain text messages (without explicit OrchestratorAgent data part) to Orchestrator as response-context

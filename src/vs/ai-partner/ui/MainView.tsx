@@ -35,7 +35,7 @@ export interface DisplayMessage {
 		filePath: string;
 		suggestionType: string;
 	};
-	kind?: 'normal' | 'task' | 'codeEditFile' | 'progress';
+	kind?: 'normal' | 'task' | 'codeEditFile' | 'progress' | 'tool_trace';
 	// Optional metadata used when kind === 'codeEditFile'
 	filePath?: string;
 	title?: string;
@@ -194,6 +194,24 @@ const MainViewContent: React.FC = () => {
     const dropIncomingRef = useRef<boolean>(false);
     const welcomeLockRef = useRef<boolean>(true); // true면 초기 로드에서 loadHistory를 무시하고 Welcome 유지
 
+    useEffect(() => {
+        // Rebuild pendingDiffs from messages (kind: 'codeEditFile' with diff)
+        const diffsFromMessages = messages
+            .filter(m => m.kind === 'codeEditFile' && m.diff)
+            .map(m => m.diff as PendingDiff);
+            
+        setPendingDiffs(prev => {
+            // Merge with existing ephemeral diffs but prioritize messages for structural consistency
+            const merged = [...diffsFromMessages];
+            prev.forEach(p => {
+                if (!merged.some(m => m.filePath === p.filePath)) {
+                    merged.push(p);
+                }
+            });
+            return merged;
+        });
+    }, [messages]);
+
     useEffect(() => { viewRef.current = view; }, [view]);
 
 	// Define mapHistoryToDisplayMessages first (used in handlerContext)
@@ -228,6 +246,7 @@ const MainViewContent: React.FC = () => {
 				baseMsg.title = msg.title;
 				baseMsg.suggestionType = msg.suggestionType;
 				baseMsg.lintSummary = msg.lintSummary;
+				baseMsg.diff = msg.diff;
 			}
 
 			return baseMsg;
@@ -391,6 +410,10 @@ const handleNewChat = () => {
     setIsThinking(false);
     setActiveSessionId(''); // Clear active session ID
     dropIncomingRef.current = true;
+    
+    // Notify backend to clear internal active session state
+    vscodeService.postMessage({ command: 'deselectChat' });
+
     // Don't create new session yet - wait for user to send first message
     // Session will be created in handleSendMessage when sendingFromWelcome is true
 };
@@ -670,7 +693,7 @@ const handleNewChat = () => {
                         <span>{statusText}</span>
                     </div>
                 )}
-                <div className="main-view" ref={mainViewRef} onContextMenu={onMainViewContextMenu} onClick={hideCtxMenu}>
+                <div className="main-view" ref={mainViewRef} onContextMenu={onMainViewContextMenu} onClick={hideCtxMenu} style={{ overflowY: (view === 'welcome' || (view === 'chat' && messages.length === 0)) ? 'hidden' : 'auto' }}>
                     {renderCentralContent()}
                 </div>
 
@@ -696,7 +719,7 @@ const handleNewChat = () => {
                                 let list = (sessions || []);
                                 // Only exclude active session if we are actually in a chat view (meaning we are looking at one).
                                 // If we are in Welcome view, we should show the most recent ones regardless.
-                                if (view === 'chat' && activeSessionId) {
+                                if (view === 'chat' && activeSessionId && messages.length > 0) {
                                     list = list.filter(s => s.id !== activeSessionId);
                                 }
                                 list = list.slice(-2).reverse();

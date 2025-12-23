@@ -13,7 +13,7 @@ const outputSchema = z.object({
 
 export function getMemoryToolDefinition() {
     return {
-        name: 'MemoryTool',
+        name: 'memory_tool',
         description: {
             title: "Save Fact to Memory",
             description: "Saves a specific fact, user preference, or correction to a long-term memory file to be referenced in future interactions. Use this when the user corrects you or states a clear preference.",

@@ -579,7 +579,8 @@ export class LLMService {
             options?: { 
                 structured?: { mode: 'json_object' | 'json_schema'; schema?: any; schemaName?: string },
                 onRetry?: (attempt: number, maxRetries: number, error: any) => void
-            }
+            },
+            token?: any // vscode.CancellationToken
         ): Promise<LlmFullResponse> {
 
             const isLocalOllama = provider === 'ollama' && endpoint.includes('localhost');
@@ -777,7 +778,18 @@ export class LLMService {
                 // })();
                 // console.log(`[LLMService] Request start -> provider=${provider} endpoint=${requestEndpoint} model=${model} timeout=${timeout}`);
                 // try { console.log(`[LLMService] Prompt preview (${conversationHistory.length} msgs):\n${preview}`); } catch {}
-                const fetchOnce = (url: string) => fetch(url, { method: 'POST', headers, body: JSON.stringify(requestBody) });
+                const controller = new AbortController();
+                if (token) {
+                    if (token.isCancellationRequested) {
+                        controller.abort();
+                    } else if (typeof token.onCancellationRequested === 'function') {
+                        token.onCancellationRequested(() => {
+                            controller.abort();
+                        });
+                    }
+                }
+                
+                const fetchOnce = (url: string) => fetch(url, { method: 'POST', headers, body: JSON.stringify(requestBody), signal: controller.signal });
 
                 let response: Response;
                 const doFetchWithFallbacks = async (): Promise<Response> => {

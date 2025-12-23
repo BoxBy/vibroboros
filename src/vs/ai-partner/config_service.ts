@@ -560,29 +560,25 @@ export class ConfigService {
         public getThinkingLanguage(): string {
             const useSync = this.getUseVSCodeThinkingLang();
             if (useSync) {
-                const vscodeLang = vscode.env.language; // e.g. 'en', 'ko', 'ja', 'zh-cn'
-                // Map common codes to full names if needed, or return as is if prompts handle codes.
-                // Assuming prompts prefer full names for clarity.
-                const langMap: Record<string, string> = {
-                    'ko': 'Korean',
-                    'en': 'English',
-                    'ja': 'Japanese',
-                    'zh-cn': 'Chinese (Simplified)',
-                    'zh-tw': 'Chinese (Traditional)',
-                    'es': 'Spanish',
-                    'fr': 'French',
-                    'de': 'German',
-                    'it': 'Italian',
-                    'pt-br': 'Portuguese (Brazil)',
-                    'ru': 'Russian'
-                };
-                return langMap[vscodeLang] || vscodeLang;
+                return this.mapLanguageCode(vscode.env.language);
             }
-            return this.getConfiguration('agent.orchestrator').get<string>('thinkingLanguage') || 'Korean';
+            return this.getConfiguration('agent.orchestrator').get<string>('thinkingLanguage') || 'English';
         }
 
         public async setThinkingLanguage(lang: string): Promise<void> {
             await this.getConfiguration('agent.orchestrator').update('thinkingLanguage', lang, vscode.ConfigurationTarget.Global);
+        }
+
+        public getUserLanguage(): string {
+            const useSync = this.getUseVSCodeUserLang();
+            if (useSync) {
+                return this.mapLanguageCode(vscode.env.language);
+            }
+            return this.getConfiguration('agent.orchestrator').get<string>('userLanguage') || 'English';
+        }
+
+        public async setUserLanguage(lang: string): Promise<void> {
+            await this.getConfiguration('agent.orchestrator').update('userLanguage', lang, vscode.ConfigurationTarget.Global);
         }
 
         public getUseVSCodeThinkingLang(): boolean {
@@ -593,12 +589,46 @@ export class ConfigService {
             await this.getConfiguration('agent.orchestrator').update('useVSCodeThinkingLang', use, vscode.ConfigurationTarget.Global);
         }
 
+        public getUseVSCodeUserLang(): boolean {
+            return this.getConfiguration('agent.orchestrator').get<boolean>('useVSCodeUserLang') || false;
+        }
+
+        public async setUseVSCodeUserLang(use: boolean): Promise<void> {
+            await this.getConfiguration('agent.orchestrator').update('useVSCodeUserLang', use, vscode.ConfigurationTarget.Global);
+        }
+
+        private mapLanguageCode(vscodeLang: string): string {
+            const langMap: Record<string, string> = {
+                'ko': 'Korean',
+                'en': 'English',
+                'ja': 'Japanese',
+                'zh-cn': 'Chinese (Simplified)',
+                'zh-tw': 'Chinese (Traditional)',
+                'es': 'Spanish',
+                'fr': 'French',
+                'de': 'German',
+                'it': 'Italian',
+                'pt-br': 'Portuguese (Brazil)',
+                'ru': 'Russian'
+            };
+            const short = vscodeLang.toLowerCase().split('-')[0];
+            return langMap[vscodeLang.toLowerCase()] || langMap[short] || vscodeLang;
+        }
+
         public getMaxContextOverride(): number | undefined {
             return this.getConfiguration('llm').get<number>('maxContextOverride');
         }
 
         public async setMaxContextOverride(limit: number | undefined): Promise<void> {
             await this.getConfiguration('llm').update('maxContextOverride', limit, vscode.ConfigurationTarget.Global);
+        }
+
+        public getUroborosMode(): boolean {
+            return this.getConfiguration('agent.orchestrator').get<boolean>('uroborosMode') || true;
+        }
+
+        public async setUroborosMode(enabled: boolean): Promise<void> {
+            await this.getConfiguration('agent.orchestrator').update('uroborosMode', enabled, vscode.ConfigurationTarget.Global);
         }
 
         public getWorkspacePath(): string {

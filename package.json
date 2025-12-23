@@ -260,10 +260,22 @@
             "description": "The language used for the agent's internal thinking process.",
             "scope": "application"
           },
+          "viper.agent.orchestrator.userLanguage": {
+            "type": "string",
+            "default": "Korean",
+            "description": "The language used for communicating with the user.",
+            "scope": "application"
+          },
           "viper.agent.orchestrator.useVSCodeThinkingLang": {
             "type": "boolean",
             "default": false,
             "description": "Sync the agent's thinking language with the VS Code display language.",
+            "scope": "application"
+          },
+          "viper.agent.orchestrator.useVSCodeUserLang": {
+            "type": "boolean",
+            "default": false,
+            "description": "Sync the agent's response language with the VS Code display language.",
             "scope": "application"
           },
           "viper.llm.maxContextOverride": {

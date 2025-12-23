@@ -21,6 +21,9 @@ import { getStatToolDefinition } from './tools/StatTool';
 import { getLintToolDefinition } from './tools/LintTool';
 import { getBrowserOpenToolDefinition } from './tools/BrowserOpenTool';
 import { getStorePreferenceToolDefinition, getGetPreferenceToolDefinition } from './tools/PreferenceTool';
+import { getFileReplaceToolDefinition } from './tools/FileReplaceTool';
+import { getFileMultiReplaceToolDefinition } from './tools/FileMultiReplaceTool';
+import { getTaskDecompositionToolDefinition } from './tools/TaskDecompositionTool';
 
 // Define a generic interface for a tool definition
 export interface ToolDefinition<TInput extends ZodSchema, TOutput extends ZodSchema> {
@@ -71,6 +74,9 @@ export function createMCPServer(): Server {
         getBrowserOpenToolDefinition(),
         getStorePreferenceToolDefinition(),
         getGetPreferenceToolDefinition(),
+        getFileReplaceToolDefinition(),
+        getFileMultiReplaceToolDefinition(),
+        getTaskDecompositionToolDefinition(),
     ];
 
     for (const tool of toolDefinitions) {

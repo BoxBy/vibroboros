@@ -11,7 +11,7 @@ const outputSchema = z.object({
 
 export function getBrowserOpenToolDefinition() {
     return {
-        name: 'BrowserOpenTool',
+        name: 'open_browser',
         description: {
             title: 'Open URL in Browser',
             description: 'Opens the provided URL in the default system browser.',

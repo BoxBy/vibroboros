@@ -15,7 +15,20 @@ export class BugFixAgent extends BaseAgent {
     protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
         // Generate base prompt from Factory
         // Now using specialized 'BugFixAgent' role which includes all logic
-        return SystemPromptFactory.generate('BugFixAgent', 'BugFixAgent', 60, userInput);
+
+        const anyCtx = requestContext as any;
+        const incoming = anyCtx?.message || anyCtx?.request?.message || anyCtx;
+        const parts = Array.isArray(incoming?.parts) ? incoming.parts : [];
+        const dataPart = parts.find((p: any) => p?.kind === 'data');
+        
+        let finalUserInput = userInput;
+        if (dataPart?.data?.payload) {
+             const payload = dataPart.data.payload;
+             if (Object.keys(payload).length > 0) {
+                 finalUserInput = JSON.stringify(payload, null, 2);
+             }
+        }
+        return SystemPromptFactory.generate('BugFixAgent', 'BugFixAgent', 60, finalUserInput);
     }
 
     protected async getTools(userInput: string, requestContext: RequestContext): Promise<any[]> {
@@ -44,11 +57,32 @@ export class BugFixAgent extends BaseAgent {
 
     protected async handleExecutionResult(result: string, requestContext: RequestContext, eventBus: ExecutionEventBus, correlationId?: string): Promise<void> {
         // Standard Output Handling
+        // Parse Result to detect A2A envelope
+        let parts: any[] = [];
+        try {
+            // Clean markdown
+            const jsonMatch = result.match(/```json\n([\s\S]*?)\n```/) || result.match(/```\n([\s\S]*?)\n```/) || result.match(/\{[\s\S]*\}/);
+            const jsonString = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : result;
+            
+            const parsed = JSON.parse(jsonString);
+            if (parsed && typeof parsed === 'object') {
+                 parts.push({
+                    kind: 'data',
+                    mimeType: 'application/vnd.a2a+json',
+                    data: parsed
+                 });
+            } else {
+                 parts.push({ kind: 'text', text: result });
+            }
+        } catch (e) {
+            parts.push({ kind: 'text', text: result });
+        }
+
         const msg: Message = {
             kind: 'message',
             messageId: uuidv4(),
             role: 'agent',
-            parts: [{ kind: 'text', text: result }],
+            parts: parts,
             contextId: (requestContext as any).contextId
         };
         (eventBus as any).publish(msg);

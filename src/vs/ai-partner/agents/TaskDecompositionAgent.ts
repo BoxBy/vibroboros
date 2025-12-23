@@ -25,7 +25,20 @@ export class TaskDecompositionAgent extends BaseAgent {
         const assignedComplexity = complexityMatch ? parseInt(complexityMatch[1], 10) : 5; // Default to 5 (PM Standard)
 
         // 2. Generate Prompt via Factory
-        return SystemPromptFactory.generate('pm', 'TaskDecompositionAgent', assignedComplexity, userInput);
+
+        const anyCtx = requestContext as any;
+        const incoming = anyCtx?.message || anyCtx?.request?.message || anyCtx;
+        const parts = Array.isArray(incoming?.parts) ? incoming.parts : [];
+        const dataPart = parts.find((p: any) => p?.kind === 'data');
+        
+        let finalUserInput = userInput;
+        if (dataPart?.data?.payload) {
+             const payload = dataPart.data.payload;
+             if (Object.keys(payload).length > 0) {
+                 finalUserInput = JSON.stringify(payload, null, 2);
+             }
+        }
+        return SystemPromptFactory.generate('pm', 'TaskDecompositionAgent', assignedComplexity, finalUserInput);
     }
 
 
@@ -64,7 +77,9 @@ export class TaskDecompositionAgent extends BaseAgent {
         
         try {
             // Clean up Markdown backticks if present
-            let cleanResult = result.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
+            const jsonMatch = result.match(/```json\n([\s\S]*?)\n```/) || result.match(/```\n([\s\S]*?)\n```/) || result.match(/\{[\s\S]*\}/);
+            let cleanResult = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : result;
+            cleanResult = cleanResult.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
             // Robustness: Extract JSON object if embedded in text
             const firstBrace = cleanResult.indexOf('{');
             const lastBrace = cleanResult.lastIndexOf('}');
@@ -80,6 +95,12 @@ export class TaskDecompositionAgent extends BaseAgent {
             }
             
             if (tasks.length === 0) {
+                 // Check for generic response wrapper from LLM (Self-Correction Fallback)
+                 if (parsed?.response && typeof parsed.response === 'string') {
+                      eventBus.publish({ kind: 'message', messageId: uuidv4(), role: 'agent', parts: [{ kind: 'text', text: parsed.response }], contextId: (requestContext as any).contextId } as any);
+                      return;
+                 }
+
                  // Check for clarification
                  if (parsed?.request_clarification) {
                      // Publish clarification

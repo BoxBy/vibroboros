@@ -28,7 +28,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onSendMessage, rec
                     <h1>{title}</h1>
                 </div>
                 <p className="welcome-subtitle">
-                    The Vibe-Coding Multi-Agent Partner. Focused on understanding, improving, and executing code without breaking your flow.
+                    The Multi Agent AI Code Assist Partner. Focused on understanding, improving, and executing code without breaking your flow.
                 </p>
 
                 <div className="welcome-actions">

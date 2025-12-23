@@ -33,6 +33,8 @@ export abstract class BaseAgent implements AgentExecutor {
 
     protected readonly endpoint: string = '';
     protected outputFormat: 'json' | 'text' = 'json'; // Default to A2A JSON enforcement
+    protected cancellationTokenSource?: vscode.CancellationTokenSource;
+
     protected log(message: string): void {
         this.logger.log(`[${this.card.name}] ${message}`);
         console.log(`[${this.card.name}] ${message}`);
@@ -68,12 +70,38 @@ export abstract class BaseAgent implements AgentExecutor {
      * Wraps utils/sdkProgressHelper.ts functionality.
      * Automatically prefixes the agent name (e.g., "[TestGen]").
      */
-    protected logProgress(eventBus: ExecutionEventBus, message: string, requestContext: RequestContext): void {
+    protected logProgress(eventBus: ExecutionEventBus, message: string, requestContext: RequestContext, isStreaming: boolean = false): void {
         const { publishProgressLog } = require('../utils/sdkProgressHelper');
-        // Prevent double prefixing if the message already starts with [Name]
-        const prefix = `[${this.card.name}]`;
-        const finalMessage = message.startsWith('[') ? message : `${prefix} ${message}`;
-        publishProgressLog(eventBus, finalMessage, requestContext);
+        
+        // For streaming thought chunks, we don't want to prefix every chunk with the agent name.
+        // We only prefix if it's a full status update or the start of a stream (not easily detectable here without state, 
+        // but typically streaming chunks are raw text).
+        // Actually, Orchestrator's processProgressLog logic prefixes if sender is set.
+        // But for CHUNKS, we want to append.
+        
+        let finalMessage = message;
+        if (!isStreaming) {
+             // Standard behavior for full messages
+             const prefix = `[${this.card.name}]`;
+             finalMessage = message.startsWith('[') ? message : `${prefix} ${message}`;
+        }
+        
+        if (isStreaming) {
+             // Publish as status-stream kind (custom extension to SDK helper for now, or just handle in data)
+             // We'll reuse publishProgressLog but pass a flag via a new helper or modified one.
+             // Since we can't easily modify sdkProgressHelper in this view, we'll manually publish to eventBus.
+             
+             const streamUpdate: any = {
+                kind: 'status-stream', // NEW KIND for streaming
+                taskId: requestContext.taskId,
+                contextId: requestContext.contextId,
+                sender: this.card.name,
+                content: message // Raw chunk
+            };
+            eventBus.publish(streamUpdate);
+        } else {
+             publishProgressLog(eventBus, finalMessage, requestContext);
+        }
     }
 
     /**
@@ -94,7 +122,7 @@ export abstract class BaseAgent implements AgentExecutor {
     /**
      * Publishes a standardized A2A error message.
      */
-    protected publishA2AError(eventBus: ExecutionEventBus, error: any, contextId?: string, sender: string = 'OrchestratorAgent'): void {
+    protected publishA2AError(eventBus: ExecutionEventBus, error: any, contextId?: string): void {
         const { v4: uuidv4 } = require('uuid');
 
         // Detect MaxTurnError (custom error from agentHelpers)
@@ -113,7 +141,7 @@ export abstract class BaseAgent implements AgentExecutor {
                     data: {
                         command: 'response-context', // Treat as context response to finalize step
                         payload: {
-                            text: `⚠️ **Max Turns Reached**: The agent stopped after 20 turns to prevent infinite loops. Partial work may be lost.`,
+                            text: `**Max Turns Reached**: The agent stopped after 20 turns to prevent infinite loops. Partial work may be lost.`,
                             senderName: this.card.name,
                             timestamp: new Date().toISOString()
                         },
@@ -164,13 +192,18 @@ export abstract class BaseAgent implements AgentExecutor {
      * Standardizes the lifecycle: Input -> AgenticLoop -> Output Handling.
      */
     public async execute(requestContext: RequestContext, eventBus: ExecutionEventBus): Promise<void> {
-        let sender = 'OrchestratorAgent';
+        // [Cancellation] Init new token source for this execution
+        if (this.cancellationTokenSource) {
+            this.cancellationTokenSource.dispose();
+        }
+        this.cancellationTokenSource = new vscode.CancellationTokenSource();
+
         try {
-            sender = this.extractSender(requestContext);
             const userInput = this.extractUserInput(requestContext);
             const correlationId = this.extractCorrelationId(requestContext);
 
-            this.logProgress(eventBus, `[${this.card.name}] Received request from ${sender}`, requestContext);
+            // [User Request] Removed redundant log
+            // this.logProgress(eventBus, `[${this.card.name}] Received request from ${sender}`, requestContext);
 
             // 1. Prepare Configuration (Prompt & Tools)
             this.log(`[Execute Debug] Getting System Prompt...`);
@@ -194,12 +227,48 @@ export abstract class BaseAgent implements AgentExecutor {
                 endpoint: endpoint,
                 tools: tools,
                 model: model,
-                mcpClient: this.mcpClient,
-                maxTurns: 20, // Standard limit
+                agentName: this.card.name,
+                // Proxy MCP Client to intercept tool calls for UI events
+                mcpClient: {
+                    callTool: async (params: any) => {
+                        const result = await this.mcpClient.callTool(params);
+                        
+                        // Intercept file tools for UI
+                         const name = params.name;
+                         const args = params.arguments;
+                         const isFileTool = ['create_file', 'write_to_file', 'edit_file', 'put_file', 'write_file', 'replace_file_content', 'delete_file'].includes(name);
+                         
+                         if (isFileTool) {
+                             const filePath = args.file_path || args.targetFile || args.TargetFile || args.path || args.filePath || args.TargetFile;
+                             const content = args.content || args.code || args.CodeContent || args.data || args.ReplacementContent || "";
+                             
+                             if (filePath) {
+                                 const wsPath = this.configService.getWorkspacePath() || '';
+                                 const absPath = path.isAbsolute(filePath) ? filePath : path.join(wsPath, filePath);
+                                 const action = name.includes('delete') ? 'delete' : (name.includes('edit') || name.includes('update') || name.includes('replace') || name.includes('put') ? 'update' : 'create');
+
+                                 eventBus.publish({
+                                     type: 'resource-action',
+                                     data: {
+                                         action: action,
+                                         uri: absPath,
+                                         content: content,
+                                         timestamp: new Date().toISOString()
+                                     }
+                                 } as any);
+                             }
+                        }
+                        return result;
+                    },
+                    listTools: async () => this.mcpClient.listTools(),
+                    // Pass other methods if necessary, but loop mainly uses callTool
+                },
+                maxTurns: 100, // Increased limit per user request
                 logger: this.logger,
                 requireToolUse: false, 
                 validator: this.outputFormat === 'json' ? (text) => this.validateA2AResponse(text) : undefined,
-                onProgress: (msg: string) => this.logProgress(eventBus, msg, requestContext),
+                // [BaseAgent] Update to support streaming flag
+                onProgress: (msg: string, isStreaming?: boolean) => this.logProgress(eventBus, msg, requestContext, isStreaming),
                 toolHandler: async (name, args) => {
                     // 1. Try Custom Tool Handler (Child Override)
                     const customResult = await this.handleCustomTool(name, args);
@@ -213,15 +282,15 @@ export abstract class BaseAgent implements AgentExecutor {
                         return coreResult;
                     }
                     
-                    // 3. Fallback to MCP
+                    // 3. Fallback to MCP (Proxy handles event emission)
                     try {
-                        const mcpResult = await this.mcpClient.callTool(name, args);
-                        return mcpResult;
+                        // The proxy passed in runAgenticLoop options will handle the resource-action event
+                        return await this.mcpClient.callTool({ name, arguments: args }); 
                     } catch (error: any) {
-                        // Return error as string to LLM so it can retry
                         return `Error executing tool ${name}: ${error.message}`;
                     }
-                }
+                },
+                token: this.cancellationTokenSource?.token
             });
 
             // 3. Handle Loop Completion (History Hook)
@@ -231,7 +300,7 @@ export abstract class BaseAgent implements AgentExecutor {
             await this.handleExecutionResult(loopResult.result, requestContext, eventBus, correlationId);
 
         } catch (error: any) {
-             this.publishA2AError(eventBus, error, requestContext?.contextId, sender);
+             this.publishA2AError(eventBus, error, requestContext?.contextId);
         }
     }
 
@@ -239,7 +308,7 @@ export abstract class BaseAgent implements AgentExecutor {
      * Optional hook called after agentic loop completes.
      * Useful for persisting tool execution history.
      */
-    protected async onLoopComplete(messages: any[]): Promise<void> {
+    protected async onLoopComplete(_messages: any[]): Promise<void> {
         // No-op by default
     }
 
@@ -248,7 +317,7 @@ export abstract class BaseAgent implements AgentExecutor {
      * Override this in child class if you have local tools.
      * Return `undefined` if not handled (passthrough to MCP).
      */
-    protected async handleCustomTool(name: string, args: any): Promise<any | undefined> {
+    protected async handleCustomTool(_name: string, _args: any): Promise<any | undefined> {
         return undefined;
     }
 
@@ -258,6 +327,8 @@ export abstract class BaseAgent implements AgentExecutor {
      */
     protected async handleCoreTools(name: string, args: any, requestContext: RequestContext, eventBus: ExecutionEventBus): Promise<any | undefined> {
         // uuidv4 imported at top level
+        // [Debug] Check tool name interception
+        // console.log(`[BaseAgent] handleCoreTools: checking interception for '${name}'`);
 
         if (name === 'create_file' || name === 'write_to_file') { // Alias for safety
             const filePath = args.file_path || args.targetFile || args.TargetFile;
@@ -379,26 +450,44 @@ export abstract class BaseAgent implements AgentExecutor {
      */
     protected abstract handleExecutionResult(result: string, requestContext: RequestContext, eventBus: ExecutionEventBus, correlationId?: string): Promise<void>;
     
-    public abstract cancelTask(): Promise<void>;
+    public async cancelTask(): Promise<void> {
+        if (this.cancellationTokenSource) {
+            this.cancellationTokenSource.cancel();
+            this.cancellationTokenSource.dispose();
+            this.cancellationTokenSource = undefined;
+            this.log('Task execution cancelled.');
+        }
+    }
 
 
     // --- Helper Methods ---
 
     protected validateA2AResponse(text: string): { valid: boolean; error?: string } {
+        // [User Request] Log raw output for debugging
+        console.log(`[BaseAgent] Raw LLM Output for Validation:\n${text}`);
+
         if (!text || !text.trim()) {
             return { valid: false, error: "Response is empty." };
         }
         
         // 1. Try Strict Parse
         try {
-            JSON.parse(text);
+            const parsed = JSON.parse(text);
+            // Fix: Strict Object Check (Reject primitives like numbers/strings)
+            if (typeof parsed !== 'object' || parsed === null) {
+                 return { valid: false, error: "Response must be a JSON object, not a primitive." };
+            }
             return { valid: true };
         } catch (e) {
             // 2. Try Loose Extraction (Markdown/Text wrapping)
             const match = text.match(/\{[\s\S]*\}/);
             if (match) {
                 try {
-                    JSON.parse(match[0]);
+                    const parsed = JSON.parse(match[0]);
+                     // Fix: Strict Object Check here too
+                    if (typeof parsed !== 'object' || parsed === null) {
+                        return { valid: false, error: "Extracted content must be a JSON object." };
+                    }
                     return { valid: true }; // Valid JSON found embedded in text
                 } catch (innerE: any) {
                      return { valid: false, error: `Found JSON-like block but failed to parse: ${innerE.message}` };
@@ -416,21 +505,66 @@ export abstract class BaseAgent implements AgentExecutor {
         
         let parts = Array.isArray(incoming?.parts) ? incoming.parts : (Array.isArray(anyCtx?.parts) ? anyCtx.parts : []);
         
-        if (parts.length === 0) {
-            throw new Error('No natural language request provided.');
+        // 1. Try to extract from Data Part (Structured A2A)
+        const dataPart = parts.find((p: any) => p?.kind === 'data');
+        if (dataPart?.data) {
+            const payload = dataPart.data.payload || dataPart.data;
+            // Ensure 'task' is present for the prompt's context
+            if (payload.task || payload.question || payload.result) {
+                 return JSON.stringify(payload, null, 2);
+            }
         }
 
-        const textPart = parts.find((p: any) => p && (p.kind === 'text' || p.type === 'text') && typeof (p.text ?? p.content) === 'string' && String(p.text ?? p.content).trim().length > 0);
-        const content = textPart ? String((textPart as any).text ?? (textPart as any).content).trim() : '';
+        // 2. Try to extract from Text Part (Direct User Input)
+        const textPart = parts.find((p: any) => p && (p.kind === 'text' || p.type === 'text') && typeof (p.text ?? p.content) === 'string' && String(p.text ?? p.content).trim().length > 0 && String(p.text ?? p.content).trim() !== 'N/A');
+        let content = textPart ? String((textPart as any).text ?? (textPart as any).content).trim() : '';
         
-        // If content is empty/missing, maybe it's in data payload (like Brainstorm -> User)
-        if (!content) {
+        // 3. Fallback extraction logic
+        if (!content || content === 'N/A') {
             const dataPart = parts.find((p: any) => p?.kind === 'data');
-            if (dataPart?.data?.content) return dataPart.data.content;
-            if (dataPart?.data?.goal) return dataPart.data.goal; // TaskDecomposition
+            if (dataPart?.data?.payload?.task) {
+                content = dataPart.data.payload.task;
+            } else if (dataPart?.data?.task) {
+                content = dataPart.data.task;
+            } else if (dataPart?.data?.content) {
+                content = dataPart.data.content;
+            } else if (dataPart?.data?.goal) {
+                content = dataPart.data.goal;
+            }
+        }
+
+        if ((!content || content === 'N/A') && incoming?.payload?.task) {
+            content = incoming.payload.task;
+        }
+
+        content = content && content !== 'N/A' ? content : "Process this request.";
+
+        // Augmented context if it was raw text (legacy path)
+        try {
+            const dataPart = parts.find((p: any) => p?.kind === 'data');
+            const payload = dataPart?.data?.payload || dataPart?.data || incoming?.payload || {};
+
+            const contextMsg = payload.context || payload.reason;
+            const targetFile = payload.targetFile || payload.target_file;
+            const relatedFiles = payload.relatedFiles || payload.related_files;
+
+            if (contextMsg || targetFile || (Array.isArray(relatedFiles) && relatedFiles.length > 0)) {
+                content += `\n\n--- Context ---\n`;
+                if (contextMsg) {
+                    content += `Note: ${contextMsg}\n`;
+                }
+                if (targetFile) {
+                    content += `Target File: ${targetFile}\n`;
+                }
+                if (Array.isArray(relatedFiles) && relatedFiles.length > 0) {
+                    content += `Related Files: ${relatedFiles.join(', ')}\n`;
+                }
+            }
+        } catch (e) {
+            // Ignore augmentation errors
         }
         
-        return content || "Process this request.";
+        return content;
     }
 
     protected extractSender(ctx: RequestContext): string {
@@ -446,7 +580,9 @@ export abstract class BaseAgent implements AgentExecutor {
         // Check deep in data parts
         const parts = Array.isArray(incoming?.parts) ? incoming.parts : [];
         const dataPart = parts.find((p: any) => p?.kind === 'data');
-        if (dataPart?.data?.correlation) return dataPart.data.correlation;
+        if (dataPart?.data?.correlation) {
+            return dataPart.data.correlation;
+        }
 
         return incoming?.task?.data?.correlation || incoming?.data?.correlation || (incoming as any)?.correlation;
     }

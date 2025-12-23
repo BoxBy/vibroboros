@@ -21,7 +21,20 @@ export class ReadmeGenerationAgent extends BaseAgent {
         const assignedComplexity = complexityMatch ? parseInt(complexityMatch[1], 10) : 30; // Default to Lv 1 (Simple) if undefined
 
         // 2. Generate Prompt via Factory
-        return await SystemPromptFactory.generate('ReadmeGenerationAgent', 'ReadmeGenerationAgent', assignedComplexity, userInput);
+
+        const anyCtx = requestContext as any;
+        const incoming = anyCtx?.message || anyCtx?.request?.message || anyCtx;
+        const parts = Array.isArray(incoming?.parts) ? incoming.parts : [];
+        const dataPart = parts.find((p: any) => p?.kind === 'data');
+        
+        let finalUserInput = userInput;
+        if (dataPart?.data?.payload) {
+             const payload = dataPart.data.payload;
+             if (Object.keys(payload).length > 0) {
+                 finalUserInput = JSON.stringify(payload, null, 2);
+             }
+        }
+        return await SystemPromptFactory.generate('ReadmeGenerationAgent', 'ReadmeGenerationAgent', assignedComplexity, finalUserInput);
     }
 
     protected async getTools(userInput: string, requestContext: RequestContext): Promise<any[]> {
@@ -49,6 +62,7 @@ export class ReadmeGenerationAgent extends BaseAgent {
                         status: 'ok',
                         needsConfirmation: false, // File creation already approved via tool
                         message: "Readme generation task completed.",
+                        result: result, // Include actual text output
                         correlation: correlationId
                     }
                 }

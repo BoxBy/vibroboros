@@ -43,7 +43,15 @@ export class DocumentationGenerationAgent extends BaseAgent {
         const baseRoot = workspaceFolders ? workspaceFolders[0].uri.fsPath : '';
         const absolutePath = filePath ? (path.isAbsolute(filePath) ? filePath : path.resolve(baseRoot, filePath)) : '';
 
-        const baseSystem = await SystemPromptFactory.generate('DocumentationGenerationAgent', 'DocumentationGenerationAgent', assignedComplexity, userInput, { targetFile: absolutePath });
+
+        let finalUserInput = userInput;
+        if (dataPart?.data?.payload) {
+             const payload = dataPart.data.payload;
+             if (Object.keys(payload).length > 0) {
+                 finalUserInput = JSON.stringify(payload, null, 2);
+             }
+        }
+        const baseSystem = await SystemPromptFactory.generate('DocumentationGenerationAgent', 'DocumentationGenerationAgent', assignedComplexity, finalUserInput, { targetFile: absolutePath });
 
         if (!absolutePath) {
             return `${baseSystem}\n\n**Specific Instruction**: The user wants documentation but I cannot determine the target file. Ask the user to provide the file path.`;
@@ -103,7 +111,11 @@ ${code.slice(0, 10000)}
     protected async handleExecutionResult(result: string, requestContext: RequestContext, eventBus: ExecutionEventBus, correlationId?: string): Promise<void> {
         let content = '';
         try {
-            const parsed = JSON.parse(result);
+            // Clean markdown
+            const jsonMatch = result.match(/```json\n([\s\S]*?)\n```/) || result.match(/```\n([\s\S]*?)\n```/) || result.match(/\{[\s\S]*\}/);
+            const jsonString = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : result;
+            
+            const parsed = JSON.parse(jsonString);
             content = parsed.content || parsed;
         } catch {
             content = result;

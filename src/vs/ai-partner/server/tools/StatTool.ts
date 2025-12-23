@@ -18,7 +18,7 @@ const outputSchema = z.object({
 
 export function getStatToolDefinition() {
   return {
-    name: 'StatTool',
+    name: 'get_file_info',
     description: {
       title: 'File/Directory Stat',
       description: 'Returns existence and metadata for a file or directory within the workspace.',

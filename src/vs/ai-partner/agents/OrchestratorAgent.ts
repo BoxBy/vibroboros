@@ -1,5 +1,6 @@
 import { SystemPromptFactory } from '../services/SystemPromptFactory';
 import * as vscode from 'vscode';
+import { getPlanCompletionSummaryPrompt } from '../prompts/sections/Summary';
 
 
 
@@ -10,28 +11,24 @@ import { A2AMessage } from '../interfaces/A2AMessage';
 import { AgentCard } from '@a2a-js/sdk';
 import { RequestContext, ExecutionEventBus } from '@a2a-js/sdk/server';
 import { BaseAgent } from './core/BaseAgent';
+import { UIMessageFactory } from '../messaging/UIMessageFactory';
 
 import * as mcpServerModule from '@modelcontextprotocol/sdk/server';
 import { LLMService, LlmMessage } from '../services/LLMService';
-import { SemanticModelService } from '../services/SemanticModelService';
-import { MemoryService } from '../services/MemoryService';
 import { AuthService } from '../auth_service';
 import { ConfigService } from '../config_service';
 import { DeveloperLogService } from '../services/DeveloperLogService';
 import * as diff from 'diff';
-import { UIMessageFactory } from '../messaging/UIMessageFactory';
 import { getMcpClient } from '../mcp_client_provider';
 import { ExecuteCommandTool } from '../tools/ExecuteCommandTool';
 
 import { v4 as uuidv4 } from 'uuid';
 import { AgentNames } from './utils/AgentConstants';
-import { getCoreLLMTools } from '../services/LLMTools';
-import { CheckpointService, AgentState } from '../services/CheckpointService';
+import { CheckpointService } from '../services/CheckpointService';
 import { ContextService } from '../services/ContextService';
 import { messages as AgentMessages } from '../messages';
 import { SessionManager } from '../services/SessionManager';
 // import { IntentRouter } from '../core/IntentRouter'; // Removed
-import { StandardLLMClient } from '../core/StandardLLMClient';
 
 export interface RuntimeExecutionStep {
     id: string;
@@ -51,7 +48,7 @@ interface ChatMessage {
     thought?: string;
     senderName?: string;
     timestamp?: string;
-    kind?: 'progress' | 'normal' | 'uroboros-proposal' | 'task' | 'codeEditFile';
+    kind?: 'progress' | 'normal' | 'uroboros-proposal' | 'task' | 'codeEditFile' | 'tool_trace';
     contextId?: string;
     messageId?: string;
     hidden?: boolean;
@@ -104,19 +101,12 @@ export class OrchestratorAgent extends BaseAgent {
     // BaseAgent: protected llmService: LLMService;
     // Orchestrator: private llmService: LLMService; -> This is valid if Orchestrator overrides usage, but cleaner to remove re-declaration if possible.
     // However, BaseAgent's llmService is set in constructor?
-    // Let's assume re-declaring as private shadows it, or we should use the inherited one.
-    // To be safe, I'll comment out the duplicate declarations if they exist in BaseAgent, OR just assign them in constructor to 'this'.
-    // BaseAgent has: protected llmService: LLMService; protected configService: ConfigService; protected developerLogService: DeveloperLogService; protected logger: Logger;
-    
-    // BaseAgent shadowing: llmService, configService, developerLogService are protected in BaseAgent.
-    
     private checkpointService: CheckpointService;
     private sessionManager: SessionManager;
     private contextService: ContextService;
 
     
     // --- Core Logic ---
-    // private intentRouter: IntentRouter; // Removed
     private state: vscode.Memento;
     private diagnosticCollection: vscode.DiagnosticCollection;
 
@@ -145,11 +135,14 @@ export class OrchestratorAgent extends BaseAgent {
     private autonomousMode: boolean = false; 
     private recentlyAppliedFiles: Map<string, number> = new Map();
     private lastUserInputAt: number = 0;
+    
+    private externalAgents: Map<string, { name: string; description: string; url: string }> = new Map();
+    private _specialistAgentDescriptions: string = '';
 
     // --- Session & History ---
     private activeSessionId: string = "default-session";
     private handledExecutions: Set<string> = new Set();
-    protected outputFormat: 'json' | 'text' = 'text'; // Orchestrator handles its own JSON parsing/planning logic
+    protected outputFormat: 'json' | 'text' = 'json'; // Orchestrator handles its own JSON parsing/planning logic
     
     private chatHistory: ChatMessage[] = []; 
     
@@ -201,7 +194,7 @@ export class OrchestratorAgent extends BaseAgent {
         super({ 
             name: 'OrchestratorAgent', 
             description: 'The master agent that coordinates all other agents and services.' 
-        });
+        } as any);
         // Intercept dispatch to catch 'unknown' agents globally
         this.dispatch = async (message: any) => {
             if (message.recipient === 'unknown' || message.recipient?.toLowerCase() === 'unknown') {
@@ -364,7 +357,7 @@ export class OrchestratorAgent extends BaseAgent {
         this.sessionManager.on('sessionChanged', () => this.handleSessionChangeProxy());
         
         if (OrchestratorAgent.SPECIALIST_AGENTS.length === 0) {
-            OrchestratorAgent.SPECIALIST_AGENTS.push(...registeredAgentConfigs.filter(a => a.name !== OrchestratorAgent.AGENT_ID));
+            OrchestratorAgent.SPECIALIST_AGENTS.push(...registeredAgentConfigs.filter(a => { return a.name !== OrchestratorAgent.AGENT_ID; }));
         }
         this._specialistAgentDescriptions = OrchestratorAgent.SPECIALIST_AGENTS.map(agent => `- ${agent.name}: ${agent.description}`).join('\n');
     }
@@ -382,6 +375,7 @@ export class OrchestratorAgent extends BaseAgent {
         try {
             const provider = this.configService.getLlmProvider();
             const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
+            const uroborosEnabled = (this.configService as any).getUroborosMode ? (this.configService as any).getUroborosMode() : false;
             const profiles = this.configService.getLlmProfiles();
             const activeProfileId = this.configService.getActiveProfileId();
 
@@ -397,7 +391,7 @@ export class OrchestratorAgent extends BaseAgent {
 
             this._onDidPostMessage.fire({
                 command: 'profilesResponse',
-                payload: { profiles, activeProfileId }
+                payload: { profiles, activeProfileId, uroborosEnabled }
             });
         } catch (error) {
             console.error('[OrchestratorAgent] Error sending settings to UI:', error);
@@ -440,7 +434,8 @@ export class OrchestratorAgent extends BaseAgent {
                 filePath: typeof msg.filePath === 'string' ? msg.filePath : undefined,
                 title: typeof msg.title === 'string' ? msg.title : undefined,
                 suggestionType: typeof msg.suggestionType === 'string' ? msg.suggestionType : undefined,
-                lintSummary: typeof msg.lintSummary === 'string' ? msg.lintSummary : undefined
+                lintSummary: typeof msg.lintSummary === 'string' ? msg.lintSummary : undefined,
+                diff: (msg as any).diff
             };
         }).filter(msg => msg !== null);
     }
@@ -474,17 +469,17 @@ export class OrchestratorAgent extends BaseAgent {
             timestamp: new Date().toISOString(),
             kind: 'progress'
         } as any;
-        (async () => {
-            try {
-                await this.addMessageToHistory(historyMsg);
-            } catch (err) {
-                console.warn('[OrchestratorAgent] Failed to persist progress log history entry', err);
-            }
-        })();
+        
+        // Use addMessageToHistory which now safely handles progress logs (skips LLM context)
+        this.addMessageToHistory(historyMsg).catch(err => {
+             console.warn('[OrchestratorAgent] Failed to persist progress log history entry', err);
+        });
     }
 
     private processProgressLogChunk(msg: string, _sender: string, sessionId: string = this.activeSessionId): void {
-        if (!msg) return;
+        if (!msg) {
+            return;
+        }
         this.postMessageToSession(sessionId, 'progressLogChunk', { text: msg });
     }
 
@@ -521,7 +516,10 @@ export class OrchestratorAgent extends BaseAgent {
                     break;
                 case 'requestHistory':
                     // Explicit history reload request from UI
-                    await this.handleSessionChangeProxy();
+                    // Only send list, do not force load messages (prevent auto-navigation)
+                    const sessions = this.sessionManager.getSessions();
+                    const activeId = this.sessionManager.getActiveSessionId();
+                    this._onDidPostMessage.fire({ command: 'historyList', payload: { sessions, activeId } });
                     break;
             case 'newChat': {
                 try {
@@ -616,10 +614,17 @@ export class OrchestratorAgent extends BaseAgent {
                 }
                 break;
             }
+            case 'deselectChat': {
+                await this.sessionManager.clearActiveSession();
+                this.activeSessionId = '';
+                this.developerLogService.log('[OrchestratorAgent] Active session cleared (deselectChat).');
+                break;
+            }
             case 'stop': {
                 this.developerLogService.log('[OrchestratorAgent] Received STOP command from UI');
                 this.isCancellationRequested = true;
-                this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: '🛑 Stop requested by user...' } });
+                await this.cancelTask();
+                this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: 'Stop requested by user...' } });
                 break;
             }
             case 'rollbackTo': {
@@ -1399,31 +1404,56 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
 
         const eventBus: ExecutionEventBus = {
             publish: async (event: any) => {
-                if (event?.type === 'progress' && event?.data) {
-                    this.processProgressLog(event.data, 'OrchestratorAgent');
+                const isProgress = event?.type === 'progress' || event?.kind === 'status-update';
+                const messageText = event?.data || (event?.status?.message?.parts?.find?.((p: any) => p.kind === 'text')?.text);
+                
+                if (isProgress && messageText) {
+                    this.processProgressLog(messageText, 'OrchestratorAgent');
+                } else if (event?.kind === 'status-stream' && event?.content) {
+                    // [Fix] Handle streaming chunks for Orchestrator (e.g. Thinking Process)
+                    // Directly fire chunk to UI to append to the active log item
+                    this._onDidPostMessage.fire({ 
+                        command: 'progressLogChunk', 
+                        payload: { 
+                            text: event.content 
+                        } 
+                    });
                 }
                 
                 // Handle Resource Action (File Created) -> Generate UI Block & Persist
                 if (event?.type === 'resource-action' && event?.data?.uri) {
+                     let fileContent = '';
+                     try {
+                         fileContent = await fs.readFile(event.data.uri, 'utf-8');
+                     } catch {}
+
+                     const isUpdate = event.data.action === 'update';
+                     const msgPayload = UIMessageFactory.createFileCard(
+                         OrchestratorAgent.AGENT_ID,
+                         event.data.uri,
+                         isUpdate,
+                         undefined,
+                         '', // originalCode (unavailable, treated as all new/current)
+                         fileContent // modifiedCode
+                     );
+
                      const historyMsg: ChatMessage = {
                          author: 'agent',
-                         // Reuse codeEditFile kind to trigger the File Block UI
-                         kind: 'codeEditFile', 
-                         senderName: OrchestratorAgent.AGENT_ID,
-                         timestamp: event.data.timestamp || new Date().toISOString(),
-                         filePath: event.data.uri,
-                         // Content is required by schema, providing summary
-                         content: [{ type: 'text', text: `Created file: ${path.basename(event.data.uri)}` }]
+                         kind: 'codeEditFile',
+                         senderName: msgPayload.payload.senderName,
+                         timestamp: msgPayload.payload.timestamp,
+                         filePath: msgPayload.payload.filePath,
+                         title: msgPayload.payload.title,
+                         suggestionType: msgPayload.payload.suggestionType,
+                         content: [{ type: 'text', text: `${isUpdate ? 'Updated' : 'Created'} file: ${path.basename(event.data.uri)}` }],
+                         ...msgPayload.payload // Include raw payload for diff properties
                      } as any;
                      
                      // Persist to Memento
                      await this.addMessageToHistory(historyMsg);
                      
                      // Notify UI to render immediately
-                     this._onDidPostMessage.fire({ 
-                         command: 'createFileCard', 
-                         payload: historyMsg 
-                     });
+                     this._onDidPostMessage.fire(msgPayload);
                      // Force sync history update just in case
                      this._onDidPostMessage.fire({ command: 'historyUpdate', payload: this.chatHistory });
                 }
@@ -1475,14 +1505,21 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         const payload = parsedResult.payload || {};
         
         const chosen_agent = parsedResult.targetAgent || parsedResult.chosen_agent; 
-        const reason = parsedResult.thought || parsedResult.reason || 'No reasoning provided';
+
+        // [Standardization] Always prefer payload.message for user-facing text
+        const extractedMessage = payload.message || payload.question || payload.result || parsedResult.message || "";
+        const extractedThought = parsedResult.thought || parsedResult.reason || "";
+
+        // For delegation context, prefer thought, fallback to message
+        const contextForDelegation = extractedThought || extractedMessage;
+
         const target_file = payload.target_file || parsedResult.target_file;
         const related_files = payload.related_files || parsedResult.related_files;
         let complexity_score = payload.complexity !== undefined ? payload.complexity : parsedResult.complexity_score;
         let intent_type = parsedResult.intent_type; // Maintain legacy read if present
 
         // Task Description: Use refined logic from payload, fallback to raw input
-        const taskDescription = payload.task || requestContext.user_input || '';
+        const taskDescription = payload.task || (requestContext as any).userInput || (requestContext as any).user_input || '';
 
         // Normalize complexity (Ensure 0-100)
         let normalizedScore = typeof complexity_score === 'number' ? complexity_score : 0;
@@ -1491,6 +1528,22 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         
         this.developerLogService.log(`[Orchestrator] Routing decision: Agent=${chosen_agent}, Score=${normalizedScore}, Intent=${intent_type || 'N/A'}`);
 
+        // --- Strict Filtering & Validation ---
+        // 1. If Direct Answer (None) but empty message -> Error/Cancel
+        if (chosen_agent === 'None') {
+            if (!extractedMessage.trim()) {
+                this.developerLogService.log(`[Orchestrator] Empty message received for targetAgent=None. Cancelling and reporting failure.`);
+                await this.postMessageToSession(this.activeSessionId, 'progressLog', { text: "Empty response generated. Please try again or rephrase." });
+                return;
+            }
+        }
+
+        // 2. If Delegation but contains redundant user messaging -> Filter Out
+        // When delegating, any 'message' for the user is often hallucinated or redundant.
+        // We only send messages to UI if targetAgent is "None".
+        // Show messages to user regardless of targetAgent (Reverted 1)
+        const shouldShowToUser = !!extractedMessage.trim();
+
         // 1. Complex Task Handling (Uroboros Proposal)
         // Only propose if NOT already in autonomous mode and NOT previously declined
         const UROBOROS_THRESHOLD = 80;
@@ -1498,12 +1551,12 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         const isComplex = parsedResult.is_complex_task || normalizedScore >= UROBOROS_THRESHOLD;
 
         if (isComplex && !this.autonomousMode) {
-             const userText = requestContext.user_input || 'Complex Task';
+             const userText = (requestContext as any).userInput || (requestContext as any).user_input || 'Complex Task';
              const userTextLower = userText.trim().toLowerCase();
              
              if (this.declinedUroborosQueries.has(userTextLower)) {
                  this.developerLogService.log(`[Orchestrator] User previously declined Uroboros for this query. Proceeding with standard routing.`);
-             } else if (this.configService.getUroborosMode()) {
+             } else if ((this.configService as any).getUroborosMode()) {
                  this.developerLogService.log(`[Orchestrator] High complexity detected (${normalizedScore}). Proposing Uroboros Mode.`);
                  
                  const proposalMsg = `This task appears to be a high-complexity project (Consistency Score: ${normalizedScore}). Shall I switch to **Uroboros Mode** (Autonomous Agentic Loop) to handle it efficiently?`;
@@ -1528,36 +1581,56 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
              // Dispatch to Specialist Agent
              this.developerLogService.log(`[Orchestrator] Dispatching to ${chosen_agent}`);
              
-             this.postMessageToSession(this.activeSessionId, 'progressLog', { text: `↪️ Handoff to ${chosen_agent}...` });
+             this.postMessageToSession(this.activeSessionId, 'progressLog', { text: `Routing to ${chosen_agent}...` });
 
-             const response = await this.dispatch({
+             const dispatchMsg: any = {
                 messageId: uuidv4(),
                 sender: OrchestratorAgent.AGENT_ID,
                 recipient: chosen_agent,
                 timestamp: new Date().toISOString(),
-                contextId: correlationId || uuidv4(),
                 type: 'task', // Unified task type
+                contextId: (requestContext as any).contextId,
+                parts: [
+                    { kind: 'text', text: taskDescription },
+                    { kind: 'data', data: { 
+                        ...payload,
+                        task: taskDescription, 
+                        context: contextForDelegation || 'Task delegated by Orchestrator',
+                        targetFile: target_file,
+                        relatedFiles: related_files,
+                        complexity: normalizedScore
+                    }}
+                ],
                 payload: {
-                    task: taskDescription, // Use refined task
-                    context: reason,
+                    ...payload,
+                    task: taskDescription, // Maintaining payload for backward compatibility
+                    context: contextForDelegation || 'Task delegated by Orchestrator',
                     targetFile: target_file,
                     relatedFiles: related_files,
                     complexity: normalizedScore
                 }
-             });
+             };
              
              // Handle Response from Specialist Agent
+             const response = await (this.dispatch as any)(dispatchMsg);
              if (response) {
                 let replyText = '';
                 // Handle various response formats (String bridge, A2A Message, etc.)
                 if (typeof response === 'string') {
                     replyText = response;
-                } else if (response.parts) { // Standard A2A Message
-                    replyText = response.parts.filter((p: any) => p.kind === 'text').map((p: any) => p.text).join('\n');
-                } else if (response.content) { // Legacy Message
-                    replyText = Array.isArray(response.content) ? response.content.map((c: any) => c.text || JSON.stringify(c)).join('') : String(response.content);
-                } else if (response.payload && response.payload.text) { // Payload wrapper
-                    replyText = response.payload.text;
+                } else if ((response as any).parts) { // Standard A2A Message
+                    // Extract text parts
+                    const textParts = (response as any).parts.filter((p: any) => p.kind === 'text').map((p: any) => p.text);
+                    // Extract data parts (result/message)
+                    const dataParts = (response as any).parts
+                        .filter((p: any) => p.kind === 'data' && p.data?.payload)
+                        .map((p: any) => p.data.payload.result || p.data.payload.message || JSON.stringify(p.data.payload));
+                    
+                    replyText = [...textParts, ...dataParts].filter(Boolean).join('\n\n');
+                } else if ((response as any).content) { // Legacy Message
+                    replyText = Array.isArray((response as any).content) ? (response as any).content.map((c: any) => c.text || JSON.stringify(c)).join('') : String((response as any).content);
+                } else if ((response as any).payload && (response as any).payload.text) { // Payload wrapper
+                    replyText = (response as any).payload.text;
                 }
 
                 if (replyText) {
@@ -1567,8 +1640,18 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
              
         } else {
              // Direct Answer / Self-Execution
-             // Triggered if targetAgent is OrchestratorAgent OR if output was Plain Text (caught in catch block)
-             await this.handleConversationalResponse(reason || result);
+             if (extractedThought) {
+                 // Use processProgressLog for persistence and UI update (memento 관리)
+                 this.processProgressLog(extractedThought, OrchestratorAgent.AGENT_ID);
+             }
+             
+             // Chat bubble should only contain the user-facing message
+             if (shouldShowToUser) {
+                 await this.handleConversationalResponse(extractedMessage);
+             } else if (!extractedMessage && !extractedThought) {
+                 // Fallback if everything is empty (use raw result to avoid total disappearance)
+                 await this.handleConversationalResponse(result);
+             }
         }
     }
 
@@ -1585,17 +1668,25 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
     private async handleConversationalResponse(responseText: string): Promise<void> {
         const { thought, userFacingText } = this.parseThoughtAndUserFacingText(responseText);
         
+        if (thought) {
+            // Also log to progress log as fallback/universal requirement
+            this.processProgressLog(thought, OrchestratorAgent.AGENT_ID);
+        }
+
         const agentMessage: ChatMessage = {
             author: 'agent',
             content: [{ type: 'text', text: userFacingText || responseText }],
-            thought: thought,
+            // thought: thought, // Moved to progress log to avoid duplication in bubble
             senderName: OrchestratorAgent.AGENT_ID,
             timestamp: new Date().toISOString()
         };
         
         this.addMessageToHistory(agentMessage);
-        this.llmConversationHistory.push({ role: 'assistant', content: userFacingText || responseText });
         
+        // [Thinking Persistence] Save RAW response (including <thinking>) to LLM context
+        // This ensures the model remembers its reasoning for the immediate next turn (Self-Correction).
+        this.llmConversationHistory.push({ role: 'assistant', content: responseText });
+
         await this.saveCurrentChatHistory();
         await this.saveCurrentLlmHistory();
         
@@ -1603,7 +1694,7 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
             command: 'response',
             payload: {
                 text: userFacingText || responseText,
-                thought: thought || undefined,
+                // thought: thought || undefined, // Moved to progress log
                 senderName: agentMessage.senderName,
                 timestamp: agentMessage.timestamp
             }
@@ -1891,6 +1982,12 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                     await this.sessionManager.updateLlmHistory(this.llmConversationHistory);
                 }
             } else if (message.author === 'agent') {
+                // EXCLUSION: Do not add progress logs or code edits to LLM context
+                // 'tool_trace' IS allowed because it contains actual tool outputs/errors needed for self-correction
+                if (message.kind === 'progress' || message.kind === 'codeEditFile') {
+                    return;
+                }
+
                 const text = Array.isArray(message.content)
                     ? message.content.map((c: any) => typeof c === 'string' ? c : (c?.text ?? '')).filter(Boolean).join(' ')
                     : (typeof (message as any).text === 'string' ? (message as any).text : '');
@@ -1989,6 +2086,8 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
             }
         }
     }
+
+
 
     private getSessionChatHistoryKey(sessionId: string): string {
         return `session:${sessionId}:chatHistory`;
@@ -2343,6 +2442,25 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
     /**
      * Send update-task command to TaskDecompositionAgent to update TASK.md checkbox
      */
+    private async updateTaskMd(index: number, description: string): Promise<void> {
+        try {
+            await this.dispatch({
+                messageId: uuidv4(),
+                sender: OrchestratorAgent.AGENT_ID,
+                recipient: 'TaskDecompositionAgent',
+                timestamp: new Date().toISOString(),
+                // contextId: uuidv4(), // Removed as it's not in A2AMessage interface
+                type: 'update-task',
+                payload: {
+                    index,
+                    description,
+                    status: 'completed'
+                }
+            });
+        } catch (e) {
+            this.developerLogService.log(`[OrchestratorAgent] updateTaskMd failed: ${e}`);
+        }
+    }
 
 
 
@@ -2366,11 +2484,118 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
 
 
     /**
-    /**
-     * Updates the current plan programmatically (e.g., from PlanningStrategy).
-     * @param steps List of step descriptions
+     * Updates the current plan programmatically (e.g., from TaskDecompositionAgent).
+     * @param steps List of step descriptions (strings) or partial step objects
      * @param startImmediately If true, begins execution of the first pending step immediately.
      */
+    public async updatePlan(steps: any[], startImmediately: boolean = false): Promise<void> {
+        this.developerLogService.log(`[OrchestratorAgent] updatePlan: Updating with ${steps.length} steps. startImmediately=${startImmediately}`);
+        
+        if (!steps || steps.length === 0) {
+            this.developerLogService.log(`[OrchestratorAgent] updatePlan: Received empty steps, skipping.`);
+            return;
+        }
+
+        this.planId = uuidv4();
+        // Reset state
+        this.currentStepIndex = -1;
+        this.currentExecutionId = '';
+        this.producedArtifacts.clear();
+        this.retriedSteps.clear();
+
+        this.currentPlan = steps.map((s, i) => {
+            const description = typeof s === 'string' ? s : (s.description || s.task || '');
+            const targetAgent = typeof s === 'string' ? 'BrainstormAgent' : (s.targetAgent || s.target_agent || 'BrainstormAgent');
+            return {
+                id: `${this.planId}:${i + 1}`,
+                description,
+                status: 'pending',
+                targetAgent
+            };
+        });
+
+        this.pendingPlan = null;
+        this.isAwaitingPlanConfirmation = false;
+
+        // UI에 플랜 표시
+        this._onDidPostMessage.fire({ 
+            command: 'displayPlan', 
+            payload: { plan: this.currentPlan } 
+        });
+
+        // 텍스트 로그 출력
+        this._onDidPostMessage.fire({ 
+            command: 'progressLog', 
+            payload: { text: `📋 New plan created with ${steps.length} steps.` } 
+        });
+
+        await this.saveCurrentChatHistory();
+
+        if (startImmediately) {
+            await this.executePlan();
+        }
+    }
+
+    private async executePlan(): Promise<void> {
+        if (this.cancellationTokenSource && this.cancellationTokenSource.token.isCancellationRequested) {
+             this.developerLogService.log('[OrchestratorAgent] Plan execution cancelled via token.');
+             return;
+        }
+
+        this.developerLogService.log(`[OrchestratorAgent] executePlan: currentStepIndex=${this.currentStepIndex}`);
+        
+        if (!this.currentPlan || this.currentPlan.length === 0) {
+            this.developerLogService.log(`[OrchestratorAgent] executePlan: No plan to execute.`);
+            return;
+        }
+
+        // Find first pending step
+        const nextIndex = this.currentPlan.findIndex(s => s.status === 'pending');
+        if (nextIndex === -1) {
+            this.developerLogService.log(`[OrchestratorAgent] executePlan: No more pending steps.`);
+            return;
+        }
+
+        this.currentStepIndex = nextIndex;
+        const step = this.currentPlan[nextIndex];
+        
+        // Mark as in-progress
+        step.status = 'in-progress';
+        step.executionId = uuidv4();
+        this.currentExecutionId = step.executionId;
+
+        this.developerLogService.log(`[OrchestratorAgent] Executing Step ${nextIndex + 1}: ${step.description} -> ${step.targetAgent}`);
+
+        // Update UI
+        this._onDidPostMessage.fire({ 
+            command: 'updatePlanStep', 
+            payload: { index: nextIndex, status: 'in-progress' } 
+        });
+
+        this._onDidPostMessage.fire({ 
+            command: 'progressLog', 
+            payload: { text: `Step ${nextIndex + 1}: ${step.description}` } 
+        });
+
+        // Delegate to Specialist Agent
+        const targetAgent = step.targetAgent || 'BrainstormAgent';
+        
+        await this.dispatch({
+            messageId: uuidv4(),
+            sender: OrchestratorAgent.AGENT_ID,
+            recipient: targetAgent,
+            timestamp: new Date().toISOString(),
+            // contextId: uuidv4(), // Removed as it's not in A2AMessage interface
+            type: 'task', // Unified task type
+            payload: {
+                task: step.description,
+                context: `Step ${nextIndex + 1} of current orchestration plan.`,
+                correlationId: step.executionId,
+                targetFile: this.lastSourceFilePath || this.lastContextFilePath,
+                relatedFiles: this.lastAttachmentFilePaths
+            }
+        });
+    }
 
 
 
@@ -2383,7 +2608,8 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         // Orchestrator needs core tools (especially semantic search & notify_user) to handle knowledge gaps
         // and communicate effectively, even if its main output is JSON planning.
         const { getCoreLLMTools } = require('../services/LLMTools');
-        return getCoreLLMTools();
+        const coreTools = getCoreLLMTools();
+        return coreTools;
     }
 
 
@@ -2409,15 +2635,88 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         this.developerLogService.log(`[Orchestrator] Received A2A Message from ${message.sender}: ${message.type}`);
         
         switch (message.type) {
+            case 'status-stream':
+                // Handle streaming chunks
+                const isStreamContent = message.payload?.content;
+                if (isStreamContent) {
+                    // Use processProgressLogChunk to append text to the latest log
+                    // Note: If BaseAgent sends prefix in first chunk, it might be separate.
+                    // But BaseAgent logic says: if isStreaming, it sends RAW content. 
+                    // So we might want to manually prepend prefix ONLY for the first chunk if needed, 
+                    // OR we just assume the UI handles appending.
+                    // For now, let's keep it simple: just append what we get.
+                    // But we likely want to verify sender name prefix logic in processProgressLogChunk?
+                    // Actually, processProgressLog has prefix logic, but processProgressLogChunk usually assumes appending to *active* log.
+                    // Let's implement processProgressLogChunk (or check if it exists or use direct fire).
+                    // Orchestrator doesn't have processProgressLogChunk method visible in my view earlier (I only saw processProgressLog).
+                    // I'll assume I need to implement it or use _onDidPostMessage directly.
+                    
+                    // Direct fire to UI
+                    this._onDidPostMessage.fire({ 
+                        command: 'progressLogChunk', 
+                        payload: { 
+                            text: isStreamContent 
+                        } 
+                    });
+                }
+                break;
+            case 'progress': // Legacy
+            case 'status-update': // SDK Standard (Full Update)
+                const payload = message.payload || {};
+                const progressText = payload.status?.message?.parts?.find((p: any) => p.kind === 'text')?.text || 
+                                   payload.message?.parts?.find((p: any) => p.kind === 'text')?.text ||
+                                   payload.data || payload.text || "";
+                
+                if (progressText) {
+                    this.processProgressLog(progressText, message.sender || 'Agent');
+                }
+                break;
+            case 'resource-action':
+                // Handle File Creation/Update from workers -> UI Block
+                if (message.payload?.uri) {
+                    const absPath = message.payload.uri;
+                    const action = message.payload.action || "create";
+                    const historyMsg: any = {
+                        author: 'agent',
+                        kind: 'codeEditFile', // Re-use for UI Block
+                        senderName: message.sender || OrchestratorAgent.AGENT_ID,
+                        timestamp: message.payload.timestamp || new Date().toISOString(),
+                        filePath: absPath,
+                        content: [{ type: 'text', text: `${action === 'create' ? 'Created' : 'Updated'} file: ${path.basename(absPath)}` }]
+                    };
+                    await this.addMessageToHistory(historyMsg);
+                    this._onDidPostMessage.fire({ command: 'createFileCard', payload: historyMsg });
+                }
+                break;
             case 'propose-task':
                 const tasks = message.payload?.tasks || message.payload?.new_steps || [];
                 const reason = message.payload?.reason || "New tasks proposed";
                 if (tasks.length > 0) {
-                     this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: `🔄 ${message.sender}: ${reason}` } });
+                     this._onDidPostMessage.fire({ command: 'progressLog', payload: { text: `${message.sender}: ${reason}` } });
                      await this.updatePlan(tasks, true);
                 }
                 break;
              case 'response-code-execution':
+             case 'report': // Show Agent Reports as Chat Bubbles
+                const reportText = message.payload?.message || message.payload?.result || message.payload?.text || message.payload?.data || JSON.stringify(message.payload);
+                if (reportText) {
+                    const reportMsg: any = {
+                        author: 'agent',
+                        senderName: message.sender,
+                        content: [{ type: 'text', text: reportText }],
+                        timestamp: new Date().toISOString(),
+                        kind: 'text' // Standard chat bubble
+                    };
+                    await this.addMessageToHistory(reportMsg);
+                    // Force UI update
+                    // this._onDidPostMessage.fire({ command: 'loadHistory', payload: this.chatHistory }); // handleSessionChangeProxy already does this on state change?
+                    // But explicitly firing response helps real-time feel if generic
+                     this._onDidPostMessage.fire({ 
+                        command: 'response', 
+                        payload: { text: reportText, senderName: message.sender, timestamp: reportMsg.timestamp } 
+                    });
+                }
+                break;
              case 'execution-result':
                 const executionId = message.payload?.correlationId;
                 if (executionId && this.currentPlan) {
@@ -2433,6 +2732,56 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                      }
                 }
                 break;
+        }
+    }
+
+    private async runLintForFile(_filePath: string): Promise<void> {
+        this.developerLogService.log(`[OrchestratorAgent] runLintForFile placeholder called for ${_filePath}`);
+        // Implementation logic for linting if needed
+    }
+
+    private buildDynamicPostActionsFromArtifacts(): string[] {
+        this.developerLogService.log(`[OrchestratorAgent] buildDynamicPostActionsFromArtifacts placeholder called`);
+        // Implementation logic for dynamic post-actions
+        return [];
+    }
+
+    private async handlePostActionsConfirmation(userText: string): Promise<boolean> {
+        return this.handlePlanConfirmation(userText);
+    }
+
+    // --- Validation Override ---
+    protected validateA2AResponse(text: string): { valid: boolean; error?: string } {
+        const baseValidation = super.validateA2AResponse(text);
+        if (!baseValidation.valid) {
+            return baseValidation;
+        }
+
+        try {
+            const parsed = JSON.parse(text);
+            
+            // 1. Delegation Consistency Check
+            if (parsed.type === 'delegation' && parsed.targetAgent === 'None') {
+                return { 
+                    valid: false, 
+                    error: "Invalid Delegation: You set 'type': 'delegation' but 'targetAgent': 'None'. If you intend to delegate, you MUST specify a valid 'targetAgent' from the list (e.g., 'CodeEditAgent', 'BrainstormAgent'). If you intend to answer directly (or report), set 'targetAgent': 'None' and 'type': 'report' (or 'answer')." 
+                };
+            }
+
+            // 2. Target Agent Validity Check
+            if (parsed.targetAgent && parsed.targetAgent !== 'None') {
+                const validAgents = OrchestratorAgent.SPECIALIST_AGENTS.map(a => a.name);
+                if (!validAgents.includes(parsed.targetAgent)) {
+                     return {
+                        valid: false,
+                        error: `Invalid targetAgent '${parsed.targetAgent}'. Valid agents show in system prompt are: ${validAgents.join(', ')}.`
+                     };
+                }
+            }
+
+            return { valid: true };
+        } catch (e: any) {
+            return { valid: false, error: `Validation Error: ${e.message}` };
         }
     }
 }

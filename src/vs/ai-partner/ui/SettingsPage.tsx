@@ -103,9 +103,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   // New Settings
   const [summarizeTokenLimit, setSummarizeTokenLimit] = useState<number>(0.75);
 
-  const [thinkingLanguage, setThinkingLanguage] = useState<string>('Korean');
+  const [thinkingLanguage, setThinkingLanguage] = useState<string>('English');
+  const [userLanguage, setUserLanguage] = useState<string>('English');
   const [maxContextOverride, setMaxContextOverride] = useState<number | undefined>(undefined);
   const [useVSCodeThinkingLang, setUseVSCodeThinkingLang] = useState<boolean>(false);
+  const [useVSCodeUserLang, setUseVSCodeUserLang] = useState<boolean>(false);
 
   // startModelPolling은 더 이상 필요 없음 (MainView가 models를 관리)
   const startModelPolling = useCallback((durationMs: number = 20000, intervalMs: number = 2000) => {
@@ -135,8 +137,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         if (typeof p.summarizeTokenLimit === 'number') setSummarizeTokenLimit(p.summarizeTokenLimit);
 
         if (typeof p.thinkingLanguage === 'string') setThinkingLanguage(p.thinkingLanguage);
+        if (typeof p.userLanguage === 'string') setUserLanguage(p.userLanguage);
         if (p.maxContextOverride !== undefined) setMaxContextOverride(p.maxContextOverride);
         if (p.useVSCodeThinkingLang !== undefined) setUseVSCodeThinkingLang(p.useVSCodeThinkingLang);
+        if (p.useVSCodeUserLang !== undefined) setUseVSCodeUserLang(p.useVSCodeUserLang);
       } else if (message.command === 'profilesResponse') {
         setProfiles(message.payload?.profiles || []);
         setActiveProfileId(typeof message.payload?.activeProfileId === 'string' ? message.payload.activeProfileId : null);
@@ -616,6 +620,32 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
              <span style={{ fontSize: '12px' }}>Sync with VS Code</span>
           </div>
         </div>
+
+        <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>Response Language</div>
+            <div style={{ opacity: 0.8, fontSize: 12 }}>
+              {useVSCodeUserLang 
+                ? 'Response will match your VS Code display language.' 
+                : `Response will be in ${userLanguage}.`}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+             <VSCodeCheckbox
+                checked={useVSCodeUserLang}
+                onChange={(e: any) => {
+                    const checked = !!e.target.checked;
+                    setUseVSCodeUserLang(checked);
+                    vscodeService.postMessage({ command: 'setUseVSCodeUserLang', payload: { use: checked } });
+                    if (!checked) {
+                        setUserLanguage('English');
+                        vscodeService.postMessage({ command: 'setUserLanguage', payload: { lang: 'English' } });
+                    }
+                }}
+             />
+             <span style={{ fontSize: '12px' }}>Sync with VS Code</span>
+          </div>
+        </div>
       </div>
 
       <VSCodeDivider style={{ margin: '16px 0' }} />
@@ -738,10 +768,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <label style={{ minWidth: '120px', fontSize: '13px' }}>Max Context:</label>
                 <VSCodeTextField
-                    value={maxContextOverride !== undefined ? String(maxContextOverride) : ''}
+                    value={!maxContextOverride ? '' : String(maxContextOverride)}
                     onInput={(e: any) => {
                         const val = parseInt(e.target.value);
-                        const newVal = isNaN(val) ? undefined : val;
+                        const newVal = (isNaN(val) || val === 0) ? undefined : val;
                         setMaxContextOverride(newVal);
                         vscodeService.postMessage({ command: 'setMaxContextOverride', payload: { limit: newVal } });
                     }}
@@ -763,11 +793,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
 
 
         <div className="setting-item" style={{ display: 'flex', flexDirection: 'column', marginBottom: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-             <label style={{ minWidth: '120px', marginRight: '10px', flexShrink: 0 }}>Summarize %:</label>
-             <VSCodeTextField
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', gap: '10px' }}>
+             <label style={{ minWidth: '120px', flexShrink: 0 }}>Summarize %:</label>
+             <input
+               type="text"
                value={(summarizeTokenLimit * 100).toString()}
-               onInput={(e: any) => {
+               onChange={(e: any) => {
                    let val = parseFloat(e.target.value);
                    if (!isNaN(val)) {
                        if (val > 100) val = 100;
@@ -775,7 +806,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                        setSummarizeTokenLimit(val / 100);
                    }
                }}
-               onChange={(e: any) => {
+               onBlur={(e: any) => {
                    let val = parseFloat(e.target.value);
                    if (!isNaN(val)) {
                        if (val > 100) val = 100;
@@ -784,9 +815,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                    }
                }}
                placeholder="75"
-               style={{ width: '60px', marginRight: '12px', flexShrink: 0 }}
+               style={{ 
+                   backgroundColor: 'var(--vscode-input-background)',
+                   color: 'var(--vscode-input-foreground)',
+                   border: '1px solid var(--vscode-input-border)',
+                   borderRadius: '2px',
+                   padding: '3px 5px',
+                   width: '28px',
+                   height: '24px',
+                   fontFamily: 'var(--vscode-font-family)',
+                   fontSize: 'var(--vscode-font-size)',
+                   outline: 'none',
+                   textAlign: 'right'
+               }}
              />
-             <span style={{ opacity: 0.8, fontSize: '12px', flexShrink: 0, whiteSpace: 'nowrap' }}>% of context allocated.</span>
+             <span style={{ opacity: 0.8, fontSize: '12px', whiteSpace: 'nowrap' }}>% of context allocated.</span>
           </div>
           
             <div style={{ marginLeft: '130px', fontSize: '12px', opacity: 0.9, backgroundColor: 'var(--vscode-textBlockQuote-background)', padding: '8px', borderRadius: '4px' }}>

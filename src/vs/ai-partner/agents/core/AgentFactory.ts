@@ -170,8 +170,26 @@ export class AgentFactory {
         // CodeAnalysisAgent removed - replaced by SemanticGraphTool
         // SecurityAnalysisAgent removed - functionality integrated or deprecated
         
-        // Note: ReadmeGenerationAgent removed - its functionality is now part of DocumentationGenerationAgent
-        // to avoid confusion and overlap. Use DocumentationGenerationAgent for all documentation needs.
+        this.registerAgent({
+            name: 'TaskDecompositionAgent',
+            description: 'Breaks down complex tasks into atomic, executable steps',
+            category: 'specialized',
+            agentClass: require('../TaskDecompositionAgent').TaskDecompositionAgent
+        });
+
+        this.registerAgent({
+            name: 'ContextManagementAgent',
+            description: 'Manages workspace context, token usage, and history summarization',
+            category: 'utility',
+            agentClass: require('../ContextManagementAgent').ContextManagementAgent
+        });
+
+        this.registerAgent({
+            name: 'ReadmeGenerationAgent',
+            description: 'Specialist for creating high-quality, standard-compliant README files',
+            category: 'specialized',
+            agentClass: require('../ReadmeGenerationAgent').ReadmeGenerationAgent
+        });
         
         console.log(`Registered ${this.agentConfigs.size} agents`);
     }

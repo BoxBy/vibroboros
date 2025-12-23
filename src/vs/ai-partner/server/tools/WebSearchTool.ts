@@ -10,7 +10,7 @@ const outputSchema = z.object({
 
 export function getWebSearchToolDefinition() {
     return {
-        name: 'WebSearchTool',
+        name: 'web_search',
         description: {
             title: "Web Search",
             description: "Performs a web search using a search engine.",

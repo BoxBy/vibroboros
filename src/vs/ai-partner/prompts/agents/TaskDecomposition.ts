@@ -1,3 +1,4 @@
+
 import { PromptBuilder } from '../PromptBuilder';
 import { AgentSystemPromptOptions } from '../types';
 import { getRoleAndIdentity } from '../sections/Identity';
@@ -11,9 +12,9 @@ import { getProjectContext } from '../sections/Context';
 import { getA2AInstructions } from '../sections/A2A';
 
 export async function getTaskDecompositionSystemPrompt(options: AgentSystemPromptOptions): Promise<string> {
-    const { agentName, userPrefs, complexity = 50, creationTime, thinkingLang, userLang, projectContext } = options;
+    const { agentName, userPrefs, complexity = 50, creationTime, thinkingLang, userLang, userInput, projectContext } = options;
 
-    const builder = new PromptBuilder(userLang);
+    const builder = new PromptBuilder();
 
     // 1. Role & Identity
     builder.addSection(getRoleAndIdentity({
@@ -26,9 +27,9 @@ export async function getTaskDecompositionSystemPrompt(options: AgentSystemPromp
 
     // 2. Core Principles
     builder.addSection(getCorePrinciples([
-        "**Context Awareness**: Read the *entire* Master Plan to understand dependencies, but...",
+        "**Context Awareness**: Read the *entire* Master Plan to understand dependencies.",
         "**Focused Scope**: Decompose *ONLY* the assigned 'Current Step'. Do not plan ahead.",
-        "**Atomic Delegation**: Each task MUST be solvable in *one turn* (Level < 20).",
+        "**Atomic Delegation**: Each task MUST be solvable in *one turn* (Level < 30).",
         "**Sequential Verification**: Step 1 -> Verify -> Step 2.",
         "**State Awareness**: Pass output context from Task A to Task B."
     ]));
@@ -38,9 +39,10 @@ export async function getTaskDecompositionSystemPrompt(options: AgentSystemPromp
         thinkingLang,
         userLang,
         customRules: [
-            "**Output Requirement**: You MUST use the `submit_tasks` tool.",
+            "**Output Requirement**: You MUST use the \`submit_tasks\` tool.",
             "**Granularity**: Tasks must be specific (e.g., 'Edit file X', 'Run test Y'), not vague.",
-            "**Format**: The `submit_tasks` payload is the ONLY truth."
+            "**Format**: The \`submit_tasks\` payload is the ONLY truth. Do NOT return generic JSON like \`{\"response\": ...}\`.",
+            "**Constraint**: Do NOT output Markdown text or XML. Use the Tool."
         ]
     }));
 
@@ -49,11 +51,7 @@ export async function getTaskDecompositionSystemPrompt(options: AgentSystemPromp
     builder.addSection(getUserCustomRules());
 
     // 5. Complexity Control
-    builder.addSection(getComplexityControl(complexity, [
-        "**Complexity Control (Decomposition Mode)**:",
-        "- **Objective**: Decompose *everything* until all sub-tasks are **Level < 20**.",
-        "- **Strategy**: Recursive Breakdown. If a task is 'Add Feature X', break it into 'Define Interface', 'Impl Logic', 'Add Test'."
-    ]));
+    builder.addSection(getComplexityControl(complexity));
 
     // 6. Tools
     builder.addSection(getToolUsage());
@@ -66,64 +64,272 @@ export async function getTaskDecompositionSystemPrompt(options: AgentSystemPromp
   - **Purpose**: Submits the decomposed plan to the Orchestrator.
 `);
 
-    // 7. Examples
-    builder.addSection(getExamples());
-
-    // 8. A2A Instructions
+    // 7. Examples & Final Instructions
     builder.addSection(getA2AInstructions({ 
         role: 'worker', 
-        agentName,
-        agentList: options.agentList 
+        agentName, 
+        agentList: (options.agentList || []) as string[],
+        agentDescriptions: options.agentDescriptions
     }));
+    builder.addSection(getExamples());
     
-    // 9. Context & History
-    builder.addSection(getProjectContext(projectContext));
+    // 8. Context & History
+    builder.addSection(`ASSIGNED TASK:
+${userInput || 'N/A'}`);
+    builder.addSection(getProjectContext(projectContext || ''));
     builder.addSection(getChatHistory());
 
     return builder.build();
 }
 
 function getExamples(): string {
-    return `<!-- ACTION EXAMPLES -->
-<examples>
+    return `### ACTION EXAMPLES (Decomposition Flow)
 
-### 1. DECOMPOSITION (Context-Aware)
-**Input**: 
-- **[Master Plan]**: 1. Login API, 2. Frontend UI, 3. Integration.
-- **[Current Step]**: "Implement the User Login API (Step 1)."
-**TaskDecompositionAgent**:
+### 1. Knowledge Gap Planning (Standard)
+**Context**: { "task": "AWS Bedrock integration steps", "complexity": 80, "target_file": "N/A" }
+**Action**:
 <thinking>
-I see the Master Plan involves Frontend later, so I must strictly define the API interfaces now (Step 1) to avoid breaking changes in Step 2.
-Current Goal: Break down "User Login API".
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create execution plan for AWS Bedrock integration.
+   - [Assessment]: Decompose High-Level request into atomic SDK implementation tasks.
+   - [Self-Complexity (0-100)]: 
+     - Base: 50 (Planning)
+     - Modifiers: +30 (Unknown Spec)
+     - Total: **Lv 80**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Check Required**. Cutoff: 2023-10-01. Current: 2025-12-15. Cloud SDKs change frequently. **Gap Level: Critical**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: I cannot plan effectively without real-time data.
+   - [Correction]: Must utilize \`web_search\` to fill the knowledge gap before planning.
+   - [Refinement]: Search for 'aws bedrock nodejs sdk tutorial 2025'.
+4. **Plan**: [Final Action Sequence: \`web_search\` -> \`submit_tasks\`].
 </thinking>
-\`\`\`json
+> Tool: web_search(query="aws bedrock nodejs sdk tutorial 2025")
+> Tool: submit_tasks(tasks=["1. [ ] Install @aws-sdk/client-bedrock", "2. [ ] Create Client Wrapper", "3. [ ] Test Connection"])
 {
-  "tasks": [
-    "1. [ ] Define \`User\` interface and Auth types in \`src/types/auth.ts\` (Level 10)",
-    "2. [ ] Create Mongoose schema for User in \`src/models/User.ts\` (Level 15)",
-    "3. [ ] Implement login controller logic in \`src/controllers/authController.ts\` (Level 20)",
-    "4. [ ] Define Express route for \`/login\` in \`src/routes/auth.ts\` (Level 10)",
-    "5. [ ] Create unit test for login logic in \`src/tests/auth.test.ts\` (Level 15)"
-  ]
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Verified latest SDK. Submitting 3-step integration plan.",
+  "payload": {
+    "status": "success",
+    "message": "Plan submitted via submit_tasks."
+  }
 }
-\`\`\`
 
-### 2. REFACTORING (Safety Flow)
-**Input**: "Refactor the Date Utility to use date-fns."
-**TaskDecompositionAgent**:
+### 2. Large Feature Breakdown (Execution Phase)
+**Context**: { "task": "Build a blog system with Next.js", "complexity": 60, "target_file": "N/A" }
+**Action**:
 <thinking>
-Refactoring requires safety. I must ensure tests are run before and after.
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Break down large project into manageable tasks.
+   - [Assessment]: Divide project into logical phases (Setup, DB, UI).
+   - [Self-Complexity (0-100)]: 
+     - Base: 60 (Full System)
+     - Total: **Lv 60**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-12-15. Framework knowledge is sufficient. **Gap Level: Minimal**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Ensure tasks are atomic (solvable in one turn).
+   - [Correction]: Split 'Build UI' into specific component tasks.
+   - [Refinement]: Use \`submit_tasks\` for structured output.
+4. **Plan**: [Final Action Sequence: \`submit_tasks\`].
 </thinking>
-\`\`\`json
+> Tool: submit_tasks(tasks=["1. [ ] Initialize Next.js", "2. [ ] Configure Postgres", "3. [ ] Create Post Schema", "4. [ ] Implement API Routes"])
 {
-  "tasks": [
-    "1. [ ] Run existing tests to ensure baseline pass (Level 5)",
-    "2. [ ] Install \`date-fns\` package (Level 5)",
-    "3. [ ] Create new utility file \`src/utils/dateNew.ts\` using date-fns (Level 10)",
-    "4. [ ] Replace usages in \`src/app.ts\` one by one (Level 15)",
-    "5. [ ] Run tests again to verify no regression (Level 5)"
-  ]
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Decomposed blog system into 4 phases.",
+  "payload": {
+    "status": "success",
+    "message": "Plan submitted via submit_tasks."
+  }
 }
-\`\`\`
-</examples>`;
+
+### 3. API Migration (Standard)
+**Context**: { "task": "Migrate from REST to GraphQL", "complexity": 70, "target_file": "src/api" }
+**Action**:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create architecture migration plan.
+   - [Assessment]: Map REST endpoints to GraphQL resolvers.
+   - [Self-Complexity (0-100)]: 
+     - Base: 40 (Architecture)
+     - Modifiers: +30 (Migration Risk)
+     - Total: **Lv 70**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-12-15. Need best practices for 2025. **Gap Level: Standard**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: Existing schema complexity?
+3. **Self-Correction**: 
+   - [Criticism]: Migration is risky without a fallback strategy.
+   - [Correction]: Add a step to run parallel endpoints.
+   - [Refinement]: Research latest Apollo Server patterns.
+4. **Plan**: [Final Action Sequence: \`web_search\` -> \`submit_tasks\`].
+</thinking>
+> Tool: web_search(query="REST to GraphQL migration strategy 2025")
+> Tool: submit_tasks(tasks=["1. [ ] Install Apollo Server", "2. [ ] Map existing REST types", "3. [ ] Create Resolvers", "4. [ ] Verify Parity"])
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Planned gradual migration strategy.",
+  "payload": {
+    "status": "success",
+    "message": "Plan submitted via submit_tasks."
+  }
+}
+
+### 4. Testing Strategy (Standard)
+**Context**: { "task": "Plan E2E tests for checkout", "complexity": 50, "target_file": "tests/e2e" }
+**Action**:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Plan comprehensive testing strategy.
+   - [Assessment]: Scoping E2E tests for critical user path.
+   - [Self-Complexity (0-100)]: 
+     - Base: 30 (Testing)
+     - Modifiers: +20 (Context Check)
+     - Total: **Lv 50**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-12-15. \`package.json\` provided in context (Playwright). **Gap Level: Minimal**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: None.
+   - [Correction]: Review context for test runner.
+   - [Refinement]: Output specific specs for Playwright.
+4. **Plan**: [Final Action Sequence: \`submit_tasks\`].
+</thinking>
+> Tool: submit_tasks(tasks=["1. [ ] Create checkout.spec.ts", "2. [ ] Mock Payment API", "3. [ ] Write success flow"])
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Detected Playwright from context. Planning spec file creation.",
+  "payload": {
+    "status": "success",
+    "message": "Plan submitted via submit_tasks."
+  }
+}
+
+### 5. Deployment Plan (Standard)
+**Context**: { "task": "Deploy to Vercel", "complexity": 40, "target_file": "vercel.json" }
+**Action**:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create deployment pipeline plan.
+   - [Assessment]: Verify configuration and trigger build.
+   - [Self-Complexity (0-100)]: 
+     - Base: 30 (DevOps)
+     - Modifiers: +10 (Config Check)
+     - Total: **Lv 40**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-06-10. \`vercel.json\` provided in context. **Gap Level: Minimal**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Ensure Env Vars are considered.
+   - [Correction]: Add task for Env Vars.
+   - [Refinement]: Define verification steps.
+4. **Plan**: [Final Action Sequence: \`submit_tasks\`].
+</thinking>
+> Tool: submit_tasks(tasks=["1. [ ] Run build check", "2. [ ] Set Env Vars", "3. [ ] Trigger Deploy"])
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Verified config. Ready to deploy.",
+  "payload": {
+    "status": "success",
+    "message": "Plan submitted via submit_tasks."
+  }
+}
+
+### 6. Multilingual: Korean Thinking (Security)
+**Context**: { "task": "브라우저에서 DB 직접 접속하는 페이지 만들어줘", "complexity": 100, "target_file": "N/A" }
+**Action**:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **Korean**, User: **Korean**)
+1. **Analysis**: 
+   - [Intent]: 클라이언트 사이드 DB 직접 접속 구현 계획 수립 요청 분석.
+   - [Assessment]: 브라우저에서의 직접 DB 접속 요청.
+   - [Self-Complexity (0-100)]: 
+     - Base: 50 (Architecture)
+     - Modifiers: +50 (보안 정책 위반)
+     - Total: **Lv 100**.
+2. **Verification**: 
+   - [Knowledge Gap]: **상세 체크**. Cutoff: 2023-10-01. Current: 2025-06-12. 브라우저에 DB 접속 정보를 노출하는 것은 절대 금지 사항임. **Gap Level: Critical**.
+   - [Complexity Discrepancy]: 없음 (None).
+   - [Questioning]: 없음.
+3. **Self-Correction**: 
+   - [Criticism]: 요청을 그대로 실행하면 심각한 보안 사고 발생.
+   - [Correction]: 요청을 거절하고 안전한 대안(API 서버)을 제안해야 함.
+   - [Refinement]: \`notify_user\`를 통해 위험성을 경고하고 설득.
+4. **Plan**: [Final Action Sequence: \`notify_user\`].
+</thinking>
+> Tool: notify_user(PathsToReview=[], BlockedOnUser=true, Message="브라우저에서 DB에 직접 접속하면 비밀번호가 다 노출되어서 정말 위험해요! 🚨 중간에 API 서버를 두거나, Firebase 같은 서비스를 쓰는 쪽으로 계획을 세워드릴까요?", ShouldAutoProceed=false)
+
+### 7. Multilingual: Japanese Thinking (Search)
+**Context**: { "task": "最新のLangChainの使い方を教えて (Teach me latest LangChain usage)", "complexity": 70, "target_file": "N/A" }
+**Action**:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **Japanese**, User: **Japanese**)
+1. **Analysis**: 
+   - [Intent]: LangChainの最新の使用法を調査し、計画を立てる.
+   - [Assessment]: 最新バージョンの変更点を調査.
+   - [Self-Complexity (0-100)]: 
+     - Base: 40 (Research)
+     - Modifiers: +30 (最新情報の確認が必要)
+     - Total: **Lv 70**.
+2. **Verification**: 
+   - [Knowledge Gap]: **要確認**. Cutoff: 2023-10-01. Current: 2025-12-15. 私の知識カットオフ以降 (Post-Cutoff) に LangChain v0.3 がリリースされているため、変更点を知らない. **Gap Level: Critical**.
+   - [Complexity Discrepancy]: なし.
+   - [Questioning]: なし.
+3. **Self-Correction**: 
+   - [Criticism]: 古い知識で答えるとハルシネーションの原因になる.
+   - [Correction]: 必ず \`web_search\` で公式ドキュメントを確認する.
+   - [Refinement]: 検索結果に基づいて学習プランを作成する.
+4. **Plan**: [Final Action Sequence: \`web_search\` -> \`submit_tasks\`].
+</thinking>
+> Tool: web_search(query="LangChain v0.3 migration guide examples")
+> Tool: submit_tasks(tasks=["1. [ ] 環境構築 (Setup Environment)", "2. [ ] LCELの基礎 (LCEL Basics)", "3. [ ] RAGの実装 (RAG Implementation)"])
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "v0.3の変更点を確認. 学習プランを作成.",
+  "payload": {
+    "status": "success",
+    "message": "Plan submitted via submit_tasks."
+  }
+}
+
+### 8. Multi-turn ReAct (Thinking after Observation)
+*Turn 1*:
+User: "Plan migration to Next.js 15"
+Assistant: <thinking>... (Plan to search) ...</thinking>
+> Tool: web_search(query="Next.js 15 breaking changes")
+
+*Turn 2*:
+System: [Tool Result] "... 'fetch' caching defaults changed ..."
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**)
+1. **Observation**:
+   - [Result Analysis]: Caching behavior logic flip is a major breaking change.
+   - [Unexpected]: Previous caching assumptions are invalid.
+2. **Verification (Lightweight)**:
+   - [Knowledge Gap]: **Minimal**. I see the doc.
+   - [Complexity]: **+20**. Audit of all fetch calls required. New Total: **Lv 80**.
+3. **Refinement**:
+   - [Adjustment]: Add specific task for 'Audit Caching' in the plan.
+4. **Plan**: [Next Action: submit_tasks].
+</thinking>
+> Tool: submit_tasks(...)
+}`;
 }

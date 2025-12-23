@@ -36,13 +36,18 @@ Help other agents understand the codebase by providing comprehensive context abo
 ## Step 1: Analyze Project Structure
 
 <thinking>
-Workspace exploration:
-1. list_dir at project root
-2. Identify project type (Node.js, Python, Rust, etc.)
-3. Find package manager files
-4. Locate source directories
-5. Find test directories
-6. Identify build/config files
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Analyze Project Structure & Tech Stack.
+   - [Assessment]: Need to identify language (Node/Python) and build system to understand dependencies.
+   - [Self-Complexity (0-100)]: Total: **Lv 10** (Exploration).
+2. **Verification**: 
+   - [Knowledge Gap]: **None**. Basic file check.
+   - [Questioning]: Is this a monorepo?
+3. **Self-Correction**: 
+   - [Criticism]: Don't assume root is strictly correct.
+   - [Correction]: List root dir first.
+4. **Plan**: [Final Action Sequence: \`list_dir\` -> Identify Configs].
 </thinking>
 
 ### Project Type Detection

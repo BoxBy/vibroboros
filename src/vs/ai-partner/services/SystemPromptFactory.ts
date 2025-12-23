@@ -36,15 +36,13 @@ export class SystemPromptFactory {
         const llmService = LLMService.getInstance();
         const userPrefs = await memory.getPreferences();
 
-        // 5. Dynamic Language Detection (Moved Up)
-        const vscodeLang = vscode.env.language.toLowerCase();
-        let targetLanguage = userPrefs?.language || 'Korean'; 
-        if (vscodeLang.startsWith('ko')) { targetLanguage = 'Korean'; }
-        else if (vscodeLang.startsWith('en')) { targetLanguage = 'English'; }
-        else if (vscodeLang.startsWith('ja')) { targetLanguage = 'Japanese'; }
-        else if (vscodeLang.startsWith('zh')) { targetLanguage = 'Chinese'; }
-        
-        console.log(`[SystemPromptFactory] Lang Detection - VSCode: ${vscodeLang}, Prefs: ${userPrefs?.language}, Target: ${targetLanguage}`);
+        // 5. Dynamic Language Detection (Sync with Config)
+        const config = ConfigService.getInstance();
+        const targetLanguage = config.getUserLanguage();
+        const thinkingLang = config.getThinkingLanguage(); 
+        const cwd = config.getWorkspacePath();
+
+        console.log(`[SystemPromptFactory] Lang Detection - Target: ${targetLanguage}, Thinking: ${thinkingLang}, CWD: ${cwd}`);
         
         // Context Strategy:
         // 1. High-Level Agents (Router/Planner) -> Always Tree Only (Efficiency)
@@ -128,82 +126,85 @@ export class SystemPromptFactory {
         switch(role) {
             case 'router': // Orchestrator
                 console.log('[SystemPromptFactory] Step 4a: Router Config Loading');
-                const config = ConfigService.getInstance();
-                // ConfigService does not expose features directly, using simple derivation
-                const thinkingLang = config.getThinkingLanguage();
-                const userLang = vscode.env.language;
-                
-                // Filter out OrchestratorAgent for the prompt
-                const routerAgentList = config.getInternalAgents()
-                    .filter(a => a.name !== 'OrchestratorAgent')
-                    .map(a => `- **${a.name}**: ${a.description}`)
-                    .join('\n');
-
-                console.log('[SystemPromptFactory] Step 4b: Generating Orchestrator Prompt');
+                const routerAgents = config.getInternalAgents().filter(a => a.name !== 'OrchestratorAgent');
+                const routerAgentList = routerAgents.map(a => a.name);
+                const routerAgentDescriptions = routerAgents.map(a => `- **${a.name}**: ${a.description}`).join('\n');
                 const p = getOrchestratorSystemPrompt({
+                    agentName: 'OrchestratorAgent',
                     agentList: routerAgentList,
+                    agentDescriptions: routerAgentDescriptions,
                     complexity,
-                    userPrefs: userPrefs || { language: 'Korean', codingStyle: 'Standard', preferredFrameworks: [] },
+                    userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
                     thinkingLang,
-                    userLang,
+                    userLang: targetLanguage,
                     projectContext,
-                    creationTime: memory.getSessionStartTime()
+                    creationTime: memory.getSessionStartTime(),
+                    cwd
                 });
                 console.log('[SystemPromptFactory] Step 4c: Orchestrator Prompt Generated');
                 return p;
 
             case 'pm': // TaskDecomposition
-                roleInstruction = `
-ROLE: Project Manager (Task Decomposition)
-- Break down complex objectives into atomic, executable tasks (Level 1-2).
-- Ensure dependency order is logical.
-`;
-                collaborationInstruction = `
-## TARGET EXECUTION AGENTS
-Your tasks will be executed by the following team of agents:
-${agentList}
-
-**Decomposition Strategy:**
-- Structure tasks so they map clearly to these agents' domains (Coding, Testing, Documentation).
-- Keep tasks atomic enough for a single agent to handle in one turn if possible.
-`;
-                break;
+                return getTaskDecompositionSystemPrompt({
+                    agentName,
+                    agentList: config.getInternalAgents().map(a => a.name),
+                    agentDescriptions: getAgentDescriptions(),
+                    complexity,
+                    userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
+                    thinkingLang,
+                    userLang: targetLanguage,
+                    projectContext,
+                    userInput,
+                    creationTime: memory.getSessionStartTime(),
+                    cwd
+                });
 
             case 'planner': // Brainstorm
             case 'BrainstormAgent': {
-                const config = ConfigService.getInstance();
                 return getBrainstormSystemPrompt({
                     agentName,
-                    agentList: getAgentDescriptions(),
+                    agentList: config.getInternalAgents().map(a => a.name),
+                    agentDescriptions: getAgentDescriptions(),
                     complexity,
-                    userPrefs: userPrefs || { language: 'Korean', codingStyle: 'Standard', preferredFrameworks: [] },
-                    thinkingLang: 'en',
+                    userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
+                    thinkingLang,
                     userLang: targetLanguage,
-                    creationTime: memory.getSessionStartTime()
+                    projectContext,
+                    userInput,
+                    creationTime: memory.getSessionStartTime(),
+                    cwd
                 });
             }
 
             case 'CodeEditAgent': {
                 return getCodeEditSystemPrompt({
                     agentName,
-                    agentList: getAgentDescriptions(),
+                    agentList: config.getInternalAgents().map(a => a.name),
+                    agentDescriptions: getAgentDescriptions(),
                     complexity: 50,
-                    userPrefs: userPrefs || { language: 'Korean', codingStyle: 'Standard', preferredFrameworks: [] },
-                    thinkingLang: 'en',
+                    userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
+                    thinkingLang,
                     userLang: targetLanguage,
-                    creationTime: memory.getSessionStartTime()
+                    projectContext,
+                    userInput,
+                    creationTime: memory.getSessionStartTime(),
+                    cwd
                 });
             }
 
             case 'ReadmeGenerationAgent': {
                 return getReadmeGenerationSystemPrompt({
                     agentName,
+                    agentList: config.getInternalAgents().map(a => a.name),
+                    agentDescriptions: getAgentDescriptions(),
                     userLang: targetLanguage,
                     complexity,
-                    thinkingLang: 'en',
+                    thinkingLang,
                     creationTime: memory.getSessionStartTime(),
-                    userPrefs: userPrefs || { language: 'Korean', codingStyle: 'Standard', preferredFrameworks: [] },
-                    projectContext
+                    userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
+                    userInput,
+                    projectContext,
+                    cwd
                 });
             }
 
@@ -211,54 +212,67 @@ ${agentList}
             case 'debugger': { // Compatibility
                 return getBugFixSystemPrompt({
                     agentName,
-                    agentList: getAgentDescriptions(),
+                    agentList: config.getInternalAgents().map(a => a.name),
+                    agentDescriptions: getAgentDescriptions(),
                     complexity,
-                    userPrefs: userPrefs || { language: 'Korean', codingStyle: 'Standard', preferredFrameworks: [] },
-                    thinkingLang: 'en',
+                    userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
+                    thinkingLang,
                     userLang: targetLanguage,
-                    creationTime: memory.getSessionStartTime()
+                    projectContext,
+                    userInput,
+                    creationTime: memory.getSessionStartTime(),
+                    cwd
                 });
             }
 
             case 'ContextManagementAgent': {
                 return getContextManagementSystemPrompt({
                     agentName,
+                    agentList: config.getInternalAgents().map(a => a.name),
+                    agentDescriptions: getAgentDescriptions(),
                     userLang: targetLanguage,
                     complexity,
-                    thinkingLang: 'en',
+                    thinkingLang,
                     creationTime: memory.getSessionStartTime(),
-                    userPrefs: userPrefs || { language: 'Korean', codingStyle: 'Standard', preferredFrameworks: [] },
+                    userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
                     projectContext,
+                    userInput,
                     excludeHistory: contextOptions?.excludeHistory,
-
                     targetContent: contextOptions?.targetContent,
                     dynamicRules: contextOptions?.dynamicRules,
-                    examples: contextOptions?.examples
+                    examples: contextOptions?.examples,
+                    cwd
                 });
             }
 
             case 'TestGenerationAgent':
                 return getTestGenerationSystemPrompt({
                     agentName,
-                    agentList: getAgentDescriptions(),
+                    agentList: config.getInternalAgents().map(a => a.name),
+                    agentDescriptions: getAgentDescriptions(),
                     complexity,
-                    userPrefs: userPrefs || { language: 'Korean', codingStyle: 'Standard', preferredFrameworks: [] },
-                    thinkingLang: 'en',
+                    userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
+                    thinkingLang,
                     userLang: targetLanguage,
                     creationTime: memory.getSessionStartTime(),
-                    projectContext
+                    projectContext,
+                    userInput,
+                    cwd
                 });
 
             case 'DocumentationGenerationAgent':
                 return getDocumentationGenerationSystemPrompt({
                     agentName,
-                    agentList: getAgentDescriptions(),
+                    agentList: config.getInternalAgents().map(a => a.name),
+                    agentDescriptions: getAgentDescriptions(),
                     complexity,
-                    userPrefs: userPrefs || { language: 'Korean', codingStyle: 'Standard', preferredFrameworks: [] },
-                    thinkingLang: 'en',
+                    userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
+                    thinkingLang,
                     userLang: targetLanguage,
                     creationTime: memory.getSessionStartTime(),
-                    projectContext
+                    projectContext,
+                    userInput,
+                    cwd
                 });
 
             case 'worker': // CodeEdit, Test, Doc, Readme, ContextMgmt
@@ -288,123 +302,59 @@ ${agentList}
         // 2. User Preferences Injection
         const preferenceSection = userPrefs ? `
 USER PREFERENCES:
-- Language: ${userPrefs.language}
-- Style: ${userPrefs.codingStyle}
-- Frameworks: ${userPrefs.preferredFrameworks.join(', ')}
+- Language: ${userPrefs?.language || targetLanguage}
+- Style: ${userPrefs?.codingStyle || 'Standard'}
+- Frameworks: ${userPrefs?.preferredFrameworks?.join(', ') || 'N/A'}
 ` : '';
 
         // 3. Project Context Injection
+        const targetFileDisplay = contextOptions?.targetFile ? `- **Target File**: ${contextOptions.targetFile}` : '';
+        const relatedFilesDisplay = contextOptions?.relatedFiles?.length ? `- **Related Files**: ${contextOptions.relatedFiles.join(', ')}` : '';
+        const contextMeta = (targetFileDisplay || relatedFilesDisplay) ? `
+TARGET CONTEXT:
+${targetFileDisplay}
+${relatedFilesDisplay}
+` : '';
+
         const contextSection = `
 PROJECT CONTEXT:
 ${projectContext}
+${contextMeta}
+- **Current Working Directory**: ${cwd || 'No workspace open'}
 `;
 
         // 4. Complexity Control (Dynamic Injection)
         const effectiveRoleForComplexity = role;
         const complexitySection = getLegacyComplexityControl(effectiveRoleForComplexity as any, complexity);
 
-        // 5. Dynamic Language Detection
-
-        
-        console.log(`[SystemPromptFactory] Lang Detection - VSCode: ${vscodeLang}, Prefs: ${userPrefs?.language}, Target: ${targetLanguage}`);
-
-        // 6. Thinking Protocol
-        const thinkingProtocol = (agentName !== 'OrchestratorAgent' && agentName !== 'Orchestrator') ? `
-4. **Thinking Protocol**:
-   - You MUST plan your actions by enclosing your thought process in \`<thinking>...</thinking>\` tags BEFORE calling any tool.
-   - This prevents errors and helps the user understand your logic.
-   - Example:
-     \`\`\`
-     <thinking>
-     I need to read the file 'utils.ts' to understand the helper function signature before I can generate the test.
-     </thinking>
-     [Call FileReadTool]
-     \`\`\`
-     ` : '';
-
-        return `
-${basePrompt}
-${roleInstruction}
-${collaborationInstruction}
-${preferenceSection}
-${contextSection}
-${complexitySection}
-
-CRITICAL RULES:
-1. NO KEYWORD PARSING. Always return structured JSON for tool calls and final responses.
-2. Respect the user's existing code style.
-3. Be proactive but safe.
-
-LANGUAGE RULES:
-1. **USER-FACING OUTPUT**: When speaking to the User (final responses, questions, chat bubbles), YOU MUST USE "${targetLanguage}".
-   - Do NOT use English for explanations unless the target language IS English.
-2. **INTERNAL THOUGHTS & TOOLS**: For internal reasoning (Thinking) and Tool execution/arguments, you MAY use English.
-${thinkingProtocol}
-6. **A2A Protocol Compliance**:
-   - IF the input request contains a \`correlation\` object (with \`planId\`, \`stepId\`, etc.), you **MUST** include it VERBATIM in your final JSON response.
-   - This is CRITICAL for the Orchestrator to track your work.
-   - Example Response:
-     \`\`\`json
-     {
-       "status": "success",
-       "correlation": { "planId": "...", "stepId": "..." },
-       "result": "..."
-     }
-     \`\`\`
-
-5. **Efficiency**: Do not translate code or tool parameters unless necessary.
-`;
+        // 5. Final Assembly
+        return [
+             basePrompt,
+             roleInstruction,
+             preferenceSection,
+             complexitySection,
+             contextSection,
+             collaborationInstruction
+        ].filter(Boolean).join('\n\n');
     }
-    }
+}
 
-
-// Inlined from LegacyComplexity.ts to avoid build resolution issues
-const getLegacyComplexityControl = (role: 'router' | 'worker' | 'planner' | 'pm', complexity: number): string => {
-    // 1. Router Logic (Orchestrator)
-    if (role === 'router') {
-        return `
-## COMPLEXITY CONTROL (Router)
-- **Target Level**: ${complexity} (0-100)
-- **Orchestration Logic**:
-  1. **Level 0-30 (Simple)**: Execute directly. Do NOT delegate if you can answer or perform simple tasks (e.g. read file, fix typo).
-  2. **Level 31-60 (Medium)**: Delegate to \`TaskDecomposition\`. Requirement: Split into tasks of Difficulty 10-20.
-  3. **Level 61-90 (Hard)**: Delegate to \`Brainstorm\` (Planning Mode). Requirement: Create Plans (Difficulty <=50), then decompose into Tasks (Difficulty 10-20).
-  4. **Level 91-100 (Project)**: Propose "Uroboros Mode" to user. 
-     - If accepted: Construct a master plan interactively until all steps are simplified.
-     - You MUST include \`complexity\` in the message payload when delegating.
-`;
-    }
-
-    // 2. Worker Logic (CodeEdit, Doc, Test)
-    if (role === 'worker') {
+function getLegacyComplexityControl(role: string, complexity: number): string {
+    if (role === 'worker' || role === 'CodeEditAgent' || role === 'BugFixAgent' || role === 'TestGenerationAgent' || role === 'DocumentationGenerationAgent' || role === 'ReadmeGenerationAgent' || role === 'ContextManagementAgent') {
         return `
 ## EXECUTION RIGOR (Worker)
-- **Assigned Difficulty**: ${complexity} (Should be 10-20)
+- **Complexity Level**: ${complexity}
 - **Self-Correction Logic**:
   1. <thinking>: Evaluate if the task is truly Level ${complexity}.
   2. **Mismatch Handling**:
-     - If Task requires extensive planning/research but assigned Level is 10-20: **REJECT** with "Task too complex, please decompose."
-     - If Task is simple but assigned Level is high: **DOWNGRADE** to Level 10 and execute fast.
+     - If Task requires extensive planning/research but assigned Level is 10-30: **REJECT** with "Task too complex, please decompose." (Use A2A Handover).
+     - If Task is simple but assigned Level is 70+: **DOWNGRADE** to Level 10 and execute.
   3. **Action Guide**:
-     - **Level 0-20 (Routine)**: Trust intuition. Code immediately. Minimal chain-of-thought.
-     - **Level 21-40 (Caution)**: Check imports and existing types first. Verify before writing.
-     - **Level 41+ (Complex)**: STOP. This task is likely too big for a single execution step. Consider rejecting or requesting decomposition.
+     - **Level 0-30 (Routine)**: Trust intuition. Code immediately. Minimal chain-of-thought.
+     - **Level 31-70 (Standard)**: Check imports and existing types first. Verify before writing.
+     - **Level 71+ (Complex)**: STOP. This task is likely too big for a single execution step. Handover or Decompose.
 `;
     }
-
-    // 3. Planner Logic (Brainstorm)
-    if (role === 'planner') {
-        return `
-## ARCHITECTURAL PLANNING (Planner)
-- **Target Complexity**: ${complexity} (Typically 70-100)
-- **Behavior**:
-  - **Planning Mode**: Focus on "Solution Strategy", not just task lists.
-  - **Rejection**: If the task is trivial (Level 0-30), REJECT it and tell Orchestrator to handle it directly.
-  - **Output**: Detailed architectural plans, pros/cons analysis, and dependency graphs.
-`;
-    }
-
-
-
+    // Default or other roles
     return '';
-};
+}

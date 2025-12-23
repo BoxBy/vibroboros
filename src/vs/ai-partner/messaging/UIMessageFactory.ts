@@ -7,6 +7,8 @@ export interface FileCardPayload {
     suggestionType: 'create-file' | 'edit-file';
     timestamp?: string;
     lintSummary?: string;
+    originalCode?: string;
+    modifiedCode?: string;
 }
 
 export class UIMessageFactory {
@@ -14,7 +16,7 @@ export class UIMessageFactory {
     /**
      * Creates a message payload for displaying a File Card (Create/Update).
      */
-    public static createFileCard(senderName: string, filePath: string, isUpdate: boolean, lintSummary?: string): { command: string, payload: FileCardPayload } {
+    public static createFileCard(senderName: string, filePath: string, isUpdate: boolean, lintSummary?: string, originalCode?: string, modifiedCode?: string): { command: string, payload: FileCardPayload } {
         return {
             command: 'createFileCard',
             payload: {
@@ -23,7 +25,9 @@ export class UIMessageFactory {
                 title: path.basename(filePath),
                 suggestionType: isUpdate ? 'edit-file' : 'create-file', // Maps "update" action to "edit-file" type for UI
                 timestamp: new Date().toISOString(),
-                lintSummary
+                lintSummary,
+                originalCode,
+                modifiedCode
             }
         };
     }

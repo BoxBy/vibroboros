@@ -45,7 +45,16 @@ export class TestGenerationAgent extends BaseAgent {
         const baseRoot = workspaceFolders ? workspaceFolders[0].uri.fsPath : '';
         const absolutePath = filePath ? (path.isAbsolute(filePath) ? filePath : path.resolve(baseRoot, filePath)) : '';
 
-        const baseSystem = await SystemPromptFactory.generate('TestGenerationAgent', 'TestGenerationAgent', assignedComplexity, userInput, { targetFile: absolutePath });
+
+        let finalUserInput = userInput;
+        if (dataPart?.data?.payload) {
+             const payload = dataPart.data.payload;
+             if (Object.keys(payload).length > 0) {
+                 finalUserInput = JSON.stringify(payload, null, 2);
+             }
+        }
+
+        const baseSystem = await SystemPromptFactory.generate('TestGenerationAgent', 'TestGenerationAgent', assignedComplexity, finalUserInput, { targetFile: absolutePath });
     
         if (!absolutePath) {
              return `${baseSystem}\n\n**Error**: No source file provided for test generation.`;
@@ -110,7 +119,11 @@ ${code}
     protected async handleExecutionResult(result: string, requestContext: RequestContext, eventBus: ExecutionEventBus, correlationId?: string): Promise<void> {
         let content = '';
         try {
-            const parsed = JSON.parse(result);
+            // Clean markdown
+            const jsonMatch = result.match(/```json\n([\s\S]*?)\n```/) || result.match(/```\n([\s\S]*?)\n```/) || result.match(/\{[\s\S]*\}/);
+            const jsonString = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : result;
+            
+            const parsed = JSON.parse(jsonString);
             content = parsed.content || parsed;
         } catch {
             content = result;

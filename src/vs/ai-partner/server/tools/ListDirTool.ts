@@ -93,7 +93,7 @@ async function listOneRoot(root: string, relDir: string, opts: z.infer<typeof in
 
 export function getListDirToolDefinition() {
   return {
-    name: 'ListDirTool',
+    name: 'list_dir',
     description: {
       title: 'List Directory',
       description: 'Lists files and directories under a given path with optional recursion, filters, sorting, and pagination.',

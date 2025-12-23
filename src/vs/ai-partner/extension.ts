@@ -498,6 +498,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
 
                 devLogService.log(`[Dispatch] Client ready. Sending message...`);
+                let result;
                 try {
                     // Preserve original envelope with parts for SDK server compatibility.
                     // Add userMessage/task as additional fields for broader compatibility but DO NOT drop parts.
@@ -506,7 +507,8 @@ export async function activate(context: vscode.ExtensionContext) {
                     if (!outgoing.kind) { outgoing.kind = 'message'; }
                     if (!outgoing.role) { outgoing.role = 'user'; }
                     try { console.log('[Dispatch] Outgoing message preview:', JSON.stringify(outgoing)); } catch {}
-                    await client.sendMessage({ message: outgoing });
+                    
+                    result = await client.sendMessage({ message: outgoing });
                     try { console.log(`[Dispatch] sendMessage resolved for ${message.recipient}`); } catch {}
                 } catch (e: any) {
                     devLogService.log(`[Dispatch] sendMessage failed (${e?.message}). Recreating client and retrying once...`);
@@ -518,11 +520,13 @@ export async function activate(context: vscode.ExtensionContext) {
                     // Ensure minimum SDK shape
                     if (!outgoing.kind) { outgoing.kind = 'message'; }
                     if (!outgoing.role) { outgoing.role = 'user'; }
-                    await client.sendMessage({ message: outgoing });
+                    
+                    result = await client.sendMessage({ message: outgoing });
                     try { console.log(`[Dispatch] sendMessage resolved on retry for ${message.recipient}`); } catch {}
                 }
                 devLogService.log(`[Dispatch] Message successfully sent to ${message.recipient}.`);
                 try { console.log(`[Dispatch] Message successfully sent to ${message.recipient}.`); } catch {}
+                return result;
             } catch (e: any) {
                 console.error(`[DispatchError] Failed to send message to ${message.recipient}:`, e);
                 devLogService.log(`[DispatchError] Failed to send message to ${message.recipient}: ${e.message}`);
@@ -678,7 +682,14 @@ export async function activate(context: vscode.ExtensionContext) {
                             const wsFolders = vscode.workspace.workspaceFolders;
                             const rootPath = wsFolders && wsFolders.length > 0 ? wsFolders[0].uri.fsPath : '';
                             if (rootPath) {
-                                const absolutePath = path.join(rootPath, relativePath);
+                                // Clean up path (handle leading slashes on Windows drive letters)
+                                let processedPath = relativePath.trim();
+                                if (processedPath.startsWith('/') && /^\/[a-zA-Z]:/.test(processedPath)) {
+                                    processedPath = processedPath.substring(1);
+                                }
+                                
+                                // path.resolve handles absolute paths correctly by ignoring the root if the second arg is absolute
+                                const absolutePath = path.resolve(rootPath, processedPath);
                                 // Ensure directory exists
                                 await fs.mkdir(path.dirname(absolutePath), { recursive: true });
                                 // Check existence, create if missing

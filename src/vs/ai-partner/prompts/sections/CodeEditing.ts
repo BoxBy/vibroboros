@@ -3,14 +3,15 @@ import { ConfigService } from '../../config_service';
 import { PromptBuilder } from '../PromptBuilder';
 
 export async function getCodeEditSystemPrompt(
-    agentName: string,
-    agentList: Array<{ name: string; description: string }>,
+    _agentName: string,
+    _agentList: Array<{ name: string; description: string }>,
     complexity: number = 50,
     userPrefs: { language: string; codingStyle: string; preferredFrameworks: string[] }
 ): Promise<string> {
     const config = ConfigService.getInstance();
     const userLanguage = vscode.env.language;
-    const thinkingLang = config.getFeatureFlag('useVSCodeLangForThinking') ? userLanguage : 'English';
+    // Default to English for thinking to ensure 9-Point Standard compliance
+    const thinkingLang = 'English';
 
     const builder = new PromptBuilder();
 
@@ -97,7 +98,7 @@ function getToolUsage(): string {
 ## PRIMARY TOOLS
 - \`read_file\`: Read content. Usage: \`read_file(absolute_path, startLine?, endLine?)\`.
 - \`replace_file_content\`: Replace a contiguous block.
-  - **Inputs**: \`TargetFile\`, \`StartLine\`, \`EndLine\`, \`TargetContent\` (MUST Match exact), \`ReplacementContent\`.
+  - **Inputs**: \`filePath\`, \`startLine\`, \`endLine\`, \`targetContent\` (MUST Match exact), \`replacementContent\`.
 - \`multi_replace_file_content\`: Multiple non-contiguous edits in one file.
 
 ## UTILITY TOOLS
@@ -128,58 +129,125 @@ function getExamples(): string {
 **Task**: "Add a console log to the login function in \`auth.ts\`."
 **CodeEditAgent**:
 <thinking>
-I need to read \`auth.ts\` first to locate the login function. Then I will add the log.
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Debugging aid. Add generic logging.
+   - [Assessment]: Modification of existing function. Low risk.
+   - [Self-Complexity (0-100)]: 
+     - Base: 10 (Simple Edit)
+     - Modifiers: -5 (Safe Operation)
+     - Total: **Lv 5**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Minimal**. Cutoff: 2023-10-01. Current: 2025-06-15. **Gap Level: Minimal**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Logging credentials is a security risk.
+   - [Correction]: Log \`user.id\`, not the whole object if possible.
+   - [Refinement]: Use \`replace_file_content\` for precision.
+4. **Plan**: [Final Action Sequence: \`read_file\` -> \`replace_file_content\`].
 </thinking>
-[Tool Call: read_file(".../auth.ts")]
+> Tool: read_file(filePath=".../auth.ts")
 ...
 <thinking>
-I found the \`login\` function at line 45. I will use \`replace_file_content\` to insert the log.
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Execute planned edit.
+   - [Assessment]: Function found at line 45.
+   - [Self-Complexity (0-100)]: 
+     - Base: 5 (Execution)
+     - Total: **Lv 5**.
+2. **Verification**: 
+   - [Knowledge Gap]: **None**.
+   - [Complexity Discrepancy]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Ensure I don't break syntax.
+   - [Correction]: Match indentation (2 spaces).
+4. **Plan**: Apply Edit.
 </thinking>
-[Tool Call: replace_file_content(
-  TargetFile=".../auth.ts",
-  StartLine=46,
-  EndLine=46,
-  TargetContent="  const result = await provider.login(creds);",
-  ReplacementContent="  console.log('Logging in user:', creds.user);\\n  const result = await provider.login(creds);"
-)]
+> Tool: replace_file_content(filePath=".../auth.ts", startLine=46, endLine=46, targetContent="  const result = await provider.login(creds);", replacementContent="  console.log('Logging in user:', creds.user.id);\\n  const result = await provider.login(creds);")
 
 ### 2. REFACTOR (Multi-replace)
 **Task**: "Rename 'userId' to 'accountId' in \`UserProfile.tsx\`."
 **CodeEditAgent**:
 <thinking>
-I'll read the file, find all occurrences, and use \`multi_replace_file_content\` for efficiency.
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Refactoring. Variable rename.
+   - [Assessment]: Scope is single file but multiple occurrences.
+   - [Self-Complexity (0-100)]: 
+     - Base: 20 (Refactor)
+     - Modifiers: +10 (Consistency)
+     - Total: **Lv 30**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Standard**. Need to verify usage context. **Gap Level: Minimal**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: Does this affect Props interface?
+3. **Self-Correction**: 
+   - [Criticism]: Replaces might overlap or break destructuring.
+   - [Correction]: Read file to map all locations.
+   - [Refinement]: Use \`multi_replace_file_content\`.
+4. **Plan**: [Final Action Sequence: \`read_file\` -> \`multi_replace_file_content\`].
 </thinking>
-[Tool Call: read_file(".../UserProfile.tsx")]
+> Tool: read_file(filePath=".../UserProfile.tsx")
 ...
 <thinking>
-Found 3 occurrences. Applying multi-replace.
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: Found 3 occurrences.
+   - [Self-Complexity (0-100)]: Lv 30.
+2. **Verification**: 
+   - Interface definition matched.
+   - Destructuring matched.
+3. **Self-Correction**: All matches confirmed safe.
+4. **Plan**: Execute Multi-Replace.
 </thinking>
-[Tool Call: multi_replace_file_content(
-  TargetFile=".../UserProfile.tsx",
-  ReplacementChunks=[
-    { StartLine=10, EndLine=10, TargetContent="interface Props { userId: string; }", ReplacementContent="interface Props { accountId: string; }" },
-    { StartLine=25, EndLine=25, TargetContent="const { userId } = props;", ReplacementContent="const { accountId } = props;" },
-    { StartLine=40, EndLine=40, TargetContent="<div>User: {userId}</div>", ReplacementContent="<div>User: {accountId}</div>" }
-  ]
-)]
+> Tool: multi_replace_file_content(filePath=".../UserProfile.tsx", replacementChunks=[{ "startLine": 10, "endLine": 10, "targetContent": "interface Props { userId: string; }", "replacementContent": "interface Props { accountId: string; }" }, { "startLine": 25, "endLine": 25, "targetContent": "const { userId } = props;", "replacementContent": "const { accountId } = props;" }, { "startLine": 40, "endLine": 40, "targetContent": "<div>User: {userId}</div>", "replacementContent": "<div>User: {accountId}</div>" }])
 
 ### 3. HANDLING MISSING FILE (Error Recovery)
 **Task**: "Update \`utils/config.json\`."
 **CodeEditAgent**:
 <thinking>
-Reading file...
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Config update.
+   - [Assessment]: Simple IO.
+   - [Self-Complexity (0-100)]: 
+     - Base: 10 (Simple Edit)
+     - Total: **Lv 10**.
+2. **Verification**: 
+   - [Knowledge Gap]: **None**.
+3. **Self-Correction**: None.
+4. **Plan**: Read file.
 </thinking>
-[Tool Call: read_file(".../utils/config.json")]
+> Tool: read_file(filePath=".../utils/config.json")
 -> Error: "File not found"
 <thinking>
-The file doesn't exist at that path. I should check the \`utils\` directory to see the correct filename.
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Error Recovery.
+   - [Assessment]: File path incorrect.
+   - [Self-Complexity (0-100)]: 
+     - Base: 10
+     - Modifiers: +10 (Search)
+     - Total: **Lv 20**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Standard**. What is the real name?
+3. **Self-Correction**: 
+   - [Criticism]: Don't give up. Search the directory.
+   - [Correction]: List \`utils/\`.
+4. **Plan**: \`list_dir\`.
 </thinking>
-[Tool Call: list_dir(".../utils")]
+> Tool: list_dir(dirPath=".../utils")
 ...
 <thinking>
-Ah, it is named \`app-config.json\`. Retrying with the correct path.
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: Found \`app-config.json\`.
+   - [Self-Complexity (0-100)]: Lv 20.
+2. **Verification**: This matches the semantic intent.
+3. **Self-Correction**: Update target path.
+4. **Plan**: Read correct file.
 </thinking>
-[Tool Call: read_file(".../utils/app-config.json")]
+> Tool: read_file(filePath=".../utils/app-config.json")
 </examples>`;
 }
 

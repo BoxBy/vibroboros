@@ -79,7 +79,13 @@ export class ContextManagementAgent extends BaseAgent {
 `;
         }
 
-        return await SystemPromptFactory.generate('ContextManagementAgent', 'ContextManagementAgent', assignedComplexity, userInput, {
+
+        let finalUserInput = userInput;
+        if (payload && Object.keys(payload).length > 0) {
+             finalUserInput = JSON.stringify(payload, null, 2);
+        }
+
+        return await SystemPromptFactory.generate('ContextManagementAgent', 'ContextManagementAgent', assignedComplexity, finalUserInput, {
             excludeHistory,
             targetContent,
             dynamicRules,
@@ -111,6 +117,7 @@ export class ContextManagementAgent extends BaseAgent {
                         success: true,
                         status: 'ok',
                         message: "Context management task completed.",
+                        result: result, // Include actual work output
                         correlation: correlationId
                     }
                 }

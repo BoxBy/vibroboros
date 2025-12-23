@@ -16,7 +16,21 @@ export class BrainstormAgent extends BaseAgent {
         const complexityMatch = userInput.match(/Complexity Level (\d+)/);
         const assignedComplexity = complexityMatch ? parseInt(complexityMatch[1], 10) : 80;
 
-        return SystemPromptFactory.generate('BrainstormAgent', 'BrainstormAgent', assignedComplexity, userInput);
+
+        const anyCtx = requestContext as any;
+        const incoming = anyCtx?.message || anyCtx?.request?.message || anyCtx;
+        const parts = Array.isArray(incoming?.parts) ? incoming.parts : [];
+        const dataPart = parts.find((p: any) => p?.kind === 'data');
+        
+        let finalUserInput = userInput;
+        if (dataPart?.data?.payload) {
+             const payload = dataPart.data.payload;
+             if (Object.keys(payload).length > 0) {
+                 finalUserInput = JSON.stringify(payload, null, 2);
+             }
+        }
+
+        return SystemPromptFactory.generate('BrainstormAgent', 'BrainstormAgent', assignedComplexity, finalUserInput);
     }
 
     protected async getTools(userInput: string, requestContext: RequestContext): Promise<any[]> {
@@ -45,20 +59,42 @@ export class BrainstormAgent extends BaseAgent {
     public async cancelTask(): Promise<void> {}
 
     protected async handleExecutionResult(result: string, requestContext: RequestContext, eventBus: ExecutionEventBus, correlationId?: string): Promise<void> {
+        // Check if result is already structured A2A JSON
+        let payloadData: any = {
+            toolName: 'BrainstormAgent',
+            command: 'response-context',
+            payload: { response: result, requiresUserInput: true, correlation: correlationId }
+        };
+
+        try {
+            // Clean markdown
+            const jsonMatch = result.match(/```json\n([\s\S]*?)\n```/) || result.match(/```\n([\s\S]*?)\n```/) || result.match(/\{[\s\S]*\}/);
+            const jsonString = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : result;
+            
+            const parsed = JSON.parse(jsonString);
+            if (parsed && typeof parsed === 'object') {
+                // If it looks like a valid A2A payload or just structured data
+                if (parsed.payload || parsed.toolName) {
+                     payloadData = parsed;
+                } else {
+                     // Just wrapped JSON data
+                     payloadData.payload.response = JSON.stringify(parsed);
+                }
+            }
+        } catch (e) {
+            // Not JSON, use default text wrapper
+        }
+
         const responseMessage: Message = {
             kind: 'message',
             messageId: uuidv4(),
             role: 'agent',
             parts: [
-                { kind: 'text', text: result },
+                { kind: 'text', text: result }, // Keep text for legacy/debugging or UI fallback
                 {
                     kind: 'data',
                     mimeType: 'application/vnd.a2a+json',
-                    data: {
-                        toolName: 'BrainstormAgent',
-                        command: 'response-context',
-                        payload: { response: result, requiresUserInput: true, correlation: correlationId }
-                    }
+                    data: payloadData
                 }
             ],
             contextId: (requestContext as any)?.contextId

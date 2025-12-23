@@ -204,7 +204,15 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                     if (message.filePath) {
                         const workspaceFolders = vscode.workspace.workspaceFolders;
                         if (workspaceFolders && workspaceFolders.length > 0) {
-                            const fileUri = vscode.Uri.joinPath(workspaceFolders[0].uri, message.filePath);
+                            let fileUri: vscode.Uri;
+                            const isAbsolute = message.filePath.match(/^([a-zA-Z]:)|(^\/)/); // Simple check for absolute path (Windows drive or Unix root)
+                            
+                            if (isAbsolute) {
+                                fileUri = vscode.Uri.file(message.filePath);
+                            } else {
+                                fileUri = vscode.Uri.joinPath(workspaceFolders[0].uri, message.filePath);
+                            }
+
                             try {
                                 try {
                                     await vscode.workspace.fs.stat(fileUri);
@@ -229,7 +237,6 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                                             'TestGenerationAgent',
                                             'ReadmeGenerationAgent',
                                             'SecurityAnalysisAgent',
-                                            'CodeAnalysisAgent',
                                             'TaskDecompositionAgent',
                                             'BrainstormAgent',
                                             'BugFixAgent'
@@ -258,8 +265,10 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                         const summarizeTokenLimit = this.configService.getSummarizeTokenLimit();
                         const contextTokenThreshold = this.configService.getContextTokenThreshold();
                         const thinkingLanguage = this.configService.getThinkingLanguage();
+                        const userLanguage = this.configService.getUserLanguage();
                         const maxContextOverride = this.configService.getMaxContextOverride();
                         const useVSCodeThinkingLang = this.configService.getUseVSCodeThinkingLang();
+                        const useVSCodeUserLang = this.configService.getUseVSCodeUserLang();
                         this.postMessage({ 
                             command: 'featureToggles', 
                             payload: { 
@@ -268,8 +277,10 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                                 summarizeTokenLimit,
                                 contextTokenThreshold,
                                 thinkingLanguage,
+                                userLanguage,
                                 maxContextOverride,
-                                useVSCodeThinkingLang
+                                useVSCodeThinkingLang,
+                                useVSCodeUserLang
                             } 
                         });
                     } catch (e: any) {
@@ -280,7 +291,10 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                                 advancedHistorySummaryEnabled: false,
                                 summarizeTokenLimit: 0.75,
                                 contextTokenThreshold: 100000,
-                                thinkingLanguage: 'Korean'
+                                thinkingLanguage: 'English',
+                                userLanguage: 'English',
+                                useVSCodeThinkingLang: false,
+                                useVSCodeUserLang: false
                             } 
                         });
                     }
@@ -336,6 +350,28 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                         }
                     } catch (e) {
                         console.error('setThinkingLanguage failed', e);
+                    }
+                    break;
+                }
+                case 'setUseVSCodeUserLang': {
+                    try {
+                        const { use } = message.payload;
+                        if (typeof use === 'boolean') {
+                            await this.configService.setUseVSCodeUserLang(use);
+                            this.postMessage({ command: 'featureToggles', payload: { useVSCodeUserLang: use } });
+                        }
+                    } catch (e) { console.error('setUseVSCodeUserLang failed', e); }
+                    break;
+                }
+                case 'setUserLanguage': {
+                    try {
+                        const { lang } = message.payload;
+                        if (typeof lang === 'string') {
+                            await this.configService.setUserLanguage(lang);
+                            this.postMessage({ command: 'featureToggles', payload: { userLanguage: lang } });
+                        }
+                    } catch (e) {
+                        console.error('setUserLanguage failed', e);
                     }
                     break;
                 }

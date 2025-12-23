@@ -8,7 +8,7 @@ export interface ChatMessage {
     thought?: string;
     senderName?: string;
     timestamp?: string;
-    kind?: 'progress' | 'normal' | 'uroboros-proposal' | 'task' | 'codeEditFile';
+    kind?: 'progress' | 'normal' | 'uroboros-proposal' | 'task' | 'codeEditFile' | 'tool_trace';
     messageId?: string;
     filePath?: string;
     title?: string;
@@ -104,6 +104,14 @@ export class SessionManager extends EventEmitter {
         
         this.emit('sessionChanged', { activeId: id, state: this.state });
         this.emit('stateChanged', this.state);
+    }
+
+    public async clearActiveSession(): Promise<void> {
+        this.activeSessionId = undefined;
+        this.state = undefined;
+        await this.memento.update(SessionManager.ACTIVE_SESSION_ID_KEY, undefined);
+        // Do not emit sessionCleared here as it might trigger unwanted UI resets if not handled carefully
+        // Just clearing internal state
     }
 
     public async deleteSession(id: string): Promise<void> {

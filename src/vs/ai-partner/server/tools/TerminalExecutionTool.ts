@@ -15,7 +15,7 @@ const outputSchema = z.object({
 
 export function getTerminalExecutionToolDefinition() {
     return {
-        name: 'TerminalExecutionTool',
+        name: 'run_command',
         description: {
             title: "Execute Terminal Command",
             description: "Executes a shell command in the terminal.",

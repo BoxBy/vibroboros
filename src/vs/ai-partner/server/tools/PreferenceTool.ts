@@ -54,7 +54,7 @@ async function savePreferences(data: PreferenceData): Promise<void> {
 
 export function getStorePreferenceToolDefinition() {
     return {
-        name: 'StorePreferenceTool',
+        name: 'store_preference',
         description: {
             title: "Store User Preference",
             description: "Records whether the user accepted or dismissed a specific type of suggestion. This helps the AI learn user preferences over time.",
@@ -88,7 +88,7 @@ export function getStorePreferenceToolDefinition() {
 
 export function getGetPreferenceToolDefinition() {
     return {
-        name: 'GetPreferenceTool',
+        name: 'get_preference',
         description: {
             title: "Get User Preference",
             description: "Retrieves the user's learned preference for a specific type of suggestion based on their past acceptance/dismissal patterns.",

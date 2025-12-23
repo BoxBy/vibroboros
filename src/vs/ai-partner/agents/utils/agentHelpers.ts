@@ -1,4 +1,14 @@
 import { DeveloperLogService } from '../../services/DeveloperLogService';
+import { LLMService, LlmMessage } from '../../services/LLMService';
+import * as vscode from 'vscode';
+
+// Restore MaxTurnError class if it was accidentally removed or needs to be at top level
+export class MaxTurnError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'MaxTurnError';
+    }
+}
 
 /**
  * Executes an LLM generation loop with self-correction.
@@ -36,7 +46,9 @@ export async function runLLMLoop<T>(
                 result = parser(rawText);
             } catch (parseError: any) {
                 currentError = `JSON Parsing Failed: ${parseError.message}. Please ensure you output valid JSON.`;
-                if (logger) { logger.log(`[LLMLoop] Parse error: ${parseError.message}`); }
+                if (logger) {
+                    logger.log(`[LLMLoop] Parse error: ${parseError.message}`);
+                }
                 continue;
             }
 
@@ -47,14 +59,18 @@ export async function runLLMLoop<T>(
             }
 
             currentError = `Validation Failed: ${validation.error}. Please correct this.`;
-            if (logger) { logger.log(`[LLMLoop] Validation error: ${validation.error}`); }
+            if (logger) {
+                logger.log(`[LLMLoop] Validation error: ${validation.error}`);
+            }
 
         } catch (e: any) {
             // If the LLM call itself fails (network, etc), we might want to retry or throw.
             // For now, let's treat it as a fatal error unless we want to implement network retries here too.
             // But usually LLMService handles network retries. 
             // If it's a logic error in llmCall, we should probably throw.
-            if (logger) { logger.log(`[LLMLoop] Fatal error in llmCall: ${e.message}`); }
+            if (logger) {
+                logger.log(`[LLMLoop] Fatal error in llmCall: ${e.message}`);
+            }
             throw e;
         }
     }
@@ -63,58 +79,180 @@ export async function runLLMLoop<T>(
 }
 
 export interface AgenticLoopOptions {
-    llmService: any; // Avoid circular dependency
-    provider: string;
-    messages: any[];
+    llmService: LLMService;
+    messages: LlmMessage[];
     apiKey: string;
-    endpoint: string;
+    endpoint: string | undefined;
     tools: any[];
     model: string;
-    mcpClient: any;
+    agentName: string;
+    logger: DeveloperLogService;
+    mcpClient?: any;
     maxTurns?: number;
-    logger?: DeveloperLogService;
-    toolHandler?: (toolName: string, args: any) => Promise<{ handled: boolean; result?: any; stopLoop?: boolean }>;
-    onStreamingData?: (chunk: string) => void;
-    onProgress?: (message: string) => void;
     requireToolUse?: boolean;
+    provider?: string;
     validator?: (text: string) => { valid: boolean; error?: string };
+    toolHandler?: (name: string, args: any) => Promise<any>;
+    onStreamingData?: (chunk: string) => void;
+    onProgress?: (msg: string, isStreaming?: boolean) => void;
+    token?: vscode.CancellationToken;
+    maxConsecutiveErrors?: number; // New option for consecutive error limit
 }
 
-export class MaxTurnError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = 'MaxTurnError';
-    }
-}
+export async function runAgenticLoop(options: AgenticLoopOptions): Promise<{ result: string, messages: LlmMessage[] }> {
+    const { 
+        llmService, messages, apiKey, endpoint, tools, model, agentName, logger, 
+        maxTurns = 100, requireToolUse = true, provider, validator, toolHandler, 
+        mcpClient, onStreamingData, onProgress, token, maxConsecutiveErrors = 5 // Default to 5
+    } = options;
 
-export interface AgenticLoopResult {
-    result: string;
-    messages: any[];
-}
-
-/**
- * Executes a multi-turn agentic loop with tool execution support.
- */
-export async function runAgenticLoop(options: AgenticLoopOptions): Promise<AgenticLoopResult> {
-    const { llmService, provider, messages, apiKey, endpoint, tools, model, mcpClient, maxTurns = 5, logger, toolHandler, onStreamingData, onProgress } = options;
     let turnCount = 0;
+    let consecutiveErrors = 0; // Track consecutive errors
+    let lastError = '';
 
     while (turnCount < maxTurns) {
+        if (token && token.isCancellationRequested) {
+            logger.log(`[AgenticLoop] Cancellation requested. Stopping loop.`);
+            if (onProgress) onProgress('[System] Execution stopped by user.');
+            return { result: 'Execution stopped by user.', messages };
+        }
+
         turnCount++;
-        if (logger) logger.log(`[AgenticLoop] Turn ${turnCount}/${maxTurns}`);
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+            const errorMsg = `[AgenticLoop] Terminating due to ${maxConsecutiveErrors} consecutive errors. Last error: ${lastError}`;
+            logger.log(errorMsg);
+             messages.push({ role: 'assistant', content: JSON.stringify({
+                targetAgent: 'Orchestrator',
+                type: 'error',
+                thought: 'Too many consecutive errors encountered.',
+                payload: {
+                    error: true,
+                    message: `Terminated after ${maxConsecutiveErrors} consecutive errors. Last error: ${lastError}`,
+                    senderName: agentName
+                }
+            }, null, 2) });
+            return { result: `Execution terminated due to ${maxConsecutiveErrors} consecutive errors.`, messages };
+        }
+
+        if (logger) {
+            logger.log(`[AgenticLoop] Turn ${turnCount}/${maxTurns}`);
+        }
         console.log(`[AgenticLoop] Turn ${turnCount}/${maxTurns} - Requesting LLM...`);
 
+        // Stream Parser Logic
+        let streamBuffer = '';
+        let thoughtBuffer = '';
+        let currentThoughtTag: string | null = null;
+        let inThought = false;
+        
+        const internalStreamingCallback = (chunk: string) => {
+            if (!chunk) {
+                return;
+            }
+            
+            // Pass through to original callback if exists (for raw streaming)
+            if (onStreamingData) {
+                onStreamingData(chunk);
+            }
+            
+            // Thought Stream Parser
+            if (onProgress) {
+                streamBuffer += chunk;
+                
+                // Detection Regex for start tag
+                const startTagRegex = /<(thinking|thought|reasoning|scratchpad|plan|reflection|analysis|decision)(?:\s+[^>]*)?>/i;
+                const endTagRegex = /<\/(thinking|thought|reasoning|scratchpad|plan|reflection|analysis|decision)>/i;
+
+                if (!inThought) {
+                    const match = startTagRegex.exec(streamBuffer);
+                    if (match) {
+                        inThought = true;
+                        currentThoughtTag = match[1];
+                        // Remove everything before and including the start tag from buffer to start fresh for content
+                        const tagEndIndex = match.index + match[0].length;
+                        // But wait, we might have content immediately after tag in the same chunk
+                        thoughtBuffer = streamBuffer.slice(tagEndIndex);
+                        streamBuffer = ''; // Reset main buffer
+                        
+                        // Emit initial thought starter if needed? or just wait for content
+                        // onProgress(`[${currentThoughtTag}] `); // Optional: indicate start
+                    }
+                } else {
+                    // We are in thought
+                    thoughtBuffer += chunk; // Add raw chunk to thought buffer
+                    
+                    // Check for end tag in thoughtBuffer
+                    // Note: End tag might be split across chunks. 
+                    // Simple heuristic: check if thoughtBuffer contains the specific end tag we are looking for.
+                    // If we know the tag name, we look for </tagName>
+                    const specificEndTag = `</${currentThoughtTag}>`;
+                    const endIdx = thoughtBuffer.toLowerCase().indexOf(specificEndTag.toLowerCase());
+                    
+                    if (endIdx !== -1) {
+                         // End detected
+                         // Re-think: simple pass-through if we are sure we are in thought.
+                         // BUT we need to not print the end tag.
+                         
+                         // Let's implement a simpler "flush" approach.
+                         // We just emit chunk if we are in thought and it doesn't look like an end tag.
+                    }
+                }
+                
+                // Refined logic for streaming chunks:
+                if (inThought) {
+                    // Check for closing tag
+                    const endMatch = endTagRegex.exec(thoughtBuffer);
+                    if (endMatch) {
+                        // Closing tag found
+                        const content = thoughtBuffer.slice(0, endMatch.index);
+                        if (content) {
+                            // [Streaming] Send chunk with isStreaming=true
+                            onProgress(content, true);
+                        }
+                        inThought = false;
+                        currentThoughtTag = null;
+                        streamBuffer = thoughtBuffer.slice(endMatch.index + endMatch[0].length);
+                        thoughtBuffer = '';
+                    } else {
+                        // No closing tag yet.
+                        // Safe to emit? 
+                        const SAFE_margin = 15;
+                        if (thoughtBuffer.length > SAFE_margin) {
+                            const toEmit = thoughtBuffer.slice(0, thoughtBuffer.length - SAFE_margin);
+                            // [Streaming] Send chunk with isStreaming=true
+                            onProgress(toEmit, true);
+                            thoughtBuffer = thoughtBuffer.slice(thoughtBuffer.length - SAFE_margin);
+                        }
+                    }
+                }
+            }
+        };
+
+
+        // [UI Fix] Emit "Thinking..." start signal so the UI creates a new log item for thought streaming.
+        // This ensures that even if previous turns had tool logs, the new thought stream has a fresh target.
+        if (onProgress) {
+             // [UI Tweak] Use specific agent name for initial log title
+            onProgress(`[${options.agentName || 'Agent'}] Thinking...`);
+        }
+
         const resp = await llmService.requestLLMCompletion(
-            provider, messages, apiKey, endpoint, tools, model, onStreamingData, 60000
+            (provider || 'openai') as any, messages, apiKey, endpoint || '', tools, model, internalStreamingCallback, 60000
         );
         console.log(`[AgenticLoop] LLM Response Received. Output length: ${(resp.choices?.[0]?.message?.content || '').length}`);
 
         const msg = resp.choices?.[0]?.message;
         const content = (msg?.content ?? (resp as any)?.choices?.[0]?.text ?? '').toString();
+        // [User Request] Log raw content for visibility
+        console.log(`[AgenticLoop] LLM Raw Output:\n${content}`);
 
         let cleanContent = content; // Start with original content
 
         if (content) {
+            // [Streaming] Already handled by onStreamingData if provided. 
+            // Here we just clean up the final content for tool processing.
+            
+            // Strip thoughts from cleanContent (same as original logic)
             const tags = "thinking|thought|reasoning|scratchpad|plan|reflection|analysis|decision";
             const thinkingRegex = new RegExp(
                 `(<(${tags})(?:\\s+[^>]*)?>)([\\s\\S]*?)(<\\/\\2>)|` + 
@@ -122,42 +260,20 @@ export async function runAgenticLoop(options: AgenticLoopOptions): Promise<Agent
                 "gi"
             );
             
-            let match;
-
-            while ((match = thinkingRegex.exec(content)) !== null) {
-                // Group 3 uses parens 1,2,3,4. 3=content
-                // Group 7 uses parens 5,6,7,8. 7=content
-                const thought = (match[3] || match[7] || '').trim();
-                const tagName = (match[2] || match[6] || 'Thought').toLowerCase();
-                
-                if (thought && onProgress) {
-                    // Capitalize first letter for display
-                    const displayTag = tagName.charAt(0).toUpperCase() + tagName.slice(1);
-                    onProgress(`[${displayTag}] ${thought}`);
-                }
-                
-                // Remove the full matched tag from cleanContent
-                // We do this by replacing the specific match with empty string
-                // Note: using replace with string literal only replaces first occurrence, but we iterate.
-                // However, iterating on 'content' (immutable) while replacing on 'cleanContent' is safer.
-                cleanContent = cleanContent.replace(match[0], '');
-            }
-
-            // Also strip raw XML tool call tags that might leak (e.g. <tool_call>, <function>, <parameter>)
-            // These might be leftovers if the LLM outputs them in the text stream.
-            const toolTagRegex = /<\/?(tool_call|tool_code|function|parameter)(?:[\s\S]*?)>/gi;
-            cleanContent = cleanContent.replace(toolTagRegex, '');
+            // Note: We don't need to emit onProgress here if streaming handled it.
+            // But if no streaming was available (e.g. non-stream provider), we might want to emit batch thoughts here.
+            // We can detect if we streamed thoughts by checking a flag or just emitting again (idempotent UI likely handles it, but better avoid dupes).
+            // For now, let's keep batch emission as safety net, UI should handle dupes if needed, or we rely on stream ONLY.
             
-            if (cleanContent.trim() !== content.trim()) {
-                // Determine if we should treat the message as "handled" by thinking?
-                // No, we just strip it from the user-facing content.
+            cleanContent = content.replace(thinkingRegex, ''); // Remove thoughts from final content
+            cleanContent = cleanContent.replace(/<\/?(tool_call|tool_code|function|parameter)(?:[\s\S]*?)>/gi, '');
+
+            // [Fix] Strip markdown code blocks if present (common with some models)
+            const markdownBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+            const match = markdownBlockRegex.exec(cleanContent);
+            if (match) {
+                cleanContent = match[1].trim();
             }
-            
-            // Shadowing content variable for the return statement at line 171
-            // We can't reassign const 'content'. We need to use a new variable or handle return differently.
-            // Let's modify the code to return `cleanContent` instead of `content` at line 172.
-            // To do this properly with block replacement, I need the variable to be accessible.
-            // I will inject `let finalContent = content;` logic.
         }
 
         // If we have tool calls, process them
@@ -170,18 +286,28 @@ export async function runAgenticLoop(options: AgenticLoopOptions): Promise<Agent
                 let args: any = {};
                 try { args = typeof argsStr === 'string' ? JSON.parse(argsStr) : argsStr; } catch {}
 
-                if (logger) logger.log(`[AgenticLoop] Tool Call: ${fnName}`);
+                if (logger) {
+                    logger.log(`[AgenticLoop] Tool Call: ${fnName}`);
+                }
+                
+                // [Cancellation Check]
+                if (token && token.isCancellationRequested) {
+                    if (onProgress) onProgress('Stop requested by user...');
+                    return { result: 'Execution stopped by user.', messages };
+                }
+
                 console.log(`[AgenticLoop] Executing Tool: ${fnName}`);
-                if (onProgress) onProgress(`[Agent] Executing tool: ${fnName}...`);
+                // [User Request] Removed redundant log (MCP already logs it)
+                // if (onProgress) onProgress(`[Agent] Executing tool: ${fnName}...`);
 
                 // 1. Try custom handler (Interceptor)
-                let handlerResult = null;
                 if (toolHandler) {
                     const handled = await toolHandler(fnName, args);
                     if (handled.handled) {
-                        handlerResult = handled;
                         if (handled.stopLoop) {
-                            if (onProgress) onProgress(`[Agent] Tool ${fnName} completed.`);
+                            if (onProgress) {
+                                onProgress(`[Agent] Tool ${fnName} completed.`);
+                            }
                             return { result: JSON.stringify(handled.result), messages };
                         }
                         // If handled but not stopping, append result and continue
@@ -198,16 +324,17 @@ export async function runAgenticLoop(options: AgenticLoopOptions): Promise<Agent
                 // 2. Default MCP Execution
                 try {
                     // UI Optimization: Skip text logs for file creation tools because they generate distinct UI Blocks.
-                    const isFileCreation = ['create_file', 'write_to_file', 'edit_file'].includes(fnName);
+                    const isFileAction = ['create_file', 'write_to_file', 'edit_file', 'delete_file', 'put_file', 'replace_file_content', 'write_file', 'patch_file'].includes(fnName);
                     
-                    if (onProgress && !isFileCreation) {
+                    if (onProgress && !isFileAction) {
                         onProgress(`[MCP] Executing Tool: ${fnName}${argsStr ? ` with args: ${argsStr}` : ''}`);
                     }
                     const result = await mcpClient.callTool({
                         name: fnName,
                         arguments: args
                     });
-                    if (onProgress) onProgress(`[Agent] Tool ${fnName} completed.`);
+                    // [User Request] Removed redundant log
+                    // if (onProgress) onProgress(`[Agent] Tool ${fnName} completed.`);
                     messages.push({
                         role: 'tool',
                         tool_call_id: toolCall.id,
@@ -234,20 +361,30 @@ export async function runAgenticLoop(options: AgenticLoopOptions): Promise<Agent
             const hasUsedTool = messages.some(m => m.role === 'tool');
            
             if (options.requireToolUse && !hasUsedTool) {
-                if (logger) logger.log(`[AgenticLoop] Text-only response received but requireToolUse is active. Rejecting.`);
-                if (onProgress) onProgress(`[System] Tool use required. Retrying...`);
+                if (logger) {
+                    logger.log(`[AgenticLoop] Text-only response received but requireToolUse is active. Rejecting.`);
+                }
+                if (onProgress) {
+                    onProgress(`[System] Tool use required. Retrying...`);
+                }
                 messages.push({ role: 'assistant', content: content }); 
                 messages.push({ role: 'user', content: 'System: You provided a text response but no tool call. You MUST use a tool (specifically create_file or request_clarification) to proceed.' });
                 continue;
             }
 
             // 2. Output Validation (New)
-            if (options.validator && !hasUsedTool) {
+            if (options.validator) {
                 const validation = options.validator(cleanContent);
-                if (!validation.valid) {
-                     if (logger) logger.log(`[AgenticLoop] Output validation failed: ${validation.error}`);
+                if (validation.valid) {
+                     // Empty
+                } else {
+                     if (logger) {
+                         logger.log(`[AgenticLoop] Output validation failed: ${validation.error}`);
+                     }
                      console.log(`[AgenticLoop] Output validation failed: ${validation.error}`);
-                     if (onProgress) onProgress(`[System] Output format incorrect. Retrying...`);
+                     if (onProgress) {
+                         onProgress(`[System] Output format incorrect. Retrying...`);
+                     }
                      
                      messages.push({ role: 'assistant', content: content });
                      messages.push({ role: 'user', content: `System: Your response is invalid. Error: ${validation.error}. Please correct the format.` });

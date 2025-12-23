@@ -1,3 +1,4 @@
+
 import { PromptBuilder } from '../PromptBuilder';
 import { AgentSystemPromptOptions } from '../types';
 import { getRoleAndIdentity } from '../sections/Identity';
@@ -36,9 +37,6 @@ export async function getDocumentationGenerationSystemPrompt(options: AgentSyste
         "**Non-Invasive**: In Code Mode (Lv < 30), NEVER change logic. Only add/update comments."
     ]));
 
-    // 2.1 Best Practices (Merged)
-    builder.addSection(getDocBestPractices());
-
     // 3. Critical Rules
     builder.addSection(getCriticalRules({
         thinkingLang,
@@ -54,245 +52,255 @@ export async function getDocumentationGenerationSystemPrompt(options: AgentSyste
     builder.addSection(getUserPreferences(userPrefs));
     builder.addSection(getUserCustomRules());
 
-    // 5. Complexity Control (Hybrid)
-    builder.addSection(getComplexityControl(complexity, [
-        "**Complexity Control (Hybrid Mode)**:",
-        `*Current Score: ${complexity}*`,
-        "- **Ordered Modes**:",
-        "  1. **Lv 0-30 (Inline Maintenance / Reference)**:",
-        "     - **Focus**: IntelliSense, Code Readability.",
-        "**Standard Adherence**: Use the **Language-Standard** format (JSDoc for TS/JS, Docstrings for Python, GoDoc for Go, Rustdoc for Rust).",
-        "     - **Process**: `read_file` -> `replace_file_content` (Add Docs).",
-        "",
-        "  2. **Lv 31-70 (Single Page Guide)**:",
-        "     - **Focus**: User Task, How-to.",
-        "     - **Target**: `docs/guides/setup.md`, `README.md`.",
-        "     - **Process**: `create_file` (Markdown with Frontmatter).",
-        "",
-        "  3. **Lv 71-100 (Ecosystem / Architecture)**:",
-        "     - **Focus**: System Understanding, Concepts.",
-        "     - **Target**: `docs/concepts/`, `docs/reference/`, Sidebar Structure.",
-        "     - **Process**: Plan Directory -> `create_file` (Concept + Guide pair)."
-    ]));
+    // 5. Complexity Control
+    builder.addSection(getComplexityControl(complexity));
 
     // 6. Tools
     builder.addSection(getToolUsage());
 
-    // 7. Examples (Hybrid)
-    builder.addSection(getExamples());
-
-    // 8. A2A & Collaboration
+    // 7. Instructions & Examples (Static)
     builder.addSection(getA2AInstructions({ 
         role: 'worker', 
         agentName, 
-        agentList: options.agentList 
+        agentList: (options.agentList || []) as string[],
+        agentDescriptions: options.agentDescriptions
     }));
-    
-    // 9. Context & History
-    builder.addSection(getProjectContext(projectContext));
+    builder.addSection(getExamples());
+
+    // 8. Context & History
+    builder.addSection(`ASSIGNED TASK:
+${options.userInput || 'N/A'}`);
+    builder.addSection(getProjectContext(projectContext || ''));
     builder.addSection(getChatHistory());
 
     return builder.build();
 }
 
-function getDocBestPractices(): string {
-    return `### Documentation Best Practices (Hybrid Standard)
-1. **Value Proposition First (BLUF)**: Start with *why* the user needs this page.
-2. **Active Voice**: "Run the command" (O) vs "The command should be run" (X).
-3. **Docs Structure (Diataxis)**:
-    - \`docs/index.md\` (Landing)
-    - \`docs/guides/\` (Procedural)
-    - \`docs/concepts/\` (Conceptual)
-    - \`docs/reference/\` (Technical Specs / Generated)
-4. **Copy-Pasteability**: Usage code blocks must be immediately runnable.`;
+function getExamples(): string {
+    return `### ACTION EXAMPLES (DocGen Flow)
+
+### 1. Concept Documentation (Research Phase)
+**Context**: { "task": "Document the new Authorization architecture", "complexity": 40, "target_file": "docs/auth/concept.md" }
+**Action**:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create Diagram and Conceptual Doc for Auth.
+   - [Assessment]: Map out 'What' and 'Why' of Auth system using Diataxis 'Concept' mode.
+   - [Self-Complexity (0-100)]: 
+     - Base: 40 (Conceptual)
+     - Total: **Lv 40**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Check Required**. Cutoff: 2023-10-01. Current: 2025-06-12. Need to verify implementation details directly from source. **Gap Level: Standard**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Cannot write concept without reading code.
+   - [Correction]: \`src/auth/index.ts\` loaded in context.
+   - [Refinement]: Focus on high-level data flow.
+4. **Plan**: [Final Action Sequence: \`write_to_file\`].
+</thinking>
+> Tool: write_to_file(filePath="docs/auth/concept.md", content="# Auth Architecture...")
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Created concept documentation.",
+  "payload": {
+    "status": "success",
+    "message": "Documented Auth Architecture in docs/auth/concept.md."
+  }
 }
 
-function getExamples(): string {
-    return `<!-- documentation examples -->
-<examples>
-
-### 1. INLINE DOCUMENTATION (Level 0-30)
-**Task**: "Document the validateUser function in \`auth.ts\`."
-**DocumentationGenerationAgent**:
+### 2. Guide Documentation (Execution Phase)
+**Context**: { "task": "How to setup dev env?", "complexity": 20, "target_file": "docs/guides/setup.md" }
+**Action**:
 <thinking>
-Target is TypeScript. I will use JSDoc format.
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create "Getting Started" guide.
+   - [Assessment]: Write step-by-step 'Guide' based on \`package.json\` scripts.
+   - [Self-Complexity (0-100)]: 
+     - Base: 20 (Instructional)
+     - Total: **Lv 20**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-06-12. \`package.json\` context loaded. Scripts are clear. **Gap Level: Minimal**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Ensure commands are copy-pasteable.
+   - [Correction]: Use strictly fenced code blocks.
+   - [Refinement]: Verify if Node version is specified.
+4. **Plan**: [Final Action Sequence: \`write_to_file\`].
 </thinking>
-\`\`\`typescript
-/**
- * Validates a user's credentials against the persistence layer.
- * 
- * @param id - The unique identifier of the user.
- * @returns \`true\` if valid, \`false\` if invalid or db error.
- * @throws {DatabaseError} If connection fails.
- */
-function validateUser(id: string) { ... }
-\`\`\`
+> Tool: write_to_file(filePath="docs/guides/setup.md", content="# Setup Guide...")
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Verified setup commands from package.json.",
+  "payload": {
+    "status": "success",
+    "message": "Created setup guide with verified Npm scripts."
+  }
+}
 
-### 2. GUIDE (Level 31-70) - "User Goal"
-**Task**: "Write a guide on how to deploy to AWS."
-**DocumentationGenerationAgent**:
+### 3. API Reference (Execution Phase)
+**Context**: { "task": "Document POST /users API", "complexity": 30, "target_file": "docs/api/users.md" }
+**Action**:
 <thinking>
-Medium complexity. This is a "Task/Guide". User goal: "Deploy Service".
-Target: \`docs/guides/deploy-to-aws.md\`
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create API Spec from Controller code.
+   - [Assessment]: Extract params, return types, and error codes for 'Reference' doc.
+   - [Self-Complexity (0-100)]: 
+     - Base: 30 (Technical)
+     - Total: **Lv 30**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-06-12. \`UserController.ts\` loaded in context. Schema is visible. **Gap Level: Minimal**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Don't guess types. Use TypeScript definitions.
+   - [Correction]: Reference \`UserDTO\` interface explicitly.
+   - [Refinement]: Add example payload to doc.
+4. **Plan**: [Final Action Sequence: \`write_to_file\`].
 </thinking>
-\`\`\`markdown
----
-title: Deploying to AWS ECS
-layout: default
-nav_order: 3
-parent: Deployment Guides
----
+> Tool: write_to_file(filePath="docs/api/users.md", content="# POST /users...")
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Extracted API schema from Controller.",
+  "payload": {
+    "status": "success",
+    "message": "Generated API spec for /users."
+  }
+}
 
-# Deploying the Service to AWS ECS
+### 4. Code Comments (Execution Phase)
+**Context**: { "task": "Add JSDoc to User class", "complexity": 10, "target_file": "src/models/User.ts" }
+**Action**:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Add inline JSDoc comments.
+   - [Assessment]: Enhance code readability without changing logic.
+   - [Self-Complexity (0-100)]: 
+     - Base: 10 (Trivial)
+     - Total: **Lv 10**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-06-12. File content loaded in context. **Gap Level: Minimal**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Do not overwrite existing logic.
+   - [Correction]: Use \`replace_file_content\` strictly on signature lines.
+   - [Refinement]: Ensure JSDoc format is correct.
+4. **Plan**: [Final Action Sequence: \`replace_file_content\`].
+</thinking>
+> Tool: replace_file_content(filePath="src/models/User.ts", startLine=1, endLine=1, targetContent="class User {", replacementContent="/** Represents a User entity */\\nclass User {")
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Added JSDoc annotations.",
+  "payload": {
+    "status": "success",
+    "message": "Documented User class methods."
+  }
+}
 
-This guide explains how to deploy the Viper API service to an AWS ECS Cluster using the CLI.
+### 5. Migration Guide (Research Phase)
+**Context**: { "task": "Guide for v1 to v2", "complexity": 40, "target_file": "docs/migration.md" }
+**Action**:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Analyze breaking changes for Migration Guide.
+   - [Assessment]: Compare v1 and v2 codebases to identify user-facing changes.
+   - [Self-Complexity (0-100)]: 
+     - Base: 40 (Analytical)
+     - Modifiers: +10 (Diff check)
+     - Total: **Lv 50**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Check Required**. Cutoff: 2023-10-01. Current: 2025-06-12. Need to list all breaking changes first. **Gap Level: Standard**.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Cannot write guide without diff data.
+   - [Correction]: \`CHANGELOG.md\` content loaded.
+   - [Refinement]: Use Changelog for higher accuracy.
+4. **Plan**: [Final Action Sequence: \`write_to_file\`].
+</thinking>
+> Tool: write_to_file(filePath="docs/migration.md", content="# Migration Guide...")
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Created migration guide.",
+  "payload": {
+    "status": "success",
+    "message": "Generated docs/migration.md based on Changelog."
+  }
+}
 
-## Prerequisites
-* **AWS CLI** v2.0+ installed and configured.
-* **Docker** running locally.
-* Access permissions to the \`production\` ECR repository.
+### 6. Multilingual: Korean Thinking (Guide)
+**Context**: { "task": "배포 가이드 작성해줘", "complexity": 30, "target_file": "docs/deployment.md" }
+**Action**:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **Korean**, User: **Korean**)
+1. **Analysis**: 
+   - [Intent]: 배포 절차 문서화 (Deployment Guide).
+   - [Assessment]: \`github/workflows\` 분석 후 'Guide' 문서 작성.
+   - [Self-Complexity (0-100)]: 
+     - Base: 30 (Analysis)
+     - Total: **Lv 30**.
+2. **Verification**: 
+   - [Knowledge Gap]: **상세 체크**. Cutoff: 2023-10-01. Current: 2025-06-12. 워크플로우 파일 확인 전에는 정확한 단계 서술 불가. **Gap Level: Standard**.
+   - [Complexity Discrepancy]: 없음 (None).
+   - [Questioning]: 없음.
+3. **Self-Correction**: 
+   - [Criticism]: 추측으로 작성하면 배포 실패 위험.
+   - [Correction]: 설정 파일(\`deploy.yml\`) 내용 로드 완료.
+   - [Refinement]: 파일 내용 바탕으로 한글 가이드 작성.
+4. **Plan**: [Final Action Sequence: \`write_to_file\`].
+</thinking>
+> Tool: write_to_file(filePath="docs/deployment.md", content="# 배포 가이드...")
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Github Actions 워크플로우 분석 완료.",
+  "payload": {
+    "status": "success",
+    "message": "배포 가이드(deployment.md)를 작성했습니다."
+  }
+}
 
-## Steps
-
-1. **Authenticate with ECR**
-   Retrieve an authentication token and authenticate your Docker client to your registry.
-   \`\`\`bash
-   aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
-   \`\`\`
-
-2. Build and Tag the Image
-    
-    Build the Docker image with the latest tag.
-    
-    \`\`\`bash
-    docker build -t viper-api .
-    docker tag viper-api:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/viper-api:latest
-    \`\`\`
-    
-3. **Push to Registry**
-    
-    \`\`\`bash
-    docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/viper-api:latest
-    \`\`\`
-    
-4. Force New Deployment
-    
-    Update the ECS service to pull the new image.
-    
-    \`\`\`bash
-    aws ecs update-service --cluster viper-cluster --service viper-api-svc --force-new-deployment
-    \`\`\`
-    
-
-## Verification
-
-Run the following command to check the deployment status:
-
-\`\`\`bash
-aws ecs wait services-stable --cluster viper-cluster --services viper-api-svc
-\`\`\`
-
-> [!WARNING]
-> 
-> This process causes a rolling update. Ensure database migrations are compatible with the previous version before deploying.
-\`\`\`
-
-### 3. CONCEPT & REFERENCE (Level 71-100) - "Ecosystem"
-
-#### Example A: Concept (Mental Model)
-**Task**: "Explain the Authentication Flow."
-**Target**: \`docs/concepts/authentication-flow.md\`
-\`\`\`markdown
----
-title: Authentication Architecture
-layout: default
-nav_order: 1
-parent: Concepts
----
-
-# Authentication & Authorization Flow
-
-Viper uses a dual-token system (Access Token + Refresh Token) based on the **OAuth 2.0** standard.
-
-## High-Level Architecture
-
-The authentication flow consists of three main components:
-1. **Client**: The frontend application (React/Mobile).
-2. **Auth Service**: Issues and verifies JWTs.
-3. **Resource Server**: Protected API endpoints.
-
-\`\`\`mermaid
-sequenceDiagram
-    Client->>Auth Service: Login (Credentials)
-    Auth Service->>Client: Access Token (15m) + Refresh Token (7d)
-    Client->>Resource Server: API Request (Bearer Token)
-    Resource Server-->>Client: Data
-\`\`\`
-
-## Token Lifecycle
-
-### Access Token
-- **Format**: JWT (JSON Web Token)
-- **TTL**: 15 minutes
-- **Purpose**: Grants access to protected resources.
-
-### Refresh Token
-- **Format**: Opaque String (UUID)
-- **TTL**: 7 days
-- **Storage**: \`httpOnly\` Cookie
-- **Purpose**: Used to obtain a new Access Token without re-login.
-
-> [!NOTE]
-> We chose httpOnly Cookies for Refresh Tokens to prevent XSS (Cross-Site Scripting) attacks.
-\`\`\`
-
-#### Example B: Reference (Technical Specs)
-**Task**: "Document the CLI Commands."
-**Target**: \`docs/reference/cli-commands.md\`
-\`\`\`markdown
----
-title: CLI Command Reference
-layout: default
-nav_order: 5
-parent: Reference
----
-
-# CLI Command Reference
-
-Documentation for the \`viper-cli\` command-line interface.
-
-## Global Flags
-
-| Flag | Shorthand | Description | Default |
-| :--- | :---: | :--- | :--- |
-| \`--verbose\` | \`-v\` | Enable debug logging output | \`false\` |
-| \`--config\` | \`-c\` | Path to the configuration file | \`./viper.json\` |
-| \`--help\` | \`-h\` | Show help information | - |
-
-## Commands
-
-### \`start\`
-Starts the Viper development server.
-
-**Syntax**
-\`\`\`bash
-viper-cli start [options]
-\`\`\`
-
-Options
-
-| Option | Description |
-| :--- | :--- |
-| --port <number> | Specify the port number (Default: 3000) |
-| --watch | Enable hot-reloading on file changes |
-
-**Example**
-
-\`\`\`bash
-# Start server on port 8080 with hot-reload
-viper-cli start --port 8080 --watch
-\`\`\`
-\`\`\`
-
-</examples>`;
+### 7. Multilingual: Japanese Thinking (Concept)
+**Context**: { "task": "このプロジェクトの設計思想をまとめて (Summarize design philosophy)", "complexity": 50, "target_file": "docs/architecture.md" }
+**Action**:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **Japanese**, User: **Japanese**)
+1. **Analysis**: 
+   - [Intent]: アーキテクチャと設計哲学の文書化 (Concept).
+   - [Assessment]: プロジェクト構造から設計原則を抽出.
+   - [Self-Complexity (0-100)]: 
+     - Base: 50 (Abstract)
+     - Total: **Lv 50**.
+2. **Verification**: 
+   - [Knowledge Gap]: **要確認**. Cutoff: 2023-10-01. Current: 2025-06-12. \`README.md\` やディレクトリ構造の確認が必要. **Gap Level: Standard**.
+   - [Complexity Discrepancy]: なし.
+   - [Questioning]: なし.
+3. **Self-Correction**: 
+   - [Criticism]: 抽象的な概念はコードだけでは見えない.
+   - [Correction]: \`README.md\` の内容を確認済み.
+   - [Refinement]: 設計思想を明確な日本語で記述する.
+4. **Plan**: [Final Action Sequence: \`write_to_file\`].
+</thinking>
+> Tool: write_to_file(filePath="docs/architecture.md", content="# アーキテクチャ...")
+{
+  "targetAgent": "Orchestrator",
+  "type": "report",
+  "thought": "Documented design philosophy.",
+  "payload": {
+    "status": "success",
+    "message": "Created docs/architecture.md."
+  }
+}`;
 }

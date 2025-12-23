@@ -1,8 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { DisplayMessage } from './MainView';
 import { MessageItem } from './MessageItem';
 
-// ADDED: MainView로부터 받을 props 타입을 확장합니다.
 interface MessageListProps {
     messages: DisplayMessage[];
     isThinking?: boolean;
@@ -10,12 +9,76 @@ interface MessageListProps {
     onRollback?: (messageId: string | undefined, timestamp: string) => void;
 }
 
-// MODIFIED: 새로운 props를 받도록 수정합니다.
 export const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, onAction, onRollback }) => {
+    // Group consecutive progress logs and specialist agent bubbles
+    const groupedMessages = useMemo(() => {
+        const result: any[] = [];
+        let currentProgressGroup: any = null;
+        let currentAgentGroup: any = null;
+
+        messages.forEach((msg, idx) => {
+            const isSpecialistAgent = msg.sender === 'ai' && 
+                                     msg.senderName && 
+                                     msg.senderName.trim() !== 'OrchestratorAgent' && 
+                                     msg.kind !== 'progress' && 
+                                     msg.kind !== 'task' && 
+                                     msg.kind !== 'codeEditFile';
+            
+            // Check if there's any user message after this point in the list
+            const hasSubsequentUserMessage = messages.slice(idx + 1).some(m => m.sender === 'user');
+
+            if (msg.kind === 'progress') {
+                currentAgentGroup = null;
+                if (!currentProgressGroup) {
+                    currentProgressGroup = {
+                        kind: 'progressGroup',
+                        messages: [msg],
+                        hasSubsequentUserMessage,
+                        timestamp: msg.timestamp,
+                        sender: msg.sender
+                    };
+                    result.push(currentProgressGroup);
+                } else {
+                    currentProgressGroup.messages.push(msg);
+                    // Update to the latest 'subsequent' status
+                    currentProgressGroup.hasSubsequentUserMessage = hasSubsequentUserMessage;
+                }
+            } else if (isSpecialistAgent) {
+                currentProgressGroup = null;
+                if (!currentAgentGroup) {
+                    currentAgentGroup = {
+                        kind: 'agentGroup',
+                        messages: [msg],
+                        hasSubsequentUserMessage,
+                        timestamp: msg.timestamp,
+                        sender: msg.sender
+                    };
+                    result.push(currentAgentGroup);
+                } else {
+                    currentAgentGroup.messages.push(msg);
+                    currentAgentGroup.hasSubsequentUserMessage = hasSubsequentUserMessage;
+                }
+            } else {
+                currentProgressGroup = null;
+                currentAgentGroup = null;
+                result.push({ ...msg, hasSubsequentUserMessage });
+            }
+        });
+        return result;
+    }, [messages]);
+
     return (
         <div className="message-list">
-            {messages.map((msg, index) => (
-                <MessageItem key={index} message={msg} onAction={onAction} onRollback={onRollback} />
+            {groupedMessages.map((msg, index) => (
+                <MessageItem 
+                    key={index} 
+                    message={msg} 
+                    onAction={onAction} 
+                    onRollback={onRollback} 
+                    isLast={index === groupedMessages.length - 1}
+                    isThinking={isThinking}
+                    hasSubsequentUserMessage={msg.hasSubsequentUserMessage}
+                />
             ))}
             {isThinking && (
                 <div className="typing-indicator progress-log-item" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--vscode-descriptionForeground)', padding: '0 0 0 8px', margin: '0 0 4px 0', fontStyle: 'italic' }}>

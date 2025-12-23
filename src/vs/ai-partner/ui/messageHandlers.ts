@@ -426,14 +426,25 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 						: [...prev, payload];
 					return next;
 				});
-				// Diff list를 자동으로 펼치지 않음 (사용자 피드백 반영)
-				context.setShowDiffSummary(false);
+				// Diff list를 자동으로 펼침
+				context.setShowDiffSummary(true);
 			}
 		},
 		createFileCard: (payload) => {
 			// Create New File 카드 표시
 			// DO NOT call setStatusText or setIsThinking here - it may interfere with ongoing operations
 			if (payload) {
+                // If payload has diff content, add to pending diffs list
+                if (payload.originalCode !== undefined && payload.modifiedCode !== undefined) {
+                    context.setPendingDiffs(prev => {
+                        const exists = prev.some(d => d.filePath === payload.filePath);
+                        const next = exists
+                            ? prev.map(d => (d.filePath === payload.filePath ? { ...d, ...payload } : d))
+                            : [...prev, payload];
+                        return next;
+                    });
+                }
+                
 				context.setMessages(prev => {
 					// Removed aggressive deduplication: We want to show sequence of edits/creations
 					// unique messageId handles react key uniqueness
@@ -454,7 +465,7 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 							title: payload.title,
 							suggestionType: payload.suggestionType,
 							lintSummary: payload.lintSummary,
-							diff: undefined
+							diff: (payload.originalCode !== undefined && payload.modifiedCode !== undefined) ? payload : undefined
 						} as any
 					];
 				});
@@ -488,8 +499,8 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 						: [...prev, payload];
 					return next;
 				});
-				// 기본은 닫힘 상태 유지
-				context.setShowDiffSummary(false);
+				// Diff list를 자동으로 펼침
+				context.setShowDiffSummary(true);
 				// 채팅 메시지 스트림에는 CodeEditAgent 파일 수정 제안을 VS Code 스타일 카드로 렌더링하기 위한 메타데이터만 추가한다.
 				context.setMessages(prev => {
 					// Removed aggressive deduplication
@@ -506,7 +517,7 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 							filePath: payload.filePath,
 							title: payload.title,
 							suggestionType: payload.suggestionType,
-							diff: undefined
+							diff: payload // Pass full payload as diff object so MessageItem can calc stats
 						} as any
 					];
 				});
