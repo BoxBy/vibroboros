@@ -67,7 +67,7 @@ ${options.userInput || 'N/A'}`);
 }
 
 function getExamples(): string {
-    return `### ACTION EXAMPLES (CodeEdit Flow)
+    return `<examples>
 
 
 ### 1. Version-Dependent Implementation (Standard)
@@ -299,26 +299,51 @@ Thinking Process (Agent: **English**, Thinking: **Japanese**, User: **Japanese**
   }
 }
 
-### 8. Multi-turn ReAct (Thinking after Observation)
+
+### 8. Multi-turn ReAct (Full Recursive Thinking)
 *Turn 1*:
 User: "Fix the bug in auth.ts"
-Assistant: <thinking>... (Plan to read file) ...</thinking>
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Fix bug in auth.ts.
+   - [Assessment]: Need to read the file to identify the bug.
+   - [Self-Complexity (0-100)]: 
+     - Base: 30
+     - Total: **Lv 30**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Standard**. Don't know the bug details.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Cannot fix without reading.
+   - [Correction]: Read file first.
+   - [Refinement]: Use read_file tool.
+4. **Plan**: [Final Action Sequence: read_file].
+</thinking>
 > Tool: read_file(filePath="src/auth.ts")
 
 *Turn 2*:
 System: [Tool Result for read_file] "... content of auth.ts ..."
 Assistant:
 <thinking>
-Thinking Process (Agent: **English**, Thinking: **English**)
-1. **Observation**: 
-   - [Result Analysis]: The file shows a missing null check in line 45.
-   - [Unexpected]: The variable name is 'user' not 'currentUser'.
-2. **Verification (Lightweight)**:
-   - [Knowledge Gap]: **Minimal**. I see the variable name.
-   - [Complexity]: **No Change**.
-3. **Refinement**: 
-   - [Adjustment]: My original plan to grep 'currentUser' is invalid. I must patch 'user'.
-4. **Plan**: [Next Action: replace_file_content].
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Fix bug in auth.ts (Persisted).
+   - [Assessment]: File read complete. Found logic error (missing null check).
+   - [Self-Complexity (0-100)]: 
+     - Base: 30
+     - Total: **Lv 30**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Minimal**. I see the variable name 'user' and the logic. Gap closed.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Original plan assumed 'currentUser'. The code uses 'user'.
+   - [Correction]: Adjust patch target to 'user'.
+   - [Refinement]: Apply atomic edit using replace_file_content.
+4. **Plan**: [Final Action Sequence: replace_file_content].
 </thinking>
 > Tool: replace_file_content(filePath="src/auth.ts", ...)
 `;

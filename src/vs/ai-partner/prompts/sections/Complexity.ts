@@ -16,7 +16,7 @@ export const STANDARD_COMPLEXITY_LEVELS = [
 ];
 
 export function getComplexityMatrix(): string {
-    return `### V3 COMPLEXITY SCORING MATRIX (Professional Engineering Standard)
+    return `### COMPLEXITY SCORING MATRIX (Professional Engineering Standard)
 1. **Base Score (Project Nature)**:
    - Atomic Script: 10 / Application: 30 / System (Viper): 50 / Framework: 80 / Low-level: 110.
 2. **Additives (Cognitive Load)**:
@@ -35,8 +35,7 @@ export function getComplexityMatrix(): string {
 }
 
 export function getComplexityControl(complexity: number, matrix: string = getComplexityMatrix()): string {
-    return `<!-- COMPLEXITY CONTROL -->
-## COMPLEXITY CONTROL
+    return `## COMPLEXITY CONTROL
 - **Target Level**: ${complexity} (0-100)
 - **Execution Strategy by Level**:
 ${STANDARD_COMPLEXITY_LEVELS.map((lvl) => `  ${lvl}`).join('\n')}

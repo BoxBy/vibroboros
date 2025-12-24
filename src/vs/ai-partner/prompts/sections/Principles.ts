@@ -12,8 +12,7 @@ export function getCorePrinciples(customPrinciples: string[] = []): string {
     
     const allPrinciples = [...defaultPrinciples, ...customPrinciples];
 
-    return `<!-- CORE PRINCIPLES -->
-**CORE PRINCIPLES:**
+    return `## CORE PRINCIPLES
 ${allPrinciples.map((p, i) => `${i + 1}. ${p}`).join('\n')}
 
 ### MANDATORY ENGINEERING THINKING PROCESS

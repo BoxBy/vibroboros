@@ -18,7 +18,6 @@ export function getCriticalRules(options: CriticalRulesOptions): string {
 
     const allRules = [...baseRules, ...customRules];
 
-    return `<!-- CRITICAL RULES -->
-**CRITICAL RULES:**
+    return `## CRITICAL RULES
 ${allRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
 }

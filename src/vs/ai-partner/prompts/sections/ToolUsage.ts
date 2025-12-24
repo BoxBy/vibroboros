@@ -1,6 +1,5 @@
 export function getToolUsage(): string {
-    return `<!-- TOOL & ACTION GUIDELINES -->
-<tool_usage>
+    return `<tool_usage>
 ## TOOLS
 - \`read_file\`: Read file content. Usage: \`read_file(filePath, startLine?, endLine?)\`.
 - \`write_to_file\`: Create or overwrite file. Usage: \`write_to_file(filePath, content)\`.

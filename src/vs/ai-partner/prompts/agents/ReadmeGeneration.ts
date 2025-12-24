@@ -74,7 +74,7 @@ ${userInput || 'N/A'}`);
 };
 
 function getExamples(): string {
-    return `### ACTION EXAMPLES (Readme Flow)
+    return `<examples>
     
 ### 1. New Project README (Standard)
 **Context**: { "task": "Create README for this repo", "complexity": 50, "target_file": "README.md" }
@@ -300,5 +300,51 @@ Thinking Process (Agent: **English**, Thinking: **Japanese**, User: **Japanese**
     "status": "success",
     "message": "インストールコマンドを \`pnpm install\` に更新しました."
   }
-}`;
+}
+
+### 8. Multi-turn ReAct (Full Recursive Thinking)
+*Turn 1*:
+User: "Add installation steps for Windows"
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Add Windows-specific install instructions.
+   - [Assessment]: Need to check if project uses \`win-node-env\` or specific powershell scripts.
+   - [Self-Complexity (0-100)]: 
+     - Base: 20
+     - Total: **Lv 20**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Standard**. Don't know Windows constraints.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Standard \`npm install\` usually works, but \`node-gyp\` might need setup.
+   - [Correction]: Check \`package.json\` for native dependencies.
+4. **Plan**: [Final Action Sequence: \`read_file\`].
+</thinking>
+> Tool: read_file(filePath="package.json")
+
+*Turn 2*:
+System: [Tool Result] "... dependencies: { 'canvas': '^2.0.0' } ..."
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Add Windows install steps (Persisted).
+   - [Assessment]: Found \`canvas\` dependency. This requires native build tools on Windows.
+   - [Self-Complexity (0-100)]: 
+     - Base: 20
+     - Total: **Lv 20**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Minimal**. Dependency confirmed.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Cannot just say "npm install".
+   - [Correction]: Add note about Chocolatey and build tools.
+   - [Refinement]: Update README with "Windows Requirements" section.
+4. **Plan**: [Final Action Sequence: write_to_file].
+</thinking>
+> Tool: write_to_file(...)`;
 }

@@ -77,7 +77,7 @@ ${options.userInput || 'N/A'}`);
 }
 
 function getExamples(): string {
-    return `### ACTION EXAMPLES (DocGen Flow)
+    return `<examples>
 
 ### 1. Concept Documentation (Research Phase)
 **Context**: { "task": "Document the new Authorization architecture", "complexity": 40, "target_file": "docs/auth/concept.md" }
@@ -302,5 +302,51 @@ Thinking Process (Agent: **English**, Thinking: **Japanese**, User: **Japanese**
     "status": "success",
     "message": "Created docs/architecture.md."
   }
-}`;
+}
+
+### 8. Multi-turn ReAct (Full Recursive Thinking)
+*Turn 1*:
+User: "Document the new login flow"
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create documentation for Login Flow.
+   - [Assessment]: Identify relevant files (\`Login.tsx\`, \`auth.ts\`).
+   - [Self-Complexity (0-100)]: 
+     - Base: 40
+     - Total: **Lv 40**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Standard**. Don't see correct implementation details.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Don't guess the flow.
+   - [Correction]: Read source code first.
+4. **Plan**: [Final Action Sequence: read_file].
+</thinking>
+> Tool: read_file(filePath="src/auth.ts")
+
+*Turn 2*:
+System: [Tool Result] "... export const login = async (creds) => { ... }"
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Document Login Flow (Persisted).
+   - [Assessment]: Code shows JWT based auth with refresh token.
+   - [Self-Complexity (0-100)]: 
+     - Base: 40
+     - Total: **Lv 40**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Minimal**. Flow confirmed.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Pure text description is hard to follow.
+   - [Correction]: Use Mermaid diagram for sequence.
+   - [Refinement]: Create \`docs/auth/login-flow.md\` with diagram.
+4. **Plan**: [Final Action Sequence: write_to_file].
+</thinking>
+> Tool: write_to_file(...)`;
 }

@@ -78,7 +78,7 @@ function getRoutingWorkflow(): string {
 }
 
 function getExamples(): string {
-    return `### ACTION EXAMPLES (Routing Flow)
+    return `<examples>
 
 ### 1. Simple Code Edit (Standard)
 **Context**: { "task": "Change the title color of UserCard to red", "complexity": 5, "target_file": "UserCard.tsx" }
@@ -423,25 +423,51 @@ Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
   }
 }
 
-### 12. Multi-turn Routing (Clarification Flow)
+
+### 12. Multi-turn Routing (Full Recursive Thinking)
 *Turn 1*:
 User: "Install the payment SDK"
-Assistant: <thinking>... (Need clarification on provider) ...</thinking>
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Install payment SDK.
+   - [Assessment]: Need to know which provider (Stripe/PayPal) to install correct package.
+   - [Self-Complexity (0-100)]: 
+     - Base: 30
+     - Total: **Lv 30**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Critical**. Missing Provider Name.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: Which provider?
+3. **Self-Correction**: 
+   - [Criticism]: Cannot route without target package.
+   - [Correction]: Ask user.
+   - [Refinement]: Use targetAgent: None.
+4. **Plan**: [Final Action Sequence: Ask User].
+</thinking>
 { "targetAgent": "None", "payload": { "message": "Which payment provider? (Stripe/PayPal)" } }
 
 *Turn 2*:
 User: "Stripe"
 Assistant:
 <thinking>
-Thinking Process (Agent: **English**, Thinking: **English**)
-1. **Observation**:
-   - [Result]: User clarified the payment provider: 'Stripe'.
-2. **Verification (Lightweight)**:
-   - [Knowledge Gap]: **Minimal**. Now I have the spec ('stripe-node').
-   - [Complexity]: **No Change**. Still a standard coding task.
-3. **Refinement**:
-   - [Adjustment]: Now I can route to CodeEditAgent with specific context.
-4. **Plan**: [Next Action: Route to CodeEditAgent].
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Install payment SDK (Persisted).
+   - [Assessment]: User clarified provider is 'Stripe'. Target is 'stripe-node'.
+   - [Self-Complexity (0-100)]: 
+     - Base: 30
+     - Total: **Lv 30**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Minimal**. Spec confirmed.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: None.
+   - [Correction]: Route to CodeEditAgent.
+   - [Refinement]: Include 'stripe-node' in context.
+4. **Plan**: [Final Action Sequence: Route to CodeEditAgent].
 </thinking>
 {
   "targetAgent": "CodeEditAgent",
@@ -456,5 +482,5 @@ Thinking Process (Agent: **English**, Thinking: **English**)
     "related_files": []
   }
 }
-`;
+</examples>`;
 }

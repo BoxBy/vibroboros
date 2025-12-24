@@ -73,9 +73,9 @@ ${userInput || 'N/A'}`);
 }
 
 function getExamples(): string {
-    return `### ACTION EXAMPLES (Context Flow)
-
-
+    return `<examples>
+ 
+ 
 ### 1. Prune Logs (Standard)
 **Context**: { "task": "Clean up old logs", "complexity": 20, "target_file": ".agent/logs" }
 **Action**:
@@ -301,5 +301,51 @@ Thinking Process (Agent: **English**, Thinking: **Japanese**, User: **Japanese**
     "message": "## 進捗要約\n\n- DBスキーマの確定\n- APIエンドポイントの実装完了"
   }
 }
+
+### 8. Multi-turn ReAct (Full Recursive Thinking)
+*Turn 1*:
+User: "Summarize the last 3 days"
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Summarize recent history (3 days).
+   - [Assessment]: Need to read history file.
+   - [Self-Complexity (0-100)]: 
+     - Base: 30
+     - Total: **Lv 30**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Data Dependency**. Don't have history content in memory.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Cannot summarize what I can't see.
+   - [Correction]: Read \`.agent/history.md\`.
+4. **Plan**: [Final Action Sequence: read_file].
+</thinking>
+> Tool: read_file(filePath=".agent/history.md")
+
+*Turn 2*:
+System: [Tool Result] "... (Large content from last week) ..."
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Summarize recent history (Persisted).
+   - [Assessment]: File read successful. Need to filter for last 72 hours.
+   - [Self-Complexity (0-100)]: 
+     - Base: 30
+     - Total: **Lv 30**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Minimal**. Content loaded.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Raw logs are too verbose.
+   - [Correction]: Extract specific milestones (Commits, Decisions).
+   - [Refinement]: Write summary to separate file for review.
+4. **Plan**: [Final Action Sequence: write_to_file].
+</thinking>
+> Tool: write_to_file(...)
 `;
 }

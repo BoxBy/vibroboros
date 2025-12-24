@@ -83,7 +83,7 @@ ${userInput || 'N/A'}`);
 }
 
 function getExamples(): string {
-    return `### ACTION EXAMPLES (Decomposition Flow)
+    return `<examples>
 
 ### 1. Knowledge Gap Planning (Standard)
 **Context**: { "task": "AWS Bedrock integration steps", "complexity": 80, "target_file": "N/A" }
@@ -309,27 +309,52 @@ Thinking Process (Agent: **English**, Thinking: **Japanese**, User: **Japanese**
   }
 }
 
-### 8. Multi-turn ReAct (Thinking after Observation)
+
+### 8. Multi-turn ReAct (Full Recursive Thinking)
 *Turn 1*:
 User: "Plan migration to Next.js 15"
-Assistant: <thinking>... (Plan to search) ...</thinking>
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create migration plan for Next.js 15.
+   - [Assessment]: Identify breaking changes via search.
+   - [Self-Complexity (0-100)]: 
+     - Base: 50
+     - Total: **Lv 50**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Check Required**. Don't know v15 specifics.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Need external info.
+   - [Correction]: Search first.
+4. **Plan**: [Final Action Sequence: web_search].
+</thinking>
 > Tool: web_search(query="Next.js 15 breaking changes")
 
 *Turn 2*:
 System: [Tool Result] "... 'fetch' caching defaults changed ..."
 Assistant:
 <thinking>
-Thinking Process (Agent: **English**, Thinking: **English**)
-1. **Observation**:
-   - [Result Analysis]: Caching behavior logic flip is a major breaking change.
-   - [Unexpected]: Previous caching assumptions are invalid.
-2. **Verification (Lightweight)**:
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create migration plan (Persisted).
+   - [Assessment]: Found critical breaking change (caching logic flip).
+   - [Self-Complexity (0-100)]: 
+     - Base: 50
+     - Modifiers: +30 (Major Breaking Change)
+     - Total: **Lv 80**.
+2. **Verification**: 
    - [Knowledge Gap]: **Minimal**. I see the doc.
-   - [Complexity]: **+20**. Audit of all fetch calls required. New Total: **Lv 80**.
-3. **Refinement**:
-   - [Adjustment]: Add specific task for 'Audit Caching' in the plan.
-4. **Plan**: [Next Action: submit_tasks].
+   - [Complexity Discrepancy]: Need to audit all fetch calls in the codebase.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Simple upgrade is impossible.
+   - [Correction]: Add deep audit task.
+   - [Refinement]: Update plan to include manual verification of every API call.
+4. **Plan**: [Final Action Sequence: submit_tasks].
 </thinking>
 > Tool: submit_tasks(...)
-}`;
+</examples>`;
 }

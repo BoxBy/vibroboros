@@ -54,9 +54,9 @@ export async function getBugFixSystemPrompt(options: AgentSystemPromptOptions): 
     builder.addSection(getToolUsage());
 
     // 7. Examples & Workflow (Static)
-    builder.addSection(getA2AInstructions({ 
-        role: 'worker', 
-        agentName, 
+    builder.addSection(getA2AInstructions({
+        role: 'worker',
+        agentName,
         agentList: (options.agentList || []) as string[],
         agentDescriptions: options.agentDescriptions
     }));
@@ -82,7 +82,7 @@ function getDebugWorkflow(): string {
 }
 
 function getExamples(): string {
-    return `### ACTION EXAMPLES (Debug Flow)
+    return `<examples>
 
 
 ### 1. Dependency Conflict (Standard)
@@ -90,18 +90,18 @@ function getExamples(): string {
 **Action**:
 <thinking>
 Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
-1. **Analysis**: 
+1. **Analysis**:
    - [Intent]: Diagnose runtime TypeError.
    - [Assessment]: Investigate potential breaking changes or version mismatches.
-   - [Self-Complexity (0-100)]: 
+   - [Self-Complexity (0-100)]:
      - Base: 50 (External Issue)
      - Modifiers: +30 (External Lib Debugging)
      - Total: **Lv 80**.
-2. **Verification**: 
+2. **Verification**:
    - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-11-20. High probability of library update causing breakage. **Gap Level: Critical**.
    - [Complexity Discrepancy]: None.
    - [Questioning]: None.
-3. **Self-Correction**: 
+3. **Self-Correction**:
    - [Criticism]: Cannot assume code is wrong. Must check \`package.json\` first.
    - [Correction]: Add step to read dependency versions.
    - [Refinement]: Search specifically for v5 migration guide if confirmed.
@@ -124,17 +124,17 @@ Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
 **Action**:
 <thinking>
 Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
-1. **Analysis**: 
+1. **Analysis**:
    - [Intent]: Fix type coercion bug.
    - [Assessment]: Locate where string concatenation occurs instead of addition.
-   - [Self-Complexity (0-100)]: 
+   - [Self-Complexity (0-100)]:
      - Base: 20 (Logic Error)
      - Total: **Lv 20**.
-2. **Verification**: 
+2. **Verification**:
    - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-12-15. JS Type coercion is a timeless issue. **Gap Level: Minimal**.
    - [Complexity Discrepancy]: None.
    - [Questioning]: None.
-3. **Self-Correction**: 
+3. **Self-Correction**:
    - [Criticism]: Don't just patch. Confirm input types first.
    - [Correction]: Read file to identify input sources.
    - [Refinement]: Use \`Number()\` casting for safety.
@@ -157,17 +157,17 @@ Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
 **Action**:
 <thinking>
 Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
-1. **Analysis**: 
+1. **Analysis**:
    - [Intent]: Fix syntax error.
    - [Assessment]: Locate missing parenthesis.
-   - [Self-Complexity (0-100)]: 
+   - [Self-Complexity (0-100)]:
      - Base: 10 (Syntax Error)
      - Total: **Lv 10**.
-2. **Verification**: 
+2. **Verification**:
    - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-12-15. Syntax rules are stable. **Gap Level: Minimal**.
    - [Complexity Discrepancy]: None.
    - [Questioning]: None.
-3. **Self-Correction**: 
+3. **Self-Correction**:
    - [Criticism]: Ensure I'm fixing the right line.
    - [Correction]: Read surrounding lines (45-55) for context.
    - [Refinement]: Verify matching braces.
@@ -190,17 +190,17 @@ Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
 **Action**:
 <thinking>
 Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
-1. **Analysis**: 
+1. **Analysis**:
    - [Intent]: Optimize rendering performance.
    - [Assessment]: Check for unnecessary re-renders.
-   - [Self-Complexity (0-100)]: 
+   - [Self-Complexity (0-100)]:
      - Base: 40 (Optimization)
      - Total: **Lv 40**.
-2. **Verification**: 
+2. **Verification**:
    - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-12-15. React performance patterns are standard. **Gap Level: Minimal**.
    - [Complexity Discrepancy]: None.
    - [Questioning]: Are keys unique? Is memoization used?
-3. **Self-Correction**: 
+3. **Self-Correction**:
    - [Criticism]: Guessing might introduce bugs. Must trace render cycle.
    - [Correction]: Read component to find missing \`key\` or \`memo\`.
    - [Refinement]: Apply \`React.memo\` if props are stable.
@@ -223,17 +223,17 @@ Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
 **Action**:
 <thinking>
 Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
-1. **Analysis**: 
+1. **Analysis**:
    - [Intent]: Fix broken link/route.
    - [Assessment]: Verify route definition matches API spec.
-   - [Self-Complexity (0-100)]: 
+   - [Self-Complexity (0-100)]:
      - Base: 30 (API Error)
      - Total: **Lv 30**.
-2. **Verification**: 
+2. **Verification**:
    - [Knowledge Gap]: **Detailed Check**. Cutoff: 2023-10-01. Current: 2025-06-10. API endpoints are project-defined. **Gap Level: Minimal**.
    - [Complexity Discrepancy]: None.
    - [Questioning]: Is there a versioning prefix (v1/v2)?
-3. **Self-Correction**: 
+3. **Self-Correction**:
    - [Criticism]: Must check exact string match.
    - [Correction]: Read route file to confirm path.
    - [Refinement]: Update client fetch URL to match server route.
@@ -256,18 +256,18 @@ Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
 **Action**:
 <thinking>
 Thinking Process (Agent: **English**, Thinking: **Korean**, User: **Korean**)
-1. **Analysis**: 
+1. **Analysis**:
    - [Intent]: 로그인 버튼 무반응 원인 파악 및 수정.
    - [Assessment]: 이벤트 핸들러 바인딩 여부 확인.
-   - [Self-Complexity (0-100)]: 
+   - [Self-Complexity (0-100)]:
      - Base: 30 (UI Bug)
      - Modifiers: +20 (원인 불명)
      - Total: **Lv 50**.
-2. **Verification**: 
+2. **Verification**:
    - [Knowledge Gap]: **상세 체크**. Cutoff: 2023-10-01. Current: 2025-06-12. 일반적인 리액트 디버깅. **Gap Level: Minimal**.
    - [Complexity Discrepancy]: 없음 (None).
    - [Questioning]: 로그가 없는가? 그렇다면 코드 로직 문제일 가능성 높음.
-3. **Self-Correction**: 
+3. **Self-Correction**:
    - [Criticism]: 추측하지 말고 코드를 열어봐야 함.
    - [Correction]: \`read_file\`로 컴포넌트 구조 확인 -> 가설 수립.
    - [Refinement]: 이벤트 핸들러 바인딩 확인.
@@ -290,18 +290,18 @@ Thinking Process (Agent: **English**, Thinking: **Korean**, User: **Korean**)
 **Action**:
 <thinking>
 Thinking Process (Agent: **English**, Thinking: **Japanese**, User: **Japanese**)
-1. **Analysis**: 
+1. **Analysis**:
    - [Intent]: 致命的なアプリクラッシュの原因分析.
    - [Assessment]: 起動時の依存関係エラーの可能性大.
-   - [Self-Complexity (0-100)]: 
+   - [Self-Complexity (0-100)]:
      - Base: 40 (Fatal Error)
      - Modifiers: +20 (ログなし)
      - Total: **Lv 60**.
-2. **Verification**: 
+2. **Verification**:
    - [Knowledge Gap]: **詳細チェック**. Cutoff: 2023-10-01. Current: 2025-08-05. クラッシュログなしでは原因特定不能. **Gap Level: Critical**.
    - [Complexity Discrepancy]: なし.
    - [Questioning]: エラーログはありますか？
-3. **Self-Correction**: 
+3. **Self-Correction**:
    - [Criticism]: ログを確認せずに修正は不可能.
    - [Correction]: \`read_terminal\`でログを確認するか、設定ファイル(\`package.json\`)を確認する.
    - [Refinement]: 互換性チェックを行う.
@@ -317,5 +317,51 @@ Thinking Process (Agent: **English**, Thinking: **Japanese**, User: **Japanese**
     "message": "## 原因特定\n\n\`react-native\` と \`expo\` のバージョンが互換性がありません..."
   }
 }
-`;
+
+### 8. Multi-turn ReAct (Full Recursive Thinking)
+*Turn 1*:
+User: "Fix the layout initialization crash"
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**:
+   - [Intent]: Fix crash during layout init.
+   - [Assessment]: Need crash logs and reproduction.
+   - [Self-Complexity (0-100)]:
+     - Base: 30
+     - Total: **Lv 30**.
+2. **Verification**:
+   - [Knowledge Gap]: **Critical**. No logs provided.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**:
+   - [Criticism]: Shotgun debugging forbidden. Must reproduce first.
+   - [Correction]: Read component to find initialization hooks.
+4. **Plan**: [Final Action Sequence: read_file].
+</thinking>
+> Tool: read_file(filePath="src/Layout.tsx")
+
+*Turn 2*:
+System: [Tool Result] "... useEffect(() => { init(); }, []) ..."
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**:
+   - [Intent]: Fix crash (Persisted).
+   - [Assessment]: Found unchecked \`init()\` call in \`useEffect\`.
+   - [Self-Complexity (0-100)]:
+     - Base: 30
+     - Total: **Lv 30**.
+2. **Verification**:
+   - [Knowledge Gap]: **Minimal**. Logic seen. \`init()\` might be async or undefined.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**:
+   - [Criticism]: \`init\` might fail silently or throw.
+   - [Correction]: Wrap in try-catch and check if defined.
+   - [Refinement]: Apply defensive programming fix.
+4. **Plan**: [Final Action Sequence: replace_file_content].
+</thinking>
+> Tool: replace_file_content(...)
+</examples>`;
 }

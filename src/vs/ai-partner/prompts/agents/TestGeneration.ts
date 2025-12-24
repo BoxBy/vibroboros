@@ -85,7 +85,7 @@ function getTestWorkflow(): string {
 }
 
 function getExamples(): string {
-    return `### ACTION EXAMPLES (Testing Flow)
+    return `<examples>
 
 
 ### 1. Semantic Mocking (Standard)
@@ -321,27 +321,51 @@ Thinking Process (Agent: **English**, Thinking: **Japanese**, User: **Japanese**
   }
 }
 
-### 8. Multi-turn ReAct (Thinking after Observation)
+
+### 8. Multi-turn ReAct (Full Recursive Thinking)
 *Turn 1*:
 User: "Test the User component"
-Assistant: <thinking>... (Plan to read file) ...</thinking>
+Assistant:
+<thinking>
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create unit test for User component.
+   - [Assessment]: Need to inspect component props first.
+   - [Self-Complexity (0-100)]: 
+     - Base: 20
+     - Total: **Lv 20**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Standard**. Don't know component interface.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Guessing props is bad.
+   - [Correction]: Read file first.
+4. **Plan**: [Final Action Sequence: read_file].
+</thinking>
 > Tool: read_file(filePath="src/User.tsx")
 
 *Turn 2*:
 System: [Tool Result] "... interface User { id: string; name?: string } ..."
 Assistant:
 <thinking>
-Thinking Process (Agent: **English**, Thinking: **English**)
-1. **Observation**:
-   - [Result Analysis]: Found 'User' interface. 'name' is optional.
-   - [Unexpected]: 'id' is string, not number.
-2. **Verification (Lightweight)**:
-   - [Knowledge Gap]: **Minimal**.
-   - [Complexity]: **No Change**. 
-3. **Refinement**:
-   - [Adjustment]: Mock data must use string ID.
-4. **Plan**: [Next Action: Write Test].
+Thinking Process (Agent: **English**, Thinking: **English**, User: **English**)
+1. **Analysis**: 
+   - [Intent]: Create unit test for User component (Persisted).
+   - [Assessment]: Found props. 'name' is optional, 'id' is string.
+   - [Self-Complexity (0-100)]: 
+     - Base: 20
+     - Total: **Lv 20**.
+2. **Verification**: 
+   - [Knowledge Gap]: **Minimal**. Interface confirmed.
+   - [Complexity Discrepancy]: None.
+   - [Questioning]: None.
+3. **Self-Correction**: 
+   - [Criticism]: Previous assumption of number ID was wrong.
+   - [Correction]: Use string ID in mock data.
+   - [Refinement]: Write test using react-testing-library.
+4. **Plan**: [Final Action Sequence: write_to_file].
 </thinking>
 > Tool: write_to_file(...)
-`;
+</examples>`;
 }
