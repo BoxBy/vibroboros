@@ -200,6 +200,12 @@
             "description": "Per-agent streaming overrides, e.g. { \"RefactoringSuggestionAgent\": true }.",
             "scope": "application"
           },
+          "viper.llm.modelMaxContext": {
+            "type": "number",
+            "default": 0,
+            "description": "The maximum context window size for the current model. Set to 0 for auto-detection.",
+            "scope": "application"
+          },
           "viper.openai.apiKey": {
             "type": "string",
             "default": "",
