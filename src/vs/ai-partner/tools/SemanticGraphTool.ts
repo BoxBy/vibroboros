@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { SemanticModelService } from "../services/SemanticModelService";
+// import { SemanticModelService } from "../services/SemanticModelService";
+// import { CompositionRoot, ServiceIdentifiers } from '../di/CompositionRoot';
 
 export interface SemanticGraphToolInput {
     query: string;
@@ -18,20 +19,22 @@ export class SemanticGraphTool {
         type: 'object',
         properties: {
             query: { type: 'string', description: 'The search term (symbol name, filename, or keyword)' },
-            type: { 
-                type: 'string', 
-                enum: ['search', 'file-related', 'symbol-lookup'], 
-                description: 'Type of query. "symbol-lookup" is best for finding definitions.' 
+            type: {
+                type: 'string',
+                enum: ['search', 'file-related', 'symbol-lookup'],
+                description: 'Type of query. "symbol-lookup" is best for finding definitions.'
             }
         },
         required: ['query', 'type']
     };
 
-    private semanticService: SemanticModelService;
+    // // Temporarily disabled SemanticModelService
+    // private semanticService: SemanticModelService;
 
-    constructor() {
-        this.semanticService = SemanticModelService.getInstance();
-    }
+    // constructor(semanticService?: SemanticModelService) {
+    //     // Use provided service or resolve from DI container
+    //     this.semanticService = semanticService ?? CompositionRoot.resolve<SemanticModelService>(ServiceIdentifiers.SemanticModelService);
+    // }
 
     async execute(input: SemanticGraphToolInput): Promise<ToolResult> {
         try {
@@ -77,6 +80,11 @@ export class SemanticGraphTool {
 
         for (const candidate of candidates) {
             try {
+                // Strict check: Skip known binary extensions to avoid CodeExpectedError
+                if (/\.(png|jpg|jpeg|gif|bmp|ico|pdf|zip|tar|gz|exe|dll|so|dylib|bin)$/i.test(candidate.file)) {
+                    continue;
+                }
+
                 const uri = vscode.Uri.file(candidate.file);
                 // We must open the doc to run LSP (or at least have it available)
                 // vscode.workspace.openTextDocument might be needed if not open, but 'executeDocumentSymbolProvider' expects an open-ish URI.
@@ -86,10 +94,16 @@ export class SemanticGraphTool {
                 // NOTE: This can be slow if many candidates. Limit to top 5.
                 if (refinedResults.length >= 5) break;
 
-                const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-                    'vscode.executeDocumentSymbolProvider', 
-                    uri
-                );
+                let symbols: vscode.DocumentSymbol[] | undefined;
+                try {
+                     symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+                        'vscode.executeDocumentSymbolProvider', 
+                        uri
+                    );
+                } catch (lspErr) {
+                     // Ignore binary file errors or other open failures
+                     continue; 
+                }
 
                 if (symbols) {
                     const matched = this.findSymbolInTree(symbols, candidate.name);

@@ -42,6 +42,22 @@
       {
         "command": "viper.refreshSemanticGraph",
         "title": "Viper: Refresh Semantic Graph"
+      },
+      {
+        "command": "viper.startEvaluation",
+        "title": "Viper: Start Evaluation"
+      },
+      {
+        "command": "viper.setTavilyApiKey",
+        "title": "Viper: Set Tavily API Key"
+      },
+      {
+        "command": "viper.runMultiSWEBench",
+        "title": "Viper: Run Multi-SWE-Bench"
+      },
+      {
+        "command": "viper.gradeMultiSWE",
+        "title": "Viper: Grade Multi-SWE Task"
       }
     ],
     "viewsContainers": {
@@ -82,7 +98,8 @@
               "xai",
               "google",
               "groq",
-              "openrouter"
+              "openrouter",
+              "zai"
             ],
             "default": "openai",
             "description": "The LLM provider to use.",
@@ -134,6 +151,24 @@
             "type": "string",
             "default": "https://openrouter.ai/api/v1",
             "description": "The endpoint URL for OpenRouter API.",
+            "scope": "application"
+          },
+          "viper.zai.endpoint": {
+            "type": "string",
+            "default": "https://open.bigmodel.cn/api/paas/v4",
+            "description": "The endpoint URL for z.ai API.",
+            "scope": "application"
+         },
+         "viper.zai.isCodingPlan": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether to use the z.ai Coding Plan API endpoint.",
+            "scope": "application"
+          },
+          "viper.llm.modelMaxContext": {
+            "type": "number",
+            "default": 0,
+            "description": "The maximum context window size for the current model. Set to 0 for auto-detection.",
             "scope": "application"
           },
           "viper.auth.mode": {
@@ -200,12 +235,6 @@
             "description": "Per-agent streaming overrides, e.g. { \"RefactoringSuggestionAgent\": true }.",
             "scope": "application"
           },
-          "viper.llm.modelMaxContext": {
-            "type": "number",
-            "default": 0,
-            "description": "The maximum context window size for the current model. Set to 0 for auto-detection.",
-            "scope": "application"
-          },
           "viper.openai.apiKey": {
             "type": "string",
             "default": "",
@@ -246,6 +275,12 @@
             "type": "string",
             "default": "",
             "description": "OpenRouter API key.",
+            "scope": "application"
+          },
+          "viper.zai.apiKey": {
+            "type": "string",
+            "default": "",
+            "description": "z.ai API key.",
             "scope": "application"
           },
           "viper.developerMode": {
@@ -320,7 +355,11 @@
     "watch": "node esbuild.js --watch",
     "package": "npm run check-types && npm run lint && node esbuild.js --production",
     "lint": "eslint src",
-    "check-types": "rm -rf src/temp_types && tsc --emitDeclarationOnly --project tsconfig.json"
+    "check-types": "rm -rf src/temp_types && tsc --emitDeclarationOnly --project tsconfig.json",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.4",
@@ -342,6 +381,9 @@
     "zod-to-json-schema": "^3.25.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
     "@types/express": "^4.17.21",
     "@types/mocha": "^10.0.10",
     "@types/react": "^18.3.3",
@@ -350,15 +392,20 @@
     "@types/vscode": "^1.103.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/ui": "^2.1.8",
     "@vscode/codicons": "^0.0.35",
     "@vscode/webview-ui-toolkit": "^1.4.0",
     "esbuild": "^0.25.8",
     "eslint": "^9.32.0",
     "fs-extra": "^11.3.1",
+    "happy-dom": "^15.11.8",
+    "jsdom": "^25.0.1",
     "npm-run-all": "^4.1.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^2.1.8"
   },
   "overrides": {
     "prismjs": "^1.30.0"

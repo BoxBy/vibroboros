@@ -147,7 +147,7 @@ const MainViewContent: React.FC = () => {
 	const [statusText, setStatusText] = useState<string | null>(null);
     const [slashCommands, setSlashCommands] = useState<{ command: string, description: string }[]>([]);
     const [currentProvider, setCurrentProvider] = useState<'openai' | 'ollama' | 'anthropic' | 'xai' | 'google' | 'groq' | 'openrouter' | undefined>(undefined);
-    const [availableModels, setAvailableModels] = useState<string[]>([]);
+    const [availableModels, setAvailableModels] = useState<Array<{ id: string; maxContext?: number }>>([]);
     const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
     const [profiles, setProfiles] = useState<Array<{ id: string; name: string; provider?: string; endpoint?: string; model?: string }>>([]);
     const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
@@ -318,7 +318,7 @@ const MainViewContent: React.FC = () => {
 
         // Session filtering: Ignore messages for other sessions (except global commands)
         if (message.sessionId && message.sessionId !== activeSessionId) {
-            if (message.command !== 'historyList' && message.command !== 'loadInitialData') {
+            if (message.command !== 'historyList' && message.command !== 'requestInitialData') {
                 console.log(`[MainView] Ignoring message for session ${message.sessionId} (active: ${activeSessionId})`);
                 return;
             }
@@ -364,7 +364,7 @@ const MainViewContent: React.FC = () => {
 
 	// Send initial load messages only once on mount
 	useEffect(() => {
-		vscodeService.postMessage({ command: 'loadInitialData' });
+		vscodeService.postMessage({ command: 'requestInitialData' });
 		vscodeService.postMessage({ command: 'requestHistory' });
 		vscodeService.postMessage({ command: 'getSlashCommands' });
 		vscodeService.postMessage({ command: 'requestLlmSettings' });
@@ -647,6 +647,9 @@ const handleNewChat = () => {
             return profileLabel ? `${profileLabel}: ${baseName}` : baseName;
         })();
 
+        // Calculate if still loading initial data
+        const isLoading = loadingStatus.llmSettings || loadingStatus.models || loadingStatus.profiles || loadingStatus.slashCommands;
+
         return (
             <div className="app-container">
                 <Header
@@ -684,6 +687,38 @@ const handleNewChat = () => {
                 />
 
                 {renderHistoryPanel()}
+                {isLoading && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'var(--vscode-editor-background)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                        gap: 16
+                    }}>
+                        <div style={{
+                            width: 32,
+                            height: 32,
+                            border: '2px solid var(--vscode-progressBar-background)',
+                            borderTop: '2px solid transparent',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite'
+                        }} />
+                        <span style={{ color: 'var(--vscode-foreground)' }}>Loading...</span>
+                        <style>{`
+                            @keyframes spin {
+                                0% { transform: rotate(0deg); }
+                                100% { transform: rotate(360deg); }
+                            }
+                        `}</style>
+                    </div>
+                )}
                 {view === 'chat' && (
                     <PlanView plan={plan} isAutonomousMode={isAutonomousMode} />
                 )}

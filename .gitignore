@@ -6,6 +6,7 @@ node_modules
 .gemini/
 GEMINI.md
 .agent/
+.claude/
 
 # Local dev/IDE
 .vscode/

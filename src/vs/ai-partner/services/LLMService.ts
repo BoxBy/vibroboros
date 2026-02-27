@@ -411,9 +411,7 @@ export class LLMService {
                         throw new Error('Unexpected response format from Google API');
                     }
                     break;
-                    break;
                 case 'zai':
-                case 'openrouter':
                     console.log('[LLMService] ZAI Response data:', data);
                     if (data.data && Array.isArray(data.data)) {
                         models = data.data.map((m: any) => m.id);

@@ -2,6 +2,11 @@ import React, { useRef, useState, useEffect } from 'react';
 import { VSCodeCheckbox } from '@vscode/webview-ui-toolkit/react';
 
 
+interface ModelInfo {
+    id: string;
+    maxContext?: number;
+}
+
 interface HeaderProps {
     onNewChat: () => void;
     onShowHistory: () => void;
@@ -9,7 +14,7 @@ interface HeaderProps {
     isAutonomousMode: boolean;
     onToggleAutonomousMode: (checked: boolean) => void;
     model?: string;
-    models?: string[];
+    models?: ModelInfo[];
     modelTooltip?: string;
     onChangeModel?: (model: string) => void;
     profiles?: Array<{ id: string; name: string }>;
@@ -103,7 +108,14 @@ export const Header: React.FC<HeaderProps> = ({ onNewChat, onShowHistory, onShow
                                     {models.length > 0 && (
                                         <div style={{ marginTop: 6, maxHeight: 180, overflowY: 'auto' }}>
                                             {models.map(m => (
-                                                <div key={m} className="popup-item" style={{ fontWeight: (model === m || modelDraft === m) ? 600 as any : 400 as any }} onClick={() => { onChangeModel?.(m); setShowModelPopup(false); }}>{m}</div>
+                                                <div key={m.id} className="popup-item" style={{ fontWeight: (model === m.id || modelDraft === m.id) ? 600 as any : 400 as any, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onClick={() => { onChangeModel?.(m.id); setShowModelPopup(false); }}>
+                                                    <span>{m.id}</span>
+                                                    {m.maxContext && (
+                                                        <span style={{ fontSize: '10px', opacity: 0.6, marginLeft: '8px' }}>
+                                                            {m.maxContext >= 1000 ? `${Math.round(m.maxContext / 1000)}k` : m.maxContext} ctx
+                                                        </span>
+                                                    )}
+                                                </div>
                                             ))}
                                         </div>
                                     )}

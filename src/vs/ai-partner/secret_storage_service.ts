@@ -41,7 +41,7 @@ export class SecretStorageService {
                     console.error(`[SecretStorageService] TIMEOUT reading key for: ${key}`);
                     resolve(undefined);
                 }
-            }, 2000); // 2s timeout is generous for local storage
+            }, 5000); // 5s timeout to handle slower storage operations
 
             // Actual read
             this.secretStorage.get(key).then(val => {

@@ -1169,12 +1169,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
               </VSCodeButton>
             </div>
             <div style={{ fontSize: 11, opacity: 0.7 }}>
-              Active profile: {activeProfileId ? (() => {
-                const profile = profiles.find(p => p.id === activeProfileId);
-                const profileName = profile?.name || activeProfileId;
-                const isPerAgentProfile = profile && (profile as any).agentOverrides && Array.isArray((profile as any).agentOverrides) && (profile as any).agentOverrides.length > 0;
-                return isPerAgentProfile ? `${profileName} (Per-Agent)` : profileName;
-              })() : 'None'}
+              Active profile: {activeProfileId ? (profiles.find(p => p.id === activeProfileId)?.name || activeProfileId) : 'None'}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {mergedAgents.map(agent => {
@@ -1264,17 +1259,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                       >
                         <VSCodeOption value="">
                           {activeProfileId
-                            ? (() => {
-                              const profile = (profiles || []).find(p => p.id === activeProfileId);
-                              const profileName = profile?.name || activeProfileId;
-                              const isPerAgentProfile = profile && (profile as any).agentOverrides && Array.isArray((profile as any).agentOverrides) && (profile as any).agentOverrides.length > 0;
-                              return `Active Profile (${profileName}${isPerAgentProfile ? ' (Per-Agent)' : ''})`;
-                            })()
+                            ? `Active Profile (${(profiles || []).find(p => p.id === activeProfileId)?.name || activeProfileId})`
                             : 'Active Profile'}
                         </VSCodeOption>
-                        {(profiles || [])
-                          .filter(p => !(p as any).agentOverrides || !Array.isArray((p as any).agentOverrides) || (p as any).agentOverrides.length === 0)
-                          .map(p => (
+                        {(profiles || []).map(p => (
                           <VSCodeOption key={p.id} value={p.id}>{p.name}</VSCodeOption>
                         ))}
                       </VSCodeDropdown>

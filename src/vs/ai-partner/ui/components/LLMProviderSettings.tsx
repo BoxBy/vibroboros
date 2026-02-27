@@ -11,6 +11,9 @@ interface ProviderSettingsProps {
   apiKeyLabel?: string;
   endpointLabel?: string;
   apiKeyHelpTooltip?: string;
+  provider?: string;
+  validationState?: any;
+  extraFields?: React.ReactNode;
 }
 
 export const ProviderSettings: React.FC<ProviderSettingsProps> = ({
@@ -23,6 +26,9 @@ export const ProviderSettings: React.FC<ProviderSettingsProps> = ({
   apiKeyLabel = "API Key:",
   endpointLabel = "Endpoint:",
   apiKeyHelpTooltip,
+  provider,
+  validationState,
+  extraFields,
 }) => {
   return (
     <>
@@ -61,9 +67,10 @@ export const ProviderSettings: React.FC<ProviderSettingsProps> = ({
           value={endpoint}
           onChange={(e: any) => onEndpointChange(e.target.value)}
           placeholder={endpointPlaceholder}
-          style={{ flexGrow: 1 }}
+          style={{ flexGrow: 1, ...(endpoint ? {} : { color: 'var(--vscode-input-placeholderForeground)' }) }}
         />
       </div>
+      {extraFields}
     </>
   );
 };

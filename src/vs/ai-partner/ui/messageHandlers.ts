@@ -52,6 +52,16 @@ export interface HandlerContext {
  */
 export function createMessageHandlerRegistry(context: HandlerContext): Record<string, MessageHandler> {
 	return {
+		initialDataLoaded: (payload) => {
+			// Initial data loaded, all loading states should be false
+			context.setLoadingStatus({
+				llmSettings: false,
+				models: false,
+				profiles: false,
+				slashCommands: false
+			});
+			console.log('[MainView] Initial data loaded');
+		},
 		slashCommandsResponse: (payload) => {
 			context.setSlashCommands(payload || []);
             console.log('[MainView] Loaded Slash Commands');
@@ -70,6 +80,15 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
             console.log('[MainView] Loaded LLM Settings');
             context.vscodeService.postMessage({ command: 'debugLog', payload: { source: 'MainView', event: 'Loaded LLM Settings' } });
             context.setLoadingStatus(prev => ({ ...prev, llmSettings: false }));
+		},
+		requestModels: (payload) => {
+			// Forward to model handler
+			if (context.vscodeService) {
+				context.vscodeService.postMessage({
+					command: 'requestModels',
+					payload: payload
+				});
+			}
 		},
 		updateModels: (payload) => {
 			if (Array.isArray(payload)) {
@@ -592,6 +611,25 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 		insertAttachment: (payload) => {
 			// This will be handled in MainView component directly
 			// We need to pass setAttachments through context
+		},
+		openFile: (payload) => {
+			// Open file in VSCode editor
+			if (payload && payload.filePath) {
+				context.vscodeService.postMessage({
+					command: 'openFile',
+					filePath: payload.filePath
+				});
+			}
+		},
+		taskUpdated: (payload) => {
+			// Task status update received from backend
+			// This will trigger a re-render of task messages in MessageList
+			// The actual task data is stored in SessionManager, but we can
+			// also update a local state if needed
+		},
+		tasksUpdated: (payload) => {
+			// Full tasks list update received from backend
+			// Can be used to sync task state
 		},
 	};
 }

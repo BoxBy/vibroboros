@@ -1,4 +1,4 @@
-import { SystemPromptFactory } from '../services/SystemPromptFactory';
+import { ServiceLocator } from '../di/ServiceLocator';
 import * as vscode from 'vscode';
 import { getPlanCompletionSummaryPrompt } from '../prompts/sections/Summary';
 
@@ -11,7 +11,8 @@ import { A2AMessage } from '../interfaces/A2AMessage';
 import { AgentCard } from '@a2a-js/sdk';
 import { RequestContext, ExecutionEventBus } from '@a2a-js/sdk/server';
 import { BaseAgent } from './core/BaseAgent';
-import { UIMessageFactory } from '../messaging/UIMessageFactory';
+// Removed: UIMessageFactory - Agents now use A2A standard messages
+// Presentation layer handles transformation to UI commands
 
 import * as mcpServerModule from '@modelcontextprotocol/sdk/server';
 import { LLMService, LlmMessage } from '../services/LLMService';
@@ -28,7 +29,12 @@ import { CheckpointService } from '../services/CheckpointService';
 import { ContextService } from '../services/ContextService';
 import { messages as AgentMessages } from '../messages';
 import { SessionManager } from '../services/SessionManager';
+import { SessionStateManager } from './core/SessionStateManager';
+import { WorkflowEngine } from './core/WorkflowEngine';
 // import { IntentRouter } from '../core/IntentRouter'; // Removed
+
+// Note: ServiceLocator import retained for cases where DI is not yet available
+// OrchestratorAgent uses this.systemPromptFactory from BaseAgent when possible
 
 export interface RuntimeExecutionStep {
     id: string;
@@ -104,6 +110,10 @@ export class OrchestratorAgent extends BaseAgent {
     private checkpointService: CheckpointService;
     private sessionManager: SessionManager;
     private contextService: ContextService;
+
+    // --- Refactored State Management (God Object 해결) ---
+    private sessionStateManager: SessionStateManager;
+    private workflowEngine: WorkflowEngine;
 
     
     // --- Core Logic ---
@@ -213,7 +223,11 @@ export class OrchestratorAgent extends BaseAgent {
         this.checkpointService = new CheckpointService();
         this.contextService = new ContextService();
         this.sessionManager = new SessionManager(state);
-        
+
+        // --- Initialize refactored state managers (God Object 해결) ---
+        this.sessionStateManager = new SessionStateManager();
+        this.workflowEngine = new WorkflowEngine();
+
         // --- External Agents ---
         if (externalAgents) {
             this.externalAgents = externalAgents;
@@ -232,9 +246,14 @@ export class OrchestratorAgent extends BaseAgent {
     // --- Prompt Generation ---
     protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
         console.log('[OrchestratorAgent] getSystemPrompt: Starting...');
-        // Use SystemPromptFactory with 'router' role.
-        let prompt = await SystemPromptFactory.generate('router', OrchestratorAgent.AGENT_ID, 3); // Default complexity 3 (Caution)
+        // Use SystemPromptFactory with 'router' role (injected via BaseAgent).
+        let prompt = await this.systemPromptFactory.generate('router', OrchestratorAgent.AGENT_ID, 3, userInput); // Default complexity 3 (Caution)
+        console.log(`[OrchestratorAgent] getSystemPrompt: userInput length=${userInput?.length}, preview=${userInput?.slice(0, 50)}`);
+        
         console.log('[OrchestratorAgent] getSystemPrompt: SystemPromptFactory returned.');
+        const hasAgents = prompt.includes('**Available Team Members:**') || prompt.includes('**Available Agents:**');
+        const hasAssignedTask = prompt.includes('## ASSIGNED TASK') && !prompt.includes('## ASSIGNED TASK\nN/A');
+        console.log(`[OrchestratorAgent] Prompt Integrity used input? ${hasAssignedTask}, hasAgents? ${hasAgents}`);
         
         // Inject Chat History
         const historyText = this.getFormattedHistory();
@@ -510,7 +529,7 @@ export class OrchestratorAgent extends BaseAgent {
 
         try {
             switch (message.command) {
-                case 'loadInitialData':
+                case 'requestInitialData':
                     // Send current settings and history to UI on initial load
                     await this.handleSessionChangeProxy();
                     break;
@@ -1021,6 +1040,13 @@ export class OrchestratorAgent extends BaseAgent {
                     }
                 } catch (e: any) { this.developerLogService.log(`Sticky routing error: ${e.message}`); }
 
+                // Follow-up suppression handling
+                if (message.suppressFollowups === true) {
+                    this.suppressPostActionsSuggestions = true;
+                } else if (message.suppressFollowups === false) {
+                    this.suppressPostActionsSuggestions = false;
+                }
+
                 // Attachments handling
                 const attachments = Array.isArray(message.attachments) ? message.attachments : [];
                 this.lastImageAttachments = [];
@@ -1227,7 +1253,9 @@ export class OrchestratorAgent extends BaseAgent {
 
 
     private async checkConfirmationIntent(userText: string): Promise<'confirm' | 'deny' | 'uncertain'> {
-        if (!userText || userText.trim().length === 0) return 'uncertain';
+        if (!userText || userText.trim().length === 0) {
+            return 'uncertain';
+        }
 
         const model = this.configService.getModel(OrchestratorAgent.AGENT_ID);
         const apiKeys = await this.configService.getApiKeys();
@@ -1268,8 +1296,12 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         } catch (error) {
             this.developerLogService.log(`[OrchestratorAgent] checkConfirmationIntent failed: ${error}`);
             // Fallback to strict regex for safety if LLM fails
-            if (/^(y|yes|ok|sure|agree|accept|please|go|do|start|confirm|네|그래|좋아|응|확인|진행|ㅇㅇ)/i.test(userText)) return 'confirm';
-            if (/^(n|no|stop|wait|deny|reject|아니|싫어|취소|이전|멈춰|ㄴㄴ)/i.test(userText)) return 'deny';
+            if (/^(y|yes|ok|sure|agree|accept|please|go|do|start|confirm|네|그래|좋아|응|확인|진행|ㅇㅇ)/i.test(userText)) {
+                return 'confirm';
+            }
+            if (/^(n|no|stop|wait|deny|reject|아니|싫어|취소|이전|멈춰|ㄴㄴ)/i.test(userText)) {
+                return 'deny';
+            }
             return 'uncertain';
         }
     }
@@ -1420,7 +1452,7 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                     });
                 }
                 
-                // Handle Resource Action (File Created) -> Generate UI Block & Persist
+                // Handle Resource Action (File Created) -> Generate A2A Standard Message & Persist
                 if (event?.type === 'resource-action' && event?.data?.uri) {
                      let fileContent = '';
                      try {
@@ -1428,32 +1460,49 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                      } catch {}
 
                      const isUpdate = event.data.action === 'update';
-                     const msgPayload = UIMessageFactory.createFileCard(
-                         OrchestratorAgent.AGENT_ID,
-                         event.data.uri,
-                         isUpdate,
-                         undefined,
-                         '', // originalCode (unavailable, treated as all new/current)
-                         fileContent // modifiedCode
-                     );
+                     const filePath = event.data.uri;
 
+                     // Create A2A standard file-edit message
+                     const a2aMessage: A2AMessage = {
+                         kind: 'message',
+                         messageId: this.generateMessageId(),
+                         role: 'agent',
+                         parts: [{
+                             kind: 'data',
+                             mimeType: 'application/vnd.file-edit+json',
+                             data: {
+                                 filePath,
+                                 title: path.basename(filePath),
+                                 suggestionType: isUpdate ? 'modify' : 'create',
+                                 senderName: OrchestratorAgent.AGENT_ID,
+                                 timestamp: new Date().toISOString(),
+                                 originalCode: '', // Not available for new files
+                                 modifiedCode: fileContent
+                             }
+                         }],
+                         contextId: this.activeSessionId
+                     };
+
+                     // Also create history message for persistence
                      const historyMsg: ChatMessage = {
                          author: 'agent',
                          kind: 'codeEditFile',
-                         senderName: msgPayload.payload.senderName,
-                         timestamp: msgPayload.payload.timestamp,
-                         filePath: msgPayload.payload.filePath,
-                         title: msgPayload.payload.title,
-                         suggestionType: msgPayload.payload.suggestionType,
-                         content: [{ type: 'text', text: `${isUpdate ? 'Updated' : 'Created'} file: ${path.basename(event.data.uri)}` }],
-                         ...msgPayload.payload // Include raw payload for diff properties
+                         senderName: OrchestratorAgent.AGENT_ID,
+                         timestamp: new Date().toISOString(),
+                         filePath,
+                         title: path.basename(filePath),
+                         suggestionType: isUpdate ? 'edit-file' : 'create-file',
+                         content: [{ type: 'text', text: `${isUpdate ? 'Updated' : 'Created'} file: ${path.basename(filePath)}` }],
+                         // Include diff properties for UI
+                         originalCode: '',
+                         modifiedCode: fileContent
                      } as any;
-                     
+
                      // Persist to Memento
                      await this.addMessageToHistory(historyMsg);
-                     
-                     // Notify UI to render immediately
-                     this._onDidPostMessage.fire(msgPayload);
+
+                     // Send A2A message (Presentation Layer will transform to UI command)
+                     this._onDidPostMessage.fire(a2aMessage);
                      // Force sync history update just in case
                      this._onDidPostMessage.fire({ command: 'historyUpdate', payload: this.chatHistory });
                 }
@@ -1524,7 +1573,9 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         // Normalize complexity (Ensure 0-100)
         let normalizedScore = typeof complexity_score === 'number' ? complexity_score : 0;
         // Legacy Safety: If score is 0-10, scale to 0-100 (unless it's explicitly low complexity)
-        if (normalizedScore <= 10 && normalizedScore > 0) normalizedScore = normalizedScore * 10;
+        if (normalizedScore <= 10 && normalizedScore > 0) {
+            normalizedScore = normalizedScore * 10;
+        }
         
         this.developerLogService.log(`[Orchestrator] Routing decision: Agent=${chosen_agent}, Score=${normalizedScore}, Intent=${intent_type || 'N/A'}`);
 
@@ -1611,8 +1662,9 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                 }
              };
              
-             // Handle Response from Specialist Agent
+                // Handle Response from Specialist Agent
              const response = await (this.dispatch as any)(dispatchMsg);
+             
              if (response) {
                 let replyText = '';
                 // Handle various response formats (String bridge, A2A Message, etc.)
@@ -1623,8 +1675,11 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                     const textParts = (response as any).parts.filter((p: any) => p.kind === 'text').map((p: any) => p.text);
                     // Extract data parts (result/message)
                     const dataParts = (response as any).parts
-                        .filter((p: any) => p.kind === 'data' && p.data?.payload)
-                        .map((p: any) => p.data.payload.result || p.data.payload.message || JSON.stringify(p.data.payload));
+                        .filter((p: any) => p.kind === 'data' && p.data) // loosened check to p.data
+                        .map((p: any) => {
+                             const payload = p.data.payload || p.data; // Fallback to raw data if payload missing
+                             return payload.result || payload.message || payload.question || (typeof payload === 'string' ? payload : JSON.stringify(payload));
+                        });
                     
                     replyText = [...textParts, ...dataParts].filter(Boolean).join('\n\n');
                 } else if ((response as any).content) { // Legacy Message
@@ -1755,9 +1810,9 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                 '그만', '아니', '아니오', '취소'
             ];
 
-            const matchesAny = (patterns: string[]) => patterns.some(p =>
-                input === p || input.startsWith(p + ' ') || input.endsWith(' ' + p) || input.includes(` ${p} `)
-            );
+            const matchesAny = (patterns: string[]) => patterns.some(p => {
+                return input === p || input.startsWith(p + ' ') || input.endsWith(' ' + p) || input.includes(` ${p} `);
+            });
 
             if (matchesAny(positivePatterns)) {
                 // Adopt the pending plan and start execution
@@ -1897,6 +1952,56 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         }
     }
 
+    /**
+     * Update task status when a plan step is completed
+     */
+    public async updateTaskStatus(stepDescription: string, status: 'completed' | 'pending' | 'failed' | 'in_progress'): Promise<void> {
+        try {
+            const state = this.sessionManager.getState();
+            if (!state) { return; }
+
+            // Find task by description
+            const task = state.tasks.find(t => t.description === stepDescription);
+            if (task) {
+                await this.sessionManager.updateTaskStatus(task.id, status);
+                // Notify UI of task update
+                this._onDidPostMessage.fire({
+                    command: 'taskUpdated',
+                    payload: { taskId: task.id, status }
+                });
+            }
+        } catch (e: any) {
+            this.developerLogService.log(`[OrchestratorAgent] updateTaskStatus failed: ${e?.message || e}`);
+        }
+    }
+
+    /**
+     * Add tasks from plan to session manager
+     */
+    public async addTasksFromPlan(): Promise<void> {
+        try {
+            const steps = Array.isArray(this.currentPlan) ? this.currentPlan : [];
+            const tasks = steps
+                .filter(s => s.status !== 'completed') // Only add non-completed steps
+                .map(s => ({
+                    description: s.description,
+                    status: s.status === 'in-progress' ? 'in_progress' : 'pending'
+                }));
+
+            if (tasks.length > 0) {
+                await this.sessionManager.addTasks(tasks);
+                // Notify UI of tasks update
+                const state = this.sessionManager.getState();
+                this._onDidPostMessage.fire({
+                    command: 'tasksUpdated',
+                    payload: { tasks: state?.tasks || [] }
+                });
+            }
+        } catch (e: any) {
+            this.developerLogService.log(`[OrchestratorAgent] addTasksFromPlan failed: ${e?.message || e}`);
+        }
+    }
+
 
 
 
@@ -1967,6 +2072,26 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         
         // Use SessionManager to add message
         await this.sessionManager.addMessage(message);
+
+        // Notify UI to render user message bubble (important for programmatic injection like HLE evaluation)
+        if (message.author === 'user') {
+            try {
+                const text = Array.isArray(message.content)
+                    ? message.content.map((c: any) => typeof c === 'string' ? c : (c?.text ?? '')).filter(Boolean).join(' ')
+                    : (typeof (message as any).text === 'string' ? (message as any).text : '');
+                
+                this._onDidPostMessage.fire({
+                    command: 'addUserMessage',
+                    payload: {
+                        text,
+                        attachments: (message as any).attachments || [],
+                        messageId: message.messageId
+                    }
+                });
+            } catch (e) {
+                console.warn('[OrchestratorAgent] Failed to notify UI of user message:', e);
+            }
+        }
 
         // SDK Standard: Sync LLM History
         try {
@@ -2255,7 +2380,7 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
             // SDK Standard: LLM will generate follow-up tasks based on artifacts
 
             // SDK Standard: LLM will generate follow-up tasks based on artifacts
-            const sys = getPlanCompletionSummaryPrompt(vscode.env.language || 'en');
+            const sys = getPlanCompletionSummaryPrompt(vscode.env.language || 'en', this.suppressPostActionsSuggestions);
 
             const headerText = hasErrors ? AgentMessages.orchestrator.planCompletedErrors : AgentMessages.orchestrator.planCompletedSuccess;
 
@@ -2672,20 +2797,45 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                 }
                 break;
             case 'resource-action':
-                // Handle File Creation/Update from workers -> UI Block
+                // Handle File Creation/Update from workers -> Send A2A Standard Message
                 if (message.payload?.uri) {
                     const absPath = message.payload.uri;
                     const action = message.payload.action || "create";
+
+                    // Create A2A standard file-edit message
+                    const a2aMessage: A2AMessage = {
+                        kind: 'message',
+                        messageId: this.generateMessageId(),
+                        role: 'agent',
+                        parts: [{
+                            kind: 'data',
+                            mimeType: 'application/vnd.file-edit+json',
+                            data: {
+                                filePath: absPath,
+                                title: path.basename(absPath),
+                                suggestionType: action === 'update' ? 'modify' : 'create',
+                                senderName: message.sender || OrchestratorAgent.AGENT_ID,
+                                timestamp: message.payload.timestamp || new Date().toISOString()
+                            }
+                        }],
+                        contextId: this.activeSessionId
+                    };
+
+                    // Also create history message for persistence
                     const historyMsg: any = {
                         author: 'agent',
-                        kind: 'codeEditFile', // Re-use for UI Block
+                        kind: 'codeEditFile',
                         senderName: message.sender || OrchestratorAgent.AGENT_ID,
                         timestamp: message.payload.timestamp || new Date().toISOString(),
                         filePath: absPath,
+                        title: path.basename(absPath),
+                        suggestionType: action === 'update' ? 'edit-file' : 'create-file',
                         content: [{ type: 'text', text: `${action === 'create' ? 'Created' : 'Updated'} file: ${path.basename(absPath)}` }]
                     };
+
                     await this.addMessageToHistory(historyMsg);
-                    this._onDidPostMessage.fire({ command: 'createFileCard', payload: historyMsg });
+                    // Send A2A message (Presentation Layer will transform to UI command)
+                    this._onDidPostMessage.fire(a2aMessage);
                 }
                 break;
             case 'propose-task':
