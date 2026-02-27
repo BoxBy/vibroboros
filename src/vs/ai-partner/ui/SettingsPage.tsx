@@ -109,6 +109,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   const [useVSCodeThinkingLang, setUseVSCodeThinkingLang] = useState<boolean>(false);
   const [useVSCodeUserLang, setUseVSCodeUserLang] = useState<boolean>(false);
 
+  // Group expansion state
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    serverConnections: false,
+  });
+
+  const toggleGroup = (groupKey: string) => {
+    setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
+  };
+
   // startModelPolling은 더 이상 필요 없음 (MainView가 models를 관리)
   const startModelPolling = useCallback((durationMs: number = 20000, intervalMs: number = 2000) => {
     // No-op: MainView handles model loading via availableModels prop
@@ -1166,6 +1175,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
 
       <VSCodeDivider style={{ margin: '24px 0' }} />
 
+      {/* ========== Server Connections Group ========== */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          cursor: 'pointer',
+          userSelect: 'none',
+          marginTop: '8px',
+          marginBottom: '16px'
+        }}
+        onClick={() => toggleGroup('serverConnections')}
+      >
+        <span className={`codicon codicon-${expandedGroups.serverConnections ? 'chevron-down' : 'chevron-right'}`} />
+        <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--vscode-foreground)', opacity: 0.8 }}>Server Connections</h2>
+      </div>
+      {expandedGroups.serverConnections && (
+      <>
+      {/* MCP 섹션 */}
       <div className="settings-section">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ marginTop: 0 }}>Model Context Protocol (MCP)</h3>
@@ -1331,8 +1359,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         </div>
       </div>
 
-      <VSCodeDivider style={{ margin: '16px 0' }} />
-
+      {/* Prompt Settings 섹션 */}
       <div className="settings-section">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ marginTop: 0 }}>Prompt Settings</h3>
@@ -1386,6 +1413,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };
