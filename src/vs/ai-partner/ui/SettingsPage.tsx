@@ -24,24 +24,13 @@ interface Agent {
 
 import { VSCodeCheckbox } from '@vscode/webview-ui-toolkit/react'; // 추가
 
-// LLM 설정 인터페이스 추가
+// LLM 설정 인터페이스 - 단순화된 구조
 interface LlmSettings {
-  llmProvider: 'openai' | 'ollama' | 'anthropic' | 'xai' | 'google' | 'groq' | 'openrouter' | undefined; // undefined 허용
-  openaiApiKeys: string;
-  openaiEndpoint: string;
-  ollamaEndpoint: string;
-  ollamaApiKey: string;
+  llmProvider: 'openai' | 'ollama' | 'anthropic' | 'xai' | 'google' | 'groq' | 'openrouter' | 'zai' | undefined;
+  endpoint: string;  // 통합된 endpoint
+  apiKey: string;    // 통합된 API key
   ollamaIsCloud: boolean;
-  anthropicApiKey: string;
-  anthropicEndpoint: string;
-  xaiApiKey: string;
-  xaiEndpoint: string;
-  googleApiKey: string;
-  googleEndpoint: string;
-  groqApiKey: string;
-  groqEndpoint: string;
-  openrouterApiKey: string;
-  openrouterEndpoint: string;
+  isCodingPlan: boolean;
   model: string;
   modelMaxContext?: number;
 }
@@ -62,34 +51,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   const [agents, setAgents] = useState<InternalAgent[]>([]); // Changed to InternalAgent[]
   // LLM 설정 상태 추가
   const [llmSettings, setLlmSettings] = useState<LlmSettings>({
-    llmProvider: undefined, // 초기값을 undefined로 설정하여 configService에서 가져온 값으로 초기화되도록 합니다.
-    openaiApiKeys: '',
-    openaiEndpoint: 'https://api.openai.com/v1',
-  ollamaEndpoint: 'http://localhost:11434', // 로컬 기본값으로 변경
-  ollamaApiKey: '',
-  ollamaIsCloud: false,
-    anthropicApiKey: '',
-    anthropicEndpoint: 'https://api.anthropic.com/v1',
-    xaiApiKey: '',
-    xaiEndpoint: 'https://api.xai.com/v1',
-    googleApiKey: '',
-    googleEndpoint: 'https://generativelanguage.googleapis.com/v1beta',
-    groqApiKey: '',
-    groqEndpoint: 'https://api.groq.com/openai/v1',
-    openrouterApiKey: '',
-    openrouterEndpoint: 'https://openrouter.ai/api/v1',
+    llmProvider: undefined,
+    endpoint: '',
+    apiKey: '',
+    ollamaIsCloud: false,
+    isCodingPlan: false,
     model: '',
+    modelMaxContext: 0,
   });
-  const [models, setModels] = useState<string[]>(propModels || []);
+  const [models, setModels] = useState<Array<{ id: string; maxContext?: number }>>([]);
   console.log('[SettingsPage] Component rendering, models state:', models.length);
   // Profiles state
-  const [profiles, setProfiles] = useState<Array<{ id: string; name: string; provider: string; endpoint: string; model: string; enabled?: boolean; isDefault?: boolean }>>([]);
+  const [profiles, setProfiles] = useState<Array<{ id: string; name: string; provider: string; endpoint: string; model: string; apiKey?: string; enabled?: boolean; isDefault?: boolean }>>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string>('');
   const [editingProfile, setEditingProfile] = useState<{ id?: string; name: string; provider: string; endpoint: string; model: string; apiKey: string; notes?: string; timeout?: number }>({ name: '', provider: 'openai', endpoint: '', model: '', apiKey: '' });
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const llmSectionRef = useRef<HTMLDivElement | null>(null);
+  const perAgentSectionRef = useRef<HTMLDivElement | null>(null);
   const modelComboRef = useRef<HTMLDivElement | null>(null);
   const [showModelSuggestions, setShowModelSuggestions] = useState<boolean>(false);
   const modelPollTimerRef = useRef<any>(null);
@@ -99,6 +79,24 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   const [advancedHistorySummaryEnabled, setAdvancedHistorySummaryEnabled] = useState<boolean>(false);
   const [agentOverridesDraft, setAgentOverridesDraft] = useState<Record<string, { useDefault: boolean; model: string; profileId?: string; useExternal?: boolean; externalUrl?: string }>>({});
   const [showAgentOverrides, setShowAgentOverrides] = useState<boolean>(false);
+  const [showLlmConfiguration, setShowLlmConfiguration] = useState<boolean>(false);
+
+  // Group collapse/expand state
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    basicSettings: true,
+    llmSettings: true,
+    webSearchSettings: false,
+    serverConnections: false,
+  });
+
+  // Web Search Settings state
+  const [webSearchProvider, setWebSearchProvider] = useState<'tavily' | 'google' | 'brave' | 'custom'>('tavily');
+  const [webSearchApiKey, setWebSearchApiKey] = useState<string>('');
+  const [webSearchEndpoint, setWebSearchEndpoint] = useState<string>('');
+
+  const toggleGroup = (groupKey: string) => {
+    setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
+  };
   
   // New Settings
   const [summarizeTokenLimit, setSummarizeTokenLimit] = useState<number>(0.75);
@@ -108,15 +106,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   const [maxContextOverride, setMaxContextOverride] = useState<number | undefined>(undefined);
   const [useVSCodeThinkingLang, setUseVSCodeThinkingLang] = useState<boolean>(false);
   const [useVSCodeUserLang, setUseVSCodeUserLang] = useState<boolean>(false);
-
-  // Group expansion state
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
-    serverConnections: false,
-  });
-
-  const toggleGroup = (groupKey: string) => {
-    setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
-  };
 
   // startModelPolling은 더 이상 필요 없음 (MainView가 models를 관리)
   const startModelPolling = useCallback((durationMs: number = 20000, intervalMs: number = 2000) => {
@@ -134,9 +123,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         setModels(message.payload || []);
         return;
       }
-      
-      if (message.command === 'updateAgentList') {
-        setAgents(message.agents);
+
+      if (message.command === 'agentListResponse' || message.command === 'agentsResponse') {
+        setAgents(message.payload || []);
       } else if (message.command === 'llmSettingsResponse') { // LLM 설정 응답 처리
         setLlmSettings(message.payload);
       } else if (message.command === 'featureToggles') {
@@ -154,6 +143,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         setProfiles(message.payload?.profiles || []);
         setActiveProfileId(typeof message.payload?.activeProfileId === 'string' ? message.payload.activeProfileId : null);
       } else if (message.command === 'activeProfileChanged') {
+        console.log('[SettingsPage] activeProfileChanged received:', message.payload);
         setActiveProfileId(typeof message.payload === 'string' ? message.payload : null);
       } else if (message.command === 'profileSaved' || message.command === 'profileDeleted') {
         vscodeService.postMessage({ command: 'requestProfiles' });
@@ -169,6 +159,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
              setA2aHealthStatus(a2a);
            }
          }
+      } else if (message.command === 'modelMaxContextUpdated') {
+         console.log('[SettingsPage] modelMaxContextUpdated received:', message.payload);
+         setLlmSettings(prev => ({ ...prev, modelMaxContext: message.payload }));
       }
     };
 
@@ -202,6 +195,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   const [mcpExpanded, setMcpExpanded] = useState(false);
   const [a2aExpanded, setA2aExpanded] = useState(false);
   const [expandedPrompts, setExpandedPrompts] = useState<Record<string, boolean>>({});
+
+  // Inline input state for MCP and A2A
+  const [mcpNameInput, setMcpNameInput] = useState('');
+  const [mcpCommandInput, setMcpCommandInput] = useState('');
+  const [mcpArgsInput, setMcpArgsInput] = useState('');
+  const [a2aNameInput, setA2aNameInput] = useState('');
+  const [a2aUrlInput, setA2aUrlInput] = useState('');
+  const [a2aDescInput, setA2aDescInput] = useState('');
   // Health status for MCP and A2A servers
   const [mcpHealthStatus, setMcpHealthStatus] = useState<Record<string, { status: 'healthy' | 'unhealthy' | 'unknown'; message?: string; tools?: string[] }>>({});
   const [a2aHealthStatus, setA2aHealthStatus] = useState<Record<string, { status: 'healthy' | 'unhealthy' | 'unknown'; message?: string }>>({});
@@ -280,6 +281,50 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   const handleRemoveAgent = (agentName: string) => {
     vscodeService.postMessage({ command: 'removeAgent', agentName });
   };
+
+  // MCP/A2A 서버 추가 핸들러
+  const handleAddMcpServer = () => {
+    if (!mcpNameInput.trim() || !mcpCommandInput.trim() || !mcpArgsInput.trim()) {
+      vscodeService.postMessage({
+        command: 'showInformationMessage',
+        payload: 'Please fill in all MCP server fields before adding.'
+      });
+      return;
+    }
+    vscodeService.postMessage({
+      command: 'addMcpServer',
+      payload: {
+        name: mcpNameInput.trim(),
+        command: mcpCommandInput.trim(),
+        args: mcpArgsInput.trim()
+      }
+    });
+    // 입력 필드 초기화
+    setMcpNameInput('');
+    setMcpCommandInput('');
+    setMcpArgsInput('');
+  };
+
+  const handleAddA2aServer = () => {
+    if (!a2aNameInput.trim() || !a2aUrlInput.trim()) {
+      vscodeService.postMessage({
+        command: 'showInformationMessage',
+        payload: 'Please fill in all A2A server fields before adding.'
+      });
+      return;
+    }
+    vscodeService.postMessage({
+      command: 'addA2aServer',
+      payload: {
+        name: a2aNameInput.trim(),
+        url: a2aUrlInput.trim()
+      }
+    });
+    // 입력 필드 초기화
+    setA2aNameInput('');
+    setA2aUrlInput('');
+    setA2aDescInput('');
+  };
 // ...
           {configuredItems.prompts.length > 0 ? (
             <div>
@@ -349,29 +394,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
 
       // Provider 변경 시 기본 endpoint 설정
       if (key === 'llmProvider') {
-        switch (value) {
-          case 'openai':
-            newState.openaiEndpoint = getDefaultEndpoint('openai');
-            break;
-          case 'ollama':
-            newState.ollamaEndpoint = getDefaultEndpoint('ollama');
-            break;
-          case 'anthropic':
-            newState.anthropicEndpoint = getDefaultEndpoint('anthropic');
-            break;
-          case 'xai':
-            newState.xaiEndpoint = getDefaultEndpoint('xai');
-            break;
-          case 'google':
-            newState.googleEndpoint = getDefaultEndpoint('google');
-            break;
-          case 'groq':
-            newState.groqEndpoint = getDefaultEndpoint('groq');
-            break;
-          case 'openrouter':
-            newState.openrouterEndpoint = getDefaultEndpoint('openrouter');
-            break;
-        }
+        newState.endpoint = getDefaultEndpoint(value);
       }
 
       // Ollama Cloud 설정 변경 시
@@ -379,12 +402,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         // 클라우드 모드일 때는 기본 엔드포인트를 빈 문자열로 두어 사용자가
         // 실제 클라우드 엔드포인트를 입력하도록 유도합니다. 로컬 모드로
         // 되돌릴 때는 기본 로컬 엔드포인트를 설정합니다.
-        newState.ollamaEndpoint = value ? '' : 'http://localhost:11434';
+        if (newState.llmProvider === 'ollama') {
+          newState.endpoint = value ? '' : 'http://localhost:11434';
+        }
+      }
+
+      // Z.ai Coding Plan 설정 변경 시
+      if (key === 'isCodingPlan') {
+        // Coding Plan 모드일 때는 coding endpoint, 아닐 때는 일반 endpoint
+        if (newState.llmProvider === 'zai') {
+          newState.endpoint = value ? 'https://api.z.ai/api/coding/paas/v4' : 'https://api.z.ai/api/paas/v4';
+        }
       }
 
       // API Key 유효성 검사
-      if (key.toLowerCase().includes('apikey')) {
-        // API 키 검증은 선택된 provider와 클라우드 여부에 따라 달라집니다.
+      if (key === 'apiKey') {
         const provider = newState.llmProvider || 'openai';
         let isValid = validateApiKey(provider, value);
         // Ollama의 클라우드 모드인 경우에는 API 키가 반드시 필요합니다.
@@ -395,11 +427,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
       }
 
       // Endpoint 유효성 검사
-      if (key.toLowerCase().includes('endpoint')) {
+      if (key === 'endpoint') {
         const isValid = validateEndpoint(value);
         setValidationState(prev => ({ ...prev, endpointValid: isValid }));
-        // Endpoint 변경 시 모델 목록 즉시 갱신 시도
-        vscodeService.postMessage({ command: 'requestModels' });
+        // Endpoint 변경 시 모델 목록 즉시 갱신 시도 - use current input values
+        vscodeService.postMessage({ command: 'requestModels', payload: { provider: newState.llmProvider, endpoint: newState.endpoint, apiKey: newState.apiKey } });
       }
 
       // 자동 저장
@@ -408,43 +440,35 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
       return newState;
     });
     // Provider 변경/클라우드 토글 시 모델 목록 요청 + 빠른 폴링 시작
-    if (key === 'llmProvider' || key === 'ollamaIsCloud') {
-      vscodeService.postMessage({ command: 'requestModels' });
+    if (key === 'llmProvider' || key === 'ollamaIsCloud' || key === 'isCodingPlan') {
+      const provider = key === 'llmProvider' ? value : llmSettings.llmProvider;
+      let endpointForRequest = llmSettings.endpoint;
+      const apiKeyForRequest = llmSettings.apiKey;
+      if (key === 'llmProvider') {
+        endpointForRequest = getDefaultEndpoint(value);
+      } else if (key === 'ollamaIsCloud' && provider === 'ollama') {
+        endpointForRequest = value ? '' : 'http://localhost:11434';
+      } else if (key === 'isCodingPlan' && provider === 'zai') {
+        endpointForRequest = value ? 'https://api.z.ai/api/coding/paas/v4' : 'https://api.z.ai/api/paas/v4';
+      }
+      vscodeService.postMessage({ command: 'requestModels', payload: { provider, endpoint: endpointForRequest, apiKey: apiKeyForRequest } });
       startModelPolling();
     }
     // Endpoint 변경 시도 시에도 빠른 폴링
-    if (key.toLowerCase().includes('endpoint')) {
+    if (key === 'endpoint') {
       startModelPolling();
     }
   };
 
-  // LLM 설정 저장 핸들러
+  // LLM 설정 저장 핸들러 (일반 Profile - agentOverrides 없음)
   const handleSaveLlmSettings = () => {
     vscodeService.postMessage({ command: 'saveLlmSettings', payload: llmSettings });
     // Save or update a profile and activate it, then refresh
     const name = (profileName && profileName.trim()) || 'Default Profile';
     const provider = llmSettings.llmProvider || 'openai';
     const model = llmSettings.model || '';
-    const endpointMap: any = {
-      openai: llmSettings.openaiEndpoint,
-      ollama: llmSettings.ollamaEndpoint,
-      anthropic: llmSettings.anthropicEndpoint,
-      xai: llmSettings.xaiEndpoint,
-      google: llmSettings.googleEndpoint,
-      groq: llmSettings.groqEndpoint,
-      openrouter: llmSettings.openrouterEndpoint,
-    };
-    const apiKeyMap: any = {
-      openai: llmSettings.openaiApiKeys,
-      ollama: llmSettings.ollamaApiKey,
-      anthropic: llmSettings.anthropicApiKey,
-      xai: llmSettings.xaiApiKey,
-      google: llmSettings.googleApiKey,
-      groq: llmSettings.groqApiKey,
-      openrouter: llmSettings.openrouterApiKey,
-    };
-    const endpoint = endpointMap[provider] || '';
-    const apiKey = apiKeyMap[provider] || '';
+    const endpoint = llmSettings.endpoint || '';
+    const apiKey = llmSettings.apiKey || '';
     const profileBase: any = {
       name,
       provider,
@@ -452,17 +476,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
       model,
       enabled: true,
     };
-    const overridesArray = Object.entries(agentOverridesDraft || {}).map(([agentName, override]) => ({
-      agentName,
-      model: override.model,
-      useDefault: !!override.useDefault,
-      useExternal: !!override.useExternal,
-      externalUrl: override.externalUrl,
-      profileId: override.profileId,
-    })).filter(o => !o.useDefault || (o.model && o.model.trim().length > 0) || o.useExternal);
-    if (overridesArray.length > 0) {
-      profileBase.agentOverrides = overridesArray;
-    }
     if (editingProfileId) {
       profileBase.id = editingProfileId;
     }
@@ -473,26 +486,94 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
     };
     vscodeService.postMessage({ command: 'saveProfile', payload });
     vscodeService.postMessage({ command: 'requestProfiles' });
-    vscodeService.postMessage({ command: 'requestModels' });
+    // Pass current provider, endpoint, and apiKey when requesting models after save
+    vscodeService.postMessage({ command: 'requestModels', payload: { provider, endpoint, apiKey } });
     // After saving, clear edit id to avoid unintended updates on next create
+    setEditingProfileId(null);
+  };
+
+  // Per-Agent Profile 저장 핸들러 (agentOverrides 포함)
+  const handleSavePerAgentProfile = () => {
+    const name = (profileName && profileName.trim()) || 'Per-Agent Profile';
+    const provider = llmSettings.llmProvider || 'openai';
+    const model = llmSettings.model || '';
+    const endpoint = llmSettings.endpoint || '';
+    const apiKey = llmSettings.apiKey || '';
+
+    // Build agent overrides array
+    const overridesArray = Object.entries(agentOverridesDraft || {}).map(([agentName, override]) => ({
+      agentName,
+      model: override.model,
+      useDefault: !!override.useDefault,
+      useExternal: !!override.useExternal,
+      externalUrl: override.externalUrl,
+      profileId: override.profileId,
+    })).filter(o => !o.useDefault || (o.model && o.model.trim().length > 0) || o.useExternal);
+
+    const profileBase: any = {
+      name,
+      provider,
+      endpoint,
+      model,
+      enabled: true,
+      agentOverrides: overridesArray.length > 0 ? overridesArray : undefined,
+    };
+
+    if (editingProfileId) {
+      profileBase.id = editingProfileId;
+    }
+
+    const payload = {
+      profile: profileBase,
+      apiKey,
+      activateAfterSave: true,
+    };
+
+    console.log('[SettingsPage] handleSavePerAgentProfile saving:', { name, provider, model, overridesCount: overridesArray.length });
+    vscodeService.postMessage({ command: 'saveProfile', payload });
+    vscodeService.postMessage({ command: 'requestProfiles' });
+    vscodeService.postMessage({ command: 'requestModels', payload: { provider, endpoint, apiKey } });
     setEditingProfileId(null);
   };
 
   // Profiles handlers (inside component)
   const startAddProfile = () => {
-    // Prefill LLM Configuration for creating a new profile via Save
+    // Reset all fields for creating a new profile
     setProfileName('');
-    // Do not change provider automatically; keep current selection
+    setIsEditing(true);
+    setShowAgentOverrides(false);
+    setShowLlmConfiguration(true); // Expand LLM Configuration for new profile
+    setEditingProfileId(null);
+    setAgentOverridesDraft({});
+
+    // Reset llmSettings to default values (simplified structure)
+    setLlmSettings({
+      llmProvider: 'openai',
+      endpoint: 'https://api.openai.com/v1',
+      apiKey: '',
+      ollamaIsCloud: false,
+      isCodingPlan: false,
+      model: '',
+      modelMaxContext: 0,
+    });
+    setModels([]); // Clear models list
+
     if (llmSectionRef.current) {
       llmSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    setEditingProfileId(null);
-    setAgentOverridesDraft({});
   };
   const startEditProfile = (p: any) => {
-    // Prefill LLM Configuration with selected profile values
+    console.log('[SettingsPage] startEditProfile called with:', p);
+
+    // Check if this is a Per-Agent profile (has agentOverrides)
+    const isPerAgentProfile = Array.isArray(p.agentOverrides) && p.agentOverrides.length > 0;
+
+    // Prefill with selected profile values
     setProfileName(p.name || '');
     setEditingProfileId(p.id || null);
+    setIsEditing(true);
+
+    // Set agent overrides draft
     setAgentOverridesDraft(() => {
       const draft: Record<string, { useDefault: boolean; model: string; profileId?: string; useExternal?: boolean; externalUrl?: string }> = {};
       const overrides = Array.isArray(p.agentOverrides) ? p.agentOverrides : [];
@@ -510,27 +591,42 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
       });
       return draft;
     });
+
     setLlmSettings(prev => {
-      const next = { ...prev } as any;
-      next.llmProvider = p.provider;
-      next.model = p.model || '';
-      switch (p.provider) {
-        case 'openai': next.openaiEndpoint = p.endpoint || next.openaiEndpoint; break;
-        case 'ollama': next.ollamaEndpoint = p.endpoint || next.ollamaEndpoint; break;
-        case 'anthropic': next.anthropicEndpoint = p.endpoint || next.anthropicEndpoint; break;
-        case 'xai': next.xaiEndpoint = p.endpoint || next.xaiEndpoint; break;
-        case 'google': next.googleEndpoint = p.endpoint || next.googleEndpoint; break;
-        case 'groq': next.groqEndpoint = p.endpoint || next.groqEndpoint; break;
-        case 'openrouter': next.openrouterEndpoint = p.endpoint || next.openrouterEndpoint; break;
-      }
+      const profileApiKey = p.apiKey || '';
+      const next = {
+        ...prev,
+        llmProvider: p.provider,
+        model: p.model || '',
+        endpoint: p.endpoint || getDefaultEndpoint(p.provider),
+        apiKey: profileApiKey,
+        ollamaIsCloud: p.provider === 'ollama' && (p.endpoint?.includes('ollama.com') || false),
+        isCodingPlan: p.provider === 'zai' && (p.endpoint?.includes('/coding/') || false),
+      };
+      console.log('[SettingsPage] startEditProfile setting llmSettings:', { provider: p.provider, endpoint: p.endpoint, model: p.model, hasApiKey: !!profileApiKey, isPerAgentProfile });
       return next;
     });
-    // Scroll to LLM Configuration section
-    if (llmSectionRef.current) {
-      llmSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    // Expand appropriate section and scroll based on profile type
+    if (isPerAgentProfile) {
+      // Per-Agent profile: expand and scroll to Per-Agent LLM Overrides section
+      setShowAgentOverrides(true);
+      setShowLlmConfiguration(false);
+      if (perAgentSectionRef.current) {
+        perAgentSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    } else {
+      // Regular profile: expand and scroll to LLM Configuration section
+      setShowLlmConfiguration(true);
+      setShowAgentOverrides(false);
+      if (llmSectionRef.current) {
+        llmSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
+
     // Refresh models since we might be switching context/provider
-    vscodeService.postMessage({ command: 'requestModels' });
+    const profileApiKey = p.apiKey || '';
+    vscodeService.postMessage({ command: 'requestModels', payload: { provider: p.provider, endpoint: p.endpoint, apiKey: profileApiKey } });
   };
   const cancelEditProfile = () => {
     setIsEditing(false);
@@ -575,6 +671,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
 
   return (
     <div className="settings-page-container">
+      {/* ========== Basic Settings Group ========== */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          cursor: 'pointer',
+          userSelect: 'none',
+          marginTop: '8px',
+          marginBottom: '16px'
+        }}
+        onClick={() => toggleGroup('basicSettings')}
+      >
+        <span className={`codicon codicon-${expandedGroups.basicSettings ? 'chevron-down' : 'chevron-right'}`} />
+        <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--vscode-foreground)', opacity: 0.8 }}>Basic Settings</h2>
+      </div>
+      {expandedGroups.basicSettings && (
       <div className="settings-section">
         <h3>Features</h3>
         <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' }}>
@@ -656,15 +769,79 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
           </div>
         </div>
       </div>
+      )}
 
       <VSCodeDivider style={{ margin: '16px 0' }} />
 
-      {/* 기존 설정 섹션들 */}
-      {/* LLM 설정 섹션 추가 */}
-      <div className="settings-section" ref={llmSectionRef} id="llm-configuration">
-        <h3>LLM Configuration</h3>
-        <p>Configure your Large Language Model (LLM) provider and API settings.</p>
+      {/* ========== LLM Settings Group ========== */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          cursor: 'pointer',
+          userSelect: 'none',
+          marginTop: '8px',
+          marginBottom: '16px'
+        }}
+        onClick={() => toggleGroup('llmSettings')}
+      >
+        <span className={`codicon codicon-${expandedGroups.llmSettings ? 'chevron-down' : 'chevron-right'}`} />
+        <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--vscode-foreground)', opacity: 0.8 }}>LLM Settings</h2>
+      </div>
+      {expandedGroups.llmSettings && (
+      <>
+      {/* LLM Profiles 섹션 (맨 위) */}
+      <div className="settings-section">
+        <h3 style={{ marginTop: 0 }}>LLM Profiles</h3>
+        <p>Manage multiple LLM endpoints and quickly switch between them.</p>
 
+        <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '8px', marginBottom: '12px' }}>
+          <VSCodeButton onClick={startAddProfile}>New Profile</VSCodeButton>
+        </div>
+
+        <div className="profile-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {!profiles || profiles.length === 0 ? (
+            <div style={{ opacity: 0.8 }}>No profiles yet.</div>
+          ) : profiles.map(p => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--vscode-panel-border)', padding: 8, borderRadius: 6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <strong>{p.name}{activeProfileId === p.id ? ' (Active)' : ''}{editingProfileId === p.id ? ' (Editing)' : ''}</strong>
+                <span style={{ opacity: 0.8, fontSize: 12 }}>{p.provider}</span>
+                <span style={{ opacity: 0.8, fontSize: 12 }}>{p.model}</span>
+                <span style={{ opacity: 0.8, fontSize: 12 }}>{p.endpoint}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <VSCodeButton onClick={() => startEditProfile(p)} disabled={editingProfileId === p.id}>Edit</VSCodeButton>
+                <VSCodeButton onClick={() => activateProfile(p.id)} disabled={activeProfileId === p.id}>Activate</VSCodeButton>
+                <VSCodeButton appearance="secondary" onClick={() => removeProfile(p.id)}>Delete</VSCodeButton>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <VSCodeDivider style={{ margin: '24px 0' }} />
+
+      {/* LLM Configuration 섹션 */}
+      <div className="settings-section" ref={llmSectionRef} id="llm-configuration">
+        <div
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+          onClick={() => setShowLlmConfiguration(v => !v)}
+        >
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+            <span className={`codicon ${showLlmConfiguration ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
+            <span>LLM Configuration</span>
+          </h3>
+          <span style={{ fontSize: 11, opacity: 0.7 }}>
+            {showLlmConfiguration ? 'Hide' : 'Show'}
+          </span>
+        </div>
+        <p style={{ opacity: 0.8, fontSize: 12, marginTop: 4 }}>
+          Configure your Large Language Model (LLM) provider and API settings.
+        </p>
+        {showLlmConfiguration && (
+        <>
         <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
           <label htmlFor="profile-name" style={{ minWidth: '120px', marginRight: '10px' }}>Profile Name:</label>
           <VSCodeTextField
@@ -691,6 +868,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             <VSCodeOption value="google">Google</VSCodeOption>
             <VSCodeOption value="groq">Groq</VSCodeOption>
             <VSCodeOption value="openrouter">OpenRouter</VSCodeOption>
+            <VSCodeOption value="zai">Z.ai</VSCodeOption>
           </VSCodeDropdown>
         </div>
 
@@ -699,10 +877,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
           <div ref={modelComboRef} style={{ flexGrow: 1, position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
             <VSCodeButton
               appearance="secondary"
-              onClick={() => { 
-                vscodeService.postMessage({ command: 'requestModels' });
+              onClick={() => {
+                const provider = llmSettings.llmProvider;
+                const endpoint = llmSettings.endpoint;
+                const apiKey = llmSettings.apiKey;
+                vscodeService.postMessage({ command: 'requestModels', payload: { provider, endpoint, apiKey } });
+                // Also fetch max context for current model if not set
+                if (llmSettings.model && !llmSettings.modelMaxContext) {
+                  vscodeService.postMessage({ command: 'selectModel', payload: { model: llmSettings.model, apiKey } });
+                }
               }}
-              title="Refresh models"
+              title="Refresh models and fetch max context"
               aria-label="Refresh models"
             >
               <span className="codicon codicon-refresh" />
@@ -747,25 +932,44 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                     );
                   }
                   
-                  return models.map((m: string) => (
-                    <div 
-                      key={m} 
-                      className="suggestion-item" 
-                      onClick={() => { handleLlmSettingChange('model', m); setShowModelSuggestions(false); }} 
-                      style={{ 
-                        padding: '6px 12px', 
-                        cursor: 'pointer', 
-                        borderBottom: '1px solid var(--vscode-dropdown-border)', 
-                        color: 'var(--vscode-foreground)', 
-                        display: 'block',
-                        background: 'transparent'
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                    >
-                      <span className="suggestion-command">{m}</span>
-                    </div>
-                  ));
+                  return models.map((m) => {
+                    const modelId = m.id;
+                    const maxContext = m.maxContext;
+                    return (
+                      <div
+                        key={modelId}
+                        className="suggestion-item"
+                        onClick={() => {
+                          handleLlmSettingChange('model', modelId);
+                          setShowModelSuggestions(false);
+                          // Send selectModel command to fetch model info (max context) - use current input values
+                          vscodeService.postMessage({
+                            command: 'selectModel',
+                            payload: { model: modelId, apiKey: llmSettings.apiKey, endpoint: llmSettings.endpoint }
+                          });
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid var(--vscode-dropdown-border)',
+                          color: 'var(--vscode-foreground)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          background: 'transparent'
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--vscode-list-hoverBackground)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      >
+                        <span className="suggestion-command">{modelId}</span>
+                        {maxContext && (
+                          <span style={{ fontSize: '11px', opacity: 0.6, marginLeft: '8px' }}>
+                            {maxContext >= 1000 ? `${Math.round(maxContext / 1000)}k` : maxContext} ctx
+                          </span>
+                        )}
+                      </div>
+                    );
+                  });
                 })()}
               </div>
             )}
@@ -777,7 +981,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <label style={{ minWidth: '120px', fontSize: '13px' }}>Max Context:</label>
                 <VSCodeTextField
-                    value={!maxContextOverride ? '' : String(maxContextOverride)}
+                    value={maxContextOverride !== undefined ? String(maxContextOverride) : ''}
                     onInput={(e: any) => {
                         const val = parseInt(e.target.value);
                         const newVal = (isNaN(val) || val === 0) ? undefined : val;
@@ -862,323 +1066,362 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
           </div>
         </div>
 
-        {llmSettings.llmProvider === 'openai' && (
+        {llmSettings.llmProvider && (
           <ProviderSettings
-            apiKey={llmSettings.openaiApiKeys}
-            endpoint={llmSettings.openaiEndpoint}
-            onApiKeyChange={(value) => handleLlmSettingChange('openaiApiKeys', value)}
-            onEndpointChange={(value) => handleLlmSettingChange('openaiEndpoint', value)}
-            apiKeyPlaceholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            endpointPlaceholder="https://api.openai.com/v1"
-            apiKeyLabel="OpenAI API Keys (comma-separated):"
+            apiKey={llmSettings.apiKey}
+            endpoint={llmSettings.endpoint}
+            onApiKeyChange={(value) => handleLlmSettingChange('apiKey', value)}
+            onEndpointChange={(value) => handleLlmSettingChange('endpoint', value)}
+            apiKeyPlaceholder={
+              llmSettings.llmProvider === 'openai' ? 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' :
+              llmSettings.llmProvider === 'ollama' ? 'Optional Bearer token' :
+              llmSettings.llmProvider === 'anthropic' ? 'sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' :
+              llmSettings.llmProvider === 'xai' ? 'sk-xai-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' :
+              llmSettings.llmProvider === 'google' ? 'AIzaSyBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' :
+              llmSettings.llmProvider === 'groq' ? 'gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' :
+              llmSettings.llmProvider === 'openrouter' ? 'sk-or-v2-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' :
+              llmSettings.llmProvider === 'zai' ? 'your-zai-api-key' : ''
+            }
+            endpointPlaceholder={
+              llmSettings.llmProvider === 'openai' ? 'https://api.openai.com/v1' :
+              llmSettings.llmProvider === 'ollama' ? (llmSettings.ollamaIsCloud ? 'https://ollama.com' : 'http://localhost:11434') :
+              llmSettings.llmProvider === 'anthropic' ? 'https://api.anthropic.com/v1' :
+              llmSettings.llmProvider === 'xai' ? 'https://api.xai.com/v1' :
+              llmSettings.llmProvider === 'google' ? 'https://generativelanguage.googleapis.com/v1beta' :
+              llmSettings.llmProvider === 'groq' ? 'https://api.groq.com/openai/v1' :
+              llmSettings.llmProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' :
+              llmSettings.llmProvider === 'zai' ? (llmSettings.isCodingPlan ? 'https://api.z.ai/api/coding/paas/v4' : 'https://api.z.ai/api/paas/v4') : ''
+            }
+            apiKeyLabel={`${llmSettings.llmProvider?.charAt(0).toUpperCase()}${llmSettings.llmProvider?.slice(1)} API Key:`}
+            apiKeyHelpTooltip={llmSettings.llmProvider === 'ollama' ? 'optional' : undefined}
+            extraFields={
+              <>
+                {llmSettings.llmProvider === 'ollama' && (
+                  <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', justifyContent: 'space-between' }}>
+                    <VSCodeButton onClick={handleSaveLlmSettings}>Save LLM Settings</VSCodeButton>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <label htmlFor="ollama-is-cloud" style={{ marginRight: '5px' }}>Cloud Hosted?</label>
+                      <VSCodeCheckbox
+                        id="ollama-is-cloud"
+                        checked={llmSettings.ollamaIsCloud}
+                        onChange={(e: any) => handleLlmSettingChange('ollamaIsCloud', e.target.checked)}
+                      />
+                    </div>
+                  </div>
+                )}
+                {llmSettings.llmProvider === 'zai' && (
+                  <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', justifyContent: 'space-between' }}>
+                    <VSCodeButton onClick={handleSaveLlmSettings}>Save LLM Settings</VSCodeButton>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <label htmlFor="zai-is-coding-plan" style={{ marginRight: '5px' }}>Use Coding Plan API</label>
+                      <VSCodeCheckbox
+                        id="zai-is-coding-plan"
+                        checked={llmSettings.isCodingPlan}
+                        onChange={(e: any) => handleLlmSettingChange('isCodingPlan', e.target.checked)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            }
           />
         )}
 
-        {llmSettings.llmProvider === 'ollama' && (
-          <>
-            <ProviderSettings
-              apiKey={llmSettings.ollamaApiKey}
-              endpoint={llmSettings.ollamaEndpoint}
-              onApiKeyChange={(value) => handleLlmSettingChange('ollamaApiKey', value)}
-              onEndpointChange={(value) => handleLlmSettingChange('ollamaEndpoint', value)}
-              apiKeyPlaceholder="Optional Bearer token"
-              endpointPlaceholder={llmSettings.ollamaIsCloud ? 'https://ollama.com' : 'http://localhost:11434'}
-              apiKeyLabel="Ollama API Key:"
-              apiKeyHelpTooltip="optional"
-            />
-            <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', justifyContent: 'space-between' }}>
-              <VSCodeButton onClick={handleSaveLlmSettings}>Save LLM Settings</VSCodeButton>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <label htmlFor="ollama-is-cloud" style={{ marginRight: '5px' }}>Cloud Hosted?</label>
-                <VSCodeCheckbox
-                  id="ollama-is-cloud"
-                  checked={llmSettings.ollamaIsCloud}
-                  onChange={(e: any) => handleLlmSettingChange('ollamaIsCloud', e.target.checked)}
-                />
-              </div>
-            </div>
-          </>
-        )}
-
-        {llmSettings.llmProvider === 'anthropic' && (
-          <ProviderSettings
-            apiKey={llmSettings.anthropicApiKey}
-            endpoint={llmSettings.anthropicEndpoint}
-            onApiKeyChange={(value) => handleLlmSettingChange('anthropicApiKey', value)}
-            onEndpointChange={(value) => handleLlmSettingChange('anthropicEndpoint', value)}
-            apiKeyPlaceholder="sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            endpointPlaceholder="https://api.anthropic.com/v1"
-            apiKeyLabel="Anthropic API Key:"
-          />
-        )}
-
-        {llmSettings.llmProvider === 'xai' && (
-          <ProviderSettings
-            apiKey={llmSettings.xaiApiKey}
-            endpoint={llmSettings.xaiEndpoint}
-            onApiKeyChange={(value) => handleLlmSettingChange('xaiApiKey', value)}
-            onEndpointChange={(value) => handleLlmSettingChange('xaiEndpoint', value)}
-            apiKeyPlaceholder="sk-xai-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            endpointPlaceholder="https://api.xai.com/v1"
-            apiKeyLabel="xAI API Key:"
-          />
-        )}
-
-        {llmSettings.llmProvider === 'google' && (
-          <ProviderSettings
-            apiKey={llmSettings.googleApiKey}
-            endpoint={llmSettings.googleEndpoint}
-            onApiKeyChange={(value) => handleLlmSettingChange('googleApiKey', value)}
-            onEndpointChange={(value) => handleLlmSettingChange('googleEndpoint', value)}
-            apiKeyPlaceholder="AIzaSyBxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            endpointPlaceholder="https://generativelanguage.googleapis.com/v1beta"
-            apiKeyLabel="Google API Key:"
-          />
-        )}
-
-        {llmSettings.llmProvider === 'groq' && (
-          <ProviderSettings
-            apiKey={llmSettings.groqApiKey}
-            endpoint={llmSettings.groqEndpoint}
-            onApiKeyChange={(value) => handleLlmSettingChange('groqApiKey', value)}
-            onEndpointChange={(value) => handleLlmSettingChange('groqEndpoint', value)}
-            apiKeyPlaceholder="gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            endpointPlaceholder="https://api.groq.com/openai/v1"
-            apiKeyLabel="Groq API Key:"
-          />
-        )}
-
-        {llmSettings.llmProvider === 'openrouter' && (
-          <ProviderSettings
-            apiKey={llmSettings.openrouterApiKey}
-            endpoint={llmSettings.openrouterEndpoint}
-            onApiKeyChange={(value) => handleLlmSettingChange('openrouterApiKey', value)}
-            onEndpointChange={(value) => handleLlmSettingChange('openrouterEndpoint', value)}
-            apiKeyPlaceholder="sk-or-v2-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-            endpointPlaceholder="https://openrouter.ai/api/v1"
-            apiKeyLabel="OpenRouter API Key:"
-          />
-        )}
-
-
-
-        {llmSettings.llmProvider !== 'ollama' && (
+        {llmSettings.llmProvider !== 'ollama' && llmSettings.llmProvider !== 'zai' && (
           <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '16px' }}>
             <VSCodeButton onClick={handleSaveLlmSettings}>Save LLM Settings</VSCodeButton>
           </div>
+        )}
+        </>
         )}
       </div>
 
       <VSCodeDivider style={{ margin: '24px 0' }} />
 
-      <div className="settings-section">
-        <h3 style={{ marginTop: 0 }}>LLM Profiles</h3>
-        <p>Manage multiple LLM endpoints and quickly switch between them.</p>
-        {/* Inline edit form removed. Use LLM Configuration section for editing/creating profiles. */}
-
-        <div className="profile-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {profiles.length === 0 ? (
-            <div style={{ opacity: 0.8 }}>No profiles yet.</div>
-          ) : profiles.map(p => (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--vscode-panel-border)', padding: 8, borderRadius: 6 }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <strong>{p.name}{activeProfileId === p.id ? ' (Active)' : ''}</strong>
-                <span style={{ opacity: 0.8, fontSize: 12 }}>{p.provider}</span>
-                <span style={{ opacity: 0.8, fontSize: 12 }}>{p.model}</span>
-                <span style={{ opacity: 0.8, fontSize: 12 }}>{p.endpoint}</span>
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <VSCodeButton onClick={() => startEditProfile(p)}>Edit</VSCodeButton>
-                <VSCodeButton onClick={() => activateProfile(p.id)} disabled={activeProfileId === p.id}>Activate</VSCodeButton>
-                <VSCodeButton appearance="secondary" onClick={() => removeProfile(p.id)}>Delete</VSCodeButton>
-              </div>
-            </div>
-          ))}
+      {/* Per-Agent LLM Overrides 섹션 (별도) */}
+      <div className="settings-section" ref={perAgentSectionRef}>
+        <div
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+          onClick={() => setShowAgentOverrides(v => !v)}
+        >
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+            <span className={`codicon ${showAgentOverrides ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
+            <span>Per-Agent LLM Overrides</span>
+          </h3>
+          <span style={{ fontSize: 11, opacity: 0.7 }}>
+            {showAgentOverrides ? 'Hide' : 'Show'}
+          </span>
         </div>
-
-        <div className="settings-subsection" style={{ marginTop: '16px' }}>
-          <div
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-            onClick={() => setShowAgentOverrides(v => !v)}
-          >
-            <h4 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-              <span className={`codicon ${showAgentOverrides ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
-              <span>Per-Agent LLM Overrides (Advanced)</span>
-            </h4>
-            <span style={{ fontSize: 11, opacity: 0.7 }}>
-              {showAgentOverrides ? 'Hide overrides' : 'Show overrides'}
-            </span>
-          </div>
-          <p style={{ opacity: 0.8, fontSize: 12, marginTop: 4 }}>
-            Configure custom models for specific agents. When "Use Default" is checked, the agent will use the active profile&apos;s model.
-          </p>
-          {showAgentOverrides && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <VSCodeTextField
-                  value={profileName}
-                  onInput={(e: any) => setProfileName(e.target.value)}
-                  placeholder="Overrides profile name (e.g., Coding vs. Docs)"
-                  style={{ flexGrow: 1, minWidth: 220 }}
-                />
-                <VSCodeButton appearance="primary" onClick={handleSaveLlmSettings}>
-                  Save &amp; Activate Profile
-                </VSCodeButton>
-              </div>
-              <div style={{ fontSize: 11, opacity: 0.7 }}>
-                Active profile: {activeProfileId ? (() => {
-                  const profile = profiles.find(p => p.id === activeProfileId);
-                  const profileName = profile?.name || activeProfileId;
-                  const isPerAgentProfile = profile && (profile as any).agentOverrides && Array.isArray((profile as any).agentOverrides) && (profile as any).agentOverrides.length > 0;
-                  return isPerAgentProfile ? `${profileName} (Per-Agent)` : profileName;
-                })() : 'None'}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {mergedAgents.map(agent => {
-                  const agentName = agent.card?.name || agent.path || 'UnknownAgent';
-                  const override = agentOverridesDraft[agentName] || { useDefault: true, model: '', profileId: undefined, useExternal: false, externalUrl: '' };
-                  const effectiveProfileId = override.profileId || activeProfileId || '';
-                  const allModels: string[] = Array.from(new Set([
-                    ...profiles.map(p => (p.model || '').trim()).filter(m => !!m),
-                    ...(models || []).map((m: string) => (m || '').trim()).filter(m => !!m),
-                  ]));
-                  return (
-                    <div key={agentName} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600 }}>{agentName}</div>
-                        <div style={{ opacity: 0.7, fontSize: 11 }}>{agent.card?.description}</div>
-                        <div style={{ marginTop: 2 }}>
-                          <VSCodeCheckbox
-                            checked={override.useDefault}
-                            disabled={override.useExternal}
-                            onChange={(e: any) => {
-                              const checked = !!e.target.checked;
-                              setAgentOverridesDraft(prev => {
-                                const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
-                                return {
-                                  ...prev,
-                                  [agentName]: { ...prevEntry, useDefault: checked },
-                                };
-                              });
-                            }}
-                          >
-                            Use Default
-                          </VSCodeCheckbox>
-                        </div>
-                        <div style={{ marginTop: 2 }}>
-                            <VSCodeCheckbox
-                                checked={!!override.useExternal}
-                                onChange={(e: any) => {
-                                    const checked = !!e.target.checked;
-                                    setAgentOverridesDraft(prev => {
-                                        const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
-                                        return {
-                                            ...prev,
-                                            [agentName]: { ...prevEntry, useExternal: checked, useDefault: checked ? false : prevEntry.useDefault },
-                                        };
-                                    });
-                                }}
-                            >
-                                Override with External Agent
-                            </VSCodeCheckbox>
-                        </div>
-                        {override.useExternal && (
-                            <div style={{ marginTop: 4 }}>
-                                <VSCodeTextField
-                                    placeholder="Agent URL (e.g. http://localhost:8000/agent/foo/card)"
-                                    value={override.externalUrl || ''}
-                                    onInput={(e: any) => {
-                                        const val = e.target.value;
-                                        setAgentOverridesDraft(prev => {
-                                            const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
-                                            return {
-                                                ...prev,
-                                                [agentName]: { ...prevEntry, externalUrl: val },
-                                            };
-                                        });
-                                    }}
-                                    style={{ width: '100%' }}
-                                />
-                            </div>
-                        )}
+        <p style={{ opacity: 0.8, fontSize: 12, marginTop: 4 }}>
+          Create profiles with custom models for specific agents. When "Use Default" is checked, the agent will use the active profile&apos;s model.
+        </p>
+        {showAgentOverrides && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <VSCodeTextField
+                value={profileName}
+                onInput={(e: any) => setProfileName(e.target.value)}
+                placeholder="Profile name (e.g., Coding vs. Docs)"
+                style={{ flexGrow: 1, minWidth: 220 }}
+              />
+              <VSCodeButton appearance="primary" onClick={handleSavePerAgentProfile}>
+                Save &amp; Activate Profile
+              </VSCodeButton>
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.7 }}>
+              Active profile: {activeProfileId ? (() => {
+                const profile = profiles.find(p => p.id === activeProfileId);
+                const profileName = profile?.name || activeProfileId;
+                const isPerAgentProfile = profile && (profile as any).agentOverrides && Array.isArray((profile as any).agentOverrides) && (profile as any).agentOverrides.length > 0;
+                return isPerAgentProfile ? `${profileName} (Per-Agent)` : profileName;
+              })() : 'None'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {mergedAgents.map(agent => {
+                const agentName = agent.card?.name || agent.path || 'UnknownAgent';
+                const override = agentOverridesDraft[agentName] || { useDefault: true, model: '', profileId: undefined, useExternal: false, externalUrl: '' };
+                const effectiveProfileId = override.profileId || activeProfileId || '';
+                const allModels: string[] = Array.from(new Set([
+                  ...profiles.map(p => (p.model || '').trim()).filter(m => !!m),
+                  ...(models || []).map((m) => (m.id || '').trim()).filter(m => !!m),
+                ]));
+                return (
+                  <div key={agentName} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600 }}>{agentName}</div>
+                      <div style={{ opacity: 0.7, fontSize: 11 }}>{agent.card?.description}</div>
+                      <div style={{ marginTop: 2 }}>
+                        <VSCodeCheckbox
+                          checked={override.useDefault}
+                          disabled={override.useExternal}
+                          onChange={(e: any) => {
+                            const checked = !!e.target.checked;
+                            setAgentOverridesDraft(prev => {
+                              const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
+                              return {
+                                ...prev,
+                                [agentName]: { ...prevEntry, useDefault: checked },
+                              };
+                            });
+                          }}
+                        >
+                          Use Default
+                        </VSCodeCheckbox>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 240 }}>
-                        <div style={{ fontSize: 11, opacity: 0.7, alignSelf: 'stretch', textAlign: 'right' }}>Profile</div>
+                      <div style={{ marginTop: 2 }}>
+                          <VSCodeCheckbox
+                              checked={!!override.useExternal}
+                              onChange={(e: any) => {
+                                  const checked = !!e.target.checked;
+                                  setAgentOverridesDraft(prev => {
+                                      const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
+                                      return {
+                                          ...prev,
+                                          [agentName]: { ...prevEntry, useExternal: checked, useDefault: checked ? false : prevEntry.useDefault },
+                                      };
+                                  });
+                              }}
+                          >
+                              Override with External Agent
+                          </VSCodeCheckbox>
+                      </div>
+                      {override.useExternal && (
+                          <div style={{ marginTop: 4 }}>
+                              <VSCodeTextField
+                                  placeholder="Agent URL (e.g. http://localhost:8000/agent/foo/card)"
+                                  value={override.externalUrl || ''}
+                                  onInput={(e: any) => {
+                                      const val = e.target.value;
+                                      setAgentOverridesDraft(prev => {
+                                          const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
+                                          return {
+                                              ...prev,
+                                              [agentName]: { ...prevEntry, externalUrl: val },
+                                          };
+                                      });
+                                  }}
+                                  style={{ width: '100%' }}
+                              />
+                          </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, minWidth: 240 }}>
+                      <div style={{ fontSize: 11, opacity: 0.7, alignSelf: 'stretch', textAlign: 'right' }}>Profile</div>
+                      <VSCodeDropdown
+                        style={{ width: '100%' }}
+                        disabled={override.useDefault || override.useExternal || !profiles || profiles.length === 0}
+                        value={effectiveProfileId}
+                        onChange={(e: any) => {
+                          const value = (e.target.value || '').toString();
+                          setAgentOverridesDraft(prev => {
+                            const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
+                            return {
+                              ...prev,
+                              [agentName]: { ...prevEntry, profileId: value || undefined },
+                            };
+                          });
+                        }}
+                      >
+                        <VSCodeOption value="">
+                          {activeProfileId
+                            ? (() => {
+                              const profile = (profiles || []).find(p => p.id === activeProfileId);
+                              const profileName = profile?.name || activeProfileId;
+                              const isPerAgentProfile = profile && (profile as any).agentOverrides && Array.isArray((profile as any).agentOverrides) && (profile as any).agentOverrides.length > 0;
+                              return `Active Profile (${profileName}${isPerAgentProfile ? ' (Per-Agent)' : ''})`;
+                            })()
+                            : 'Active Profile'}
+                        </VSCodeOption>
+                        {(profiles || [])
+                          .filter(p => !(p as any).agentOverrides || !Array.isArray((p as any).agentOverrides) || (p as any).agentOverrides.length === 0)
+                          .map(p => (
+                          <VSCodeOption key={p.id} value={p.id}>{p.name}</VSCodeOption>
+                        ))}
+                      </VSCodeDropdown>
+                      <div style={{ fontSize: 11, opacity: 0.7, alignSelf: 'stretch', textAlign: 'right' }}>Model</div>
+                      {allModels.length > 0 ? (
                         <VSCodeDropdown
                           style={{ width: '100%' }}
-                          disabled={override.useDefault || override.useExternal || profiles.length === 0}
-                          value={effectiveProfileId}
+                          disabled={override.useDefault || override.useExternal}
+                          value={override.model || ''}
                           onChange={(e: any) => {
                             const value = (e.target.value || '').toString();
                             setAgentOverridesDraft(prev => {
                               const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
                               return {
                                 ...prev,
-                                [agentName]: { ...prevEntry, profileId: value || undefined },
+                                [agentName]: { ...prevEntry, useDefault: false, model: value },
                               };
                             });
                           }}
                         >
-                          <VSCodeOption value="">
-                            {activeProfileId
-                              ? `Active Profile (${profiles.find(p => p.id === activeProfileId)?.name || activeProfileId})`
-                              : 'Active Profile'}
-                          </VSCodeOption>
-                          {profiles
-                            .filter(p => !(p as any).agentOverrides || !Array.isArray((p as any).agentOverrides) || (p as any).agentOverrides.length === 0)
-                            .map(p => (
-                            <VSCodeOption key={p.id} value={p.id}>{p.name}</VSCodeOption>
+                          <VSCodeOption value="">(Use profile model)</VSCodeOption>
+                          {allModels.map(m => (
+                            <VSCodeOption key={m} value={m}>{m}</VSCodeOption>
                           ))}
                         </VSCodeDropdown>
-                        <div style={{ fontSize: 11, opacity: 0.7, alignSelf: 'stretch', textAlign: 'right' }}>Model</div>
-                        {allModels.length > 0 ? (
-                          <VSCodeDropdown
-                            style={{ width: '100%' }}
-                            disabled={override.useDefault || override.useExternal}
-                            value={override.model || ''}
-                            onChange={(e: any) => {
-                              const value = (e.target.value || '').toString();
-                              setAgentOverridesDraft(prev => {
-                                const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
-                                return {
-                                  ...prev,
-                                  [agentName]: { ...prevEntry, useDefault: false, model: value },
-                                };
-                              });
-                            }}
-                          >
-                            <VSCodeOption value="">(Use profile model)</VSCodeOption>
-                            {allModels.map(m => (
-                              <VSCodeOption key={m} value={m}>{m}</VSCodeOption>
-                            ))}
-                          </VSCodeDropdown>
-                        ) : (
-                          <VSCodeTextField
-                            style={{ width: '100%' }}
-                            disabled={override.useDefault || override.useExternal}
-                            value={override.model || ''}
-                            placeholder="Custom model name"
-                            onInput={(e: any) => {
-                              const value = (e.target.value || '').toString();
-                              setAgentOverridesDraft(prev => {
-                                const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
-                                return {
-                                  ...prev,
-                                  [agentName]: { ...prevEntry, useDefault: false, model: value },
-                                };
-                              });
-                            }}
-                          />
-                        )}
-                      </div>
+                      ) : (
+                        <VSCodeTextField
+                          style={{ width: '100%' }}
+                          disabled={override.useDefault || override.useExternal}
+                          value={override.model || ''}
+                          placeholder="Custom model name"
+                          onInput={(e: any) => {
+                            const value = (e.target.value || '').toString();
+                            setAgentOverridesDraft(prev => {
+                              const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
+                              return {
+                                ...prev,
+                                [agentName]: { ...prevEntry, useDefault: false, model: value },
+                              };
+                            });
+                          }}
+                        />
+                      )}
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </div>
+        )}
+      </div>
+      </>
+      )}
+
+      <VSCodeDivider style={{ margin: '24px 0' }} />
+
+      {/* ========== Web Search Settings Group ========== */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          cursor: 'pointer',
+          padding: '8px 0',
+          marginBottom: '16px'
+        }}
+        onClick={() => toggleGroup('webSearchSettings')}
+      >
+        <span className={`codicon codicon-${expandedGroups.webSearchSettings ? 'chevron-down' : 'chevron-right'}`} />
+        <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--vscode-foreground)', opacity: 0.8 }}>Web Search Settings</h2>
+      </div>
+      {expandedGroups.webSearchSettings && (
+      <div className="settings-section">
+        <h3>Web Search Configuration</h3>
+        <p>Configure your web search provider for AI-assisted research and information gathering.</p>
+
+        {/* Provider Selection */}
+        <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+          <label htmlFor="websearch-provider" style={{ minWidth: '140px', marginRight: '10px' }}>Provider:</label>
+          <VSCodeDropdown
+            id="websearch-provider"
+            style={{ minWidth: '200px' }}
+            value={webSearchProvider}
+            onChange={(e) => {
+              setWebSearchProvider(e.target.value as 'tavily' | 'google' | 'brave' | 'custom');
+              // Update default endpoint based on provider
+              const defaultEndpoints: Record<string, string> = {
+                tavily: 'https://api.tavily.com',
+                google: 'https://www.googleapis.com/customsearch/v1',
+                brave: 'https://api.search.brave.com',
+                custom: ''
+              };
+              setWebSearchEndpoint(defaultEndpoints[e.target.value] || '');
+            }}
+          >
+            <VSCodeOption value="tavily">Tavily (Recommended)</VSCodeOption>
+            <VSCodeOption value="google">Google Custom Search</VSCodeOption>
+            <VSCodeOption value="brave">Brave Search API</VSCodeOption>
+            <VSCodeOption value="custom">Custom Endpoint</VSCodeOption>
+          </VSCodeDropdown>
+        </div>
+
+        {/* API Key */}
+        <div className="setting-item" style={{ marginBottom: '10px' }}>
+          <label htmlFor="websearch-apikey" style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+            API Key
+            {webSearchProvider === 'tavily' && ' (Tavily)'}
+            {webSearchProvider === 'google' && ' (Google)'}
+            {webSearchProvider === 'brave' && ' (Brave)'}
+          </label>
+          <VSCodeTextField
+            id="websearch-apikey"
+            placeholder="Enter API key..."
+            value={webSearchApiKey}
+            onChange={(e) => setWebSearchApiKey(e.target.value)}
+            type="password"
+            style={{ width: '100%' }}
+          />
+        </div>
+
+        {/* Custom Endpoint (only for custom provider) */}
+        {webSearchProvider === 'custom' && (
+          <div className="setting-item" style={{ marginBottom: '10px' }}>
+            <label htmlFor="websearch-endpoint" style={{ display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+              Custom Endpoint URL
+            </label>
+            <VSCodeTextField
+              id="websearch-endpoint"
+              placeholder="https://api.example.com/v1"
+              value={webSearchEndpoint}
+              onChange={(e) => setWebSearchEndpoint(e.target.value)}
+              style={{ width: '100%' }}
+            />
+          </div>
+        )}
+
+        {/* Save Button */}
+        <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '16px' }}>
+          <VSCodeButton onClick={() => {
+            vscodeService.postMessage({
+              command: 'saveWebSearchSettings',
+              payload: { provider: webSearchProvider, apiKey: webSearchApiKey, endpoint: webSearchEndpoint }
+            });
+          }}>Save Web Search Settings</VSCodeButton>
         </div>
       </div>
+      )}
 
       <VSCodeDivider style={{ margin: '24px 0' }} />
 
@@ -1211,12 +1454,44 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             </div>
         </div>
         <p>Manage connections to Model Context Protocol settings via <code>.agent/mcp-servers.json</code>.</p>
-        
+
+        {/* Inline Add MCP Server Form */}
+        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <VSCodeTextField
+            value={mcpNameInput}
+            onInput={(e: any) => setMcpNameInput(e.target.value)}
+            placeholder="MCP Server Name"
+            style={{ width: '100%' }}
+          />
+          <VSCodeTextField
+            value={mcpCommandInput}
+            onInput={(e: any) => setMcpCommandInput(e.target.value)}
+            placeholder="Command (e.g., npx @modelcontextprotocol/server-filesystem)"
+            style={{ width: '100%' }}
+          />
+          <VSCodeTextField
+            value={mcpArgsInput}
+            onInput={(e: any) => setMcpArgsInput(e.target.value)}
+            placeholder="Args (e.g., /path/to/directory)"
+            style={{ width: '100%' }}
+          />
+          <VSCodeButton
+            className="add-button"
+            appearance="primary"
+            onClick={handleAddMcpServer}
+            style={{ height: '28px', width: 'fit-content' }}
+          >
+            <span className="codicon codicon-plus" style={{ marginRight: '4px' }}></span>
+            Add MCP Server
+          </VSCodeButton>
+        </div>
+
         <div style={{ marginTop: '12px' }}>
           <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/mcp-servers.json' })} style={{ height: '28px', whiteSpace: 'nowrap', marginBottom: '12px' }}>
             <span className="codicon codicon-json" style={{ marginRight: '6px' }}></span>
             Open mcp-servers.json
           </VSCodeButton>
+        </div>
 
           {configuredItems.mcp.length > 0 ? (
             <div>
@@ -1297,12 +1572,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             <div style={{ fontSize: '13px', opacity: 0.7 }}>No MCP servers configured.</div>
           )}
         </div>
-      </div>
 
-      <VSCodeDivider style={{ margin: '24px 0' }} />
-
-
-
+      {/* A2A 섹션 */}
       <div className="settings-section">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ marginTop: 0 }}>Agents to Agents (A2A)</h3>
@@ -1313,12 +1584,44 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             </div>
         </div>
         <p>Manage Agent-to-Agent (A2A) configurations via <code>.agent/a2a-servers.json</code>.</p>
-        
+
+        {/* Inline Add A2A Server Form */}
+        <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <VSCodeTextField
+            value={a2aNameInput}
+            onInput={(e: any) => setA2aNameInput(e.target.value)}
+            placeholder="A2A Agent Name"
+            style={{ width: '100%' }}
+          />
+          <VSCodeTextField
+            value={a2aUrlInput}
+            onInput={(e: any) => setA2aUrlInput(e.target.value)}
+            placeholder="URL (e.g., http://localhost:8000/agent/foo/card)"
+            style={{ width: '100%' }}
+          />
+          <VSCodeTextField
+            value={a2aDescInput}
+            onInput={(e: any) => setA2aDescInput(e.target.value)}
+            placeholder="Description"
+            style={{ width: '100%' }}
+          />
+          <VSCodeButton
+            className="add-button"
+            appearance="primary"
+            onClick={handleAddA2aServer}
+            style={{ height: '28px', width: 'fit-content' }}
+          >
+            <span className="codicon codicon-plus" style={{ marginRight: '4px' }}></span>
+            Add A2A Server
+          </VSCodeButton>
+        </div>
+
         <div style={{ marginTop: '12px' }}>
           <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/a2a-servers.json' })} style={{ height: '28px', whiteSpace: 'nowrap', marginBottom: '12px' }}>
             <span className="codicon codicon-json" style={{ marginRight: '6px' }}></span>
             Open a2a-servers.json
           </VSCodeButton>
+        </div>
 
           {configuredItems.a2a.filter(a => a !== 'SecurityAnalysisAgent').length > 0 ? (
             <div>
@@ -1364,7 +1667,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
              <div style={{ fontSize: '13px', opacity: 0.7 }}>No Agent to Agent configured.</div>
           )}
         </div>
-      </div>
 
       {/* Prompt Settings 섹션 */}
       <div className="settings-section">
