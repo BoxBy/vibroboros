@@ -1262,7 +1262,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                             ? `Active Profile (${(profiles || []).find(p => p.id === activeProfileId)?.name || activeProfileId})`
                             : 'Active Profile'}
                         </VSCodeOption>
-                        {(profiles || []).map(p => (
+                        {/* Only show regular profiles (not Per-Agent profiles with agentOverrides) */}
+                        {(profiles || []).filter(p => !Array.isArray(p.agentOverrides) || p.agentOverrides.length === 0).map(p => (
                           <VSCodeOption key={p.id} value={p.id}>{p.name}</VSCodeOption>
                         ))}
                       </VSCodeDropdown>
