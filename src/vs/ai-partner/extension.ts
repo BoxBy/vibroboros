@@ -23,10 +23,15 @@ import { DeveloperLogService } from './services/DeveloperLogService';
 import { A2AMessage } from './interfaces/A2AMessage';
 import { OrchestratorAgent } from './agents/OrchestratorAgent';
 import { SemanticModelService } from './services/SemanticModelService';
-import * as jsdiff from 'diff'; // jsdiff ?꾪룷??異붽?
+import { CompositionRoot, ServiceIdentifiers } from './di/CompositionRoot';
+import * as jsdiff from 'diff'; // jsdiff
 import { TerminalStreamService } from './services/TerminalStreamService';
 import type { Dirent } from 'fs';
 import { MCPHealthCheckService } from './services/MCPHealthCheckService';
+// Testing imports - commented out during DI refactoring
+// These will be re-enabled when needed
+// import { HLEEvaluator } from './testing/HLE/HLE_Evaluator';
+// import { MultiSWEEvaluator } from './testing/MultiSWE/MultiSWEEvaluator';
 
 async function createCheckpoint(label: string) {
     try {
@@ -64,10 +69,69 @@ function defaultContentForFile(filePath: string): string {
     if (fileName === 'a2a-servers.json') {
         return '[]\n';
     }
-    if (fileName === 'AGENT.md') {
-        return '# Orchestrator Agent Prompt\n\nDefine your custom instructions here.\n';
-    }
+    if (fileName === 'AGENTS.md') {
+        return `# Viper Agents Configuration
 
+## Available Specialist Agents
+
+This file defines the specialist agents available in the Viper system and their roles.
+
+### Specialist Agents
+
+- **CodeEditAgent**
+  - File editing and code modifications
+  - Supports: create, edit, delete, move, copy files
+  - Uses: FileWriteTool, FileReadTool, FileDeleteTool, etc.
+
+- **BrainstormAgent**
+  - Creative brainstorming and ideation
+  - Generates ideas and explores alternatives
+  - Uses: Web search, semantic search
+
+- **BugFixAgent**
+  - Bug analysis and fixing
+  - Analyzes code for potential issues
+  - Uses: File reading, code analysis tools
+
+- **TestGenerationAgent**
+  - Test case generation
+  - Creates unit tests and integration tests
+  - Uses: File writing tools
+
+- **DocumentationGenerationAgent**
+  - Documentation creation
+  - Generates documentation for code
+  - Uses: File writing tools
+
+- **ContextManagementAgent**
+  - Context and memory management
+  - Manages conversation context and memory
+  - Uses: MemoryTool, Context tools
+
+- **ReadmeGenerationAgent**
+  - README and documentation generation
+  - Creates project documentation
+  - Uses: File writing tools
+
+- **TaskDecompositionAgent**
+  - Task breakdown and planning
+  - Breaks down complex tasks
+  - Uses: Planning tools
+
+## Usage
+
+Agents are automatically selected by the Orchestrator based on the task requirements. You can also configure per-agent LLM settings in the Settings page.
+
+## Agent Configuration
+
+Each agent can have its own LLM configuration:
+- Model selection
+- Endpoint configuration
+- API key management
+
+See Settings > Per-Agent LLM Overrides for more details.
+`;
+    }
     const ext = (path.extname(filePath) || '').toLowerCase();
     switch (ext) {
         case '.py':
@@ -195,12 +259,15 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log('AI Partner extension is now active.');
     try {
 
-        // 1. Initialize Services
-        ConfigService.initialize(context);
-        const configService = ConfigService.getInstance();
-        const llmService = LLMService.getInstance();
-        const authService = AuthService.getInstance(configService);
-        const devLogService = DeveloperLogService.getInstance();
+        // 1. Initialize DI Container
+        CompositionRoot.initialize(context);
+
+        // 2. Get services from DI container
+        const configService = CompositionRoot.resolve(ServiceIdentifiers.ConfigService);
+        const llmService = CompositionRoot.resolve(ServiceIdentifiers.LLMService);
+        const devLogService = CompositionRoot.resolve(ServiceIdentifiers.Logger);
+        const semanticModelService = CompositionRoot.resolve<SemanticModelService>(ServiceIdentifiers.SemanticModelService);
+        const authService = AuthService.getInstance(configService); // AuthService still uses legacy pattern
         const diagnostics = vscode.languages.createDiagnosticCollection('viper');
 
         // Warm up MCP Health Check (background)
@@ -454,7 +521,7 @@ export async function activate(context: vscode.ExtensionContext) {
             try {
                 try { console.log('[Dispatch] Input message parts:', JSON.stringify((message as any).parts)); } catch {}
                 const recipientName = message.recipient ? message.recipient.replace('Agent', '').toLowerCase() : 'unknown';
-                
+
                 // Special handling for OrchestratorAgent (local delivery)
                 if (recipientName === 'orchestrator' && orchestratorInstance) {
                     devLogService.log(`[Dispatch] Routing message locally to OrchestratorAgent`);
@@ -465,11 +532,11 @@ export async function activate(context: vscode.ExtensionContext) {
                 // Check for dynamic overrides from Settings (Active Profile)
                 const activeProfile = configService.getActiveProfile();
                 const settingsOverride = activeProfile?.agentOverrides?.find((o: any) => o.agentName === message.recipient);
-                
+
                 let dynamicOverrideUrl = '';
                 if (settingsOverride?.useExternal && settingsOverride?.externalUrl) {
                     dynamicOverrideUrl = settingsOverride.externalUrl;
-                    if (!dynamicOverrideUrl.endsWith('/card')) { 
+                    if (!dynamicOverrideUrl.endsWith('/card')) {
                          dynamicOverrideUrl = dynamicOverrideUrl.endsWith('/') ? `${dynamicOverrideUrl}card` : `${dynamicOverrideUrl}/card`;
                     }
                 }
@@ -477,7 +544,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 // Prefer external override if present (Dynamic > Static JSON > Local)
                 const useLocal = !dynamicOverrideUrl && localAgentNames.has(recipientName);
                 const cardUrl = dynamicOverrideUrl || (useLocal ? `${agentBaseUrl}/agent/${recipientName}/card` : (a2aOverrides.get(recipientName) || `${agentBaseUrl}/agent/${recipientName}/card`));
-                
+
                 const decisionType = dynamicOverrideUrl ? 'dynamic-override' : (useLocal ? 'local' : (a2aOverrides.has(recipientName) ? 'static-override' : 'local-default'));
                 const routeNote = `[Dispatch] Route decision for '${recipientName}': ${decisionType} -> ${cardUrl}`;
                 devLogService.log(routeNote);
@@ -507,7 +574,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     if (!outgoing.kind) { outgoing.kind = 'message'; }
                     if (!outgoing.role) { outgoing.role = 'user'; }
                     try { console.log('[Dispatch] Outgoing message preview:', JSON.stringify(outgoing)); } catch {}
-                    
+
                     result = await client.sendMessage({ message: outgoing });
                     try { console.log(`[Dispatch] sendMessage resolved for ${message.recipient}`); } catch {}
                 } catch (e: any) {
@@ -520,7 +587,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     // Ensure minimum SDK shape
                     if (!outgoing.kind) { outgoing.kind = 'message'; }
                     if (!outgoing.role) { outgoing.role = 'user'; }
-                    
+
                     result = await client.sendMessage({ message: outgoing });
                     try { console.log(`[Dispatch] sendMessage resolved on retry for ${message.recipient}`); } catch {}
                 }
@@ -687,7 +754,7 @@ export async function activate(context: vscode.ExtensionContext) {
                                 if (processedPath.startsWith('/') && /^\/[a-zA-Z]:/.test(processedPath)) {
                                     processedPath = processedPath.substring(1);
                                 }
-                                
+
                                 // path.resolve handles absolute paths correctly by ignoring the root if the second arg is absolute
                                 const absolutePath = path.resolve(rootPath, processedPath);
                                 // Ensure directory exists
@@ -717,14 +784,14 @@ export async function activate(context: vscode.ExtensionContext) {
         // Semantic Graph Refresh Command
         context.subscriptions.push(
             vscode.commands.registerCommand('viper.refreshSemanticGraph', async () => {
-                await SemanticModelService.getInstance().refresh();
+                await semanticModelService.refresh();
             })
         );
-        
+
         // Semantic Graph Auto-Update on Save
         context.subscriptions.push(
             vscode.workspace.onDidSaveTextDocument(async (doc) => {
-                await SemanticModelService.getInstance().onFileSave(doc);
+                await semanticModelService.onFileSave(doc);
             })
         );
 
@@ -732,7 +799,7 @@ export async function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push(
             vscode.workspace.onDidCreateFiles(async (event) => {
                 for (const file of event.files) {
-                    await SemanticModelService.getInstance().onFileCreate(file);
+                    await semanticModelService.onFileCreate(file);
                 }
             })
         );
@@ -741,7 +808,7 @@ export async function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push(
             vscode.workspace.onDidDeleteFiles(async (event) => {
                 for (const file of event.files) {
-                    await SemanticModelService.getInstance().onFileDelete(file);
+                    await semanticModelService.onFileDelete(file);
                 }
             })
         );
@@ -786,6 +853,118 @@ export async function activate(context: vscode.ExtensionContext) {
                     vscode.window.showInformationMessage(`Restored checkpoint: ${pick}`);
                 } catch (e: any) {
                     vscode.window.showErrorMessage('Failed to restore checkpoint: ' + (e?.message || e));
+                }
+            })
+        );
+
+        // HLE Evaluation Command
+        context.subscriptions.push(
+            vscode.commands.registerCommand('viper.startEvaluation', async () => {
+                const datasetUrl = await vscode.window.showInputBox({
+                    prompt: 'Dataset URL or Name (e.g., cais/hle)',
+                    value: 'cais/hle'
+                });
+                if (!datasetUrl) {
+                    return;
+                }
+
+                const hfToken = await vscode.window.showInputBox({
+                    prompt: 'Hugging Face API Token (optional for public datasets)',
+                    password: true
+                });
+
+                const evaluator = new HLEEvaluator(context, orchestrator);
+                try {
+                    await evaluator.initialize(hfToken, datasetUrl);
+                    vscode.window.showInformationMessage('Starting HLE Evaluation...');
+                    await evaluator.runFullEvaluation();
+                } catch (e) {
+                    vscode.window.showErrorMessage(`Evaluation failed: ${e}`);
+                }
+            })
+        );
+
+        // Multi-SWE-bench Evaluation
+        context.subscriptions.push(
+            vscode.commands.registerCommand('viper.runMultiSWEBench', async () => {
+                try {
+                    const { MultiSWEEvaluator } = await import('./testing/MultiSWE/MultiSWEEvaluator');
+                    const evaluator = new MultiSWEEvaluator(context, orchestrator);
+                    await evaluator.initialize();
+                    const taskId = await vscode.window.showInputBox({
+                        prompt: 'Enter Instance ID (e.g. org__repo-123) or leave empty to pick from list',
+                        placeHolder: 'org__repo-123'
+                    });
+
+                    if (taskId) {
+                        try {
+                            // Execute Immediately (Benchmark Mode)
+                            // runTask handles setup internally.
+                            await evaluator.runTask(taskId, orchestrator);
+                            vscode.window.showInformationMessage(`Task ${taskId} setup. Reloading window to start...`);
+                        } catch (e) {
+                            vscode.window.showErrorMessage(`Multi-SWE-bench Error: ${e}`);
+                        }
+                    } else {
+                         vscode.window.showInformationMessage('No Task ID provided. Setup skipped.');
+                    }
+                } catch (e) {
+                    if ((e as any).code === 'MODULE_NOT_FOUND' || (e as any).message?.includes('MultiSWEEvaluator')) {
+                        vscode.window.showWarningMessage('Multi-SWE-bench module not found. Please add the MultiSWEEvaluator implementation.');
+                    } else {
+                        vscode.window.showErrorMessage(`Error: ${e}`);
+                    }
+                }
+            })
+        );
+
+        // Resume Multi-SWE if pending (async to avoid blocking activation)
+        import('./testing/MultiSWE/MultiSWEEvaluator')
+            .then(({ MultiSWEEvaluator }) => {
+                const sweValuator = new MultiSWEEvaluator(context, orchestrator);
+                sweValuator.checkForPendingTask().catch(e => console.error(e));
+            })
+            .catch(() => {
+                // MultiSWEEvaluator not available, silently skip
+                console.log('[viper] MultiSWEEvaluator not found, skipping pending task check');
+            });
+
+        // Grade Multi-SWE-bench
+        context.subscriptions.push(
+            vscode.commands.registerCommand('viper.gradeMultiSWEBench', async () => {
+                try {
+                    const { MultiSWEEvaluator } = await import('./testing/MultiSWE/MultiSWEEvaluator');
+                    const evaluator = new MultiSWEEvaluator(context, orchestrator);
+                    await evaluator.initialize();
+                    const taskId = await vscode.window.showInputBox({
+                        prompt: 'Enter Instance ID to Grade (e.g. org__repo-123)',
+                        placeHolder: 'org__repo-123'
+                    });
+
+                    if (taskId) {
+                       await evaluator.gradeTask(taskId);
+                    }
+                } catch (e) {
+                    if ((e as any).code === 'MODULE_NOT_FOUND' || (e as any).message?.includes('MultiSWEEvaluator')) {
+                        vscode.window.showWarningMessage('Multi-SWE-bench module not found. Please add the MultiSWEEvaluator implementation.');
+                    } else {
+                        vscode.window.showErrorMessage(`Grading failed: ${e}`);
+                    }
+                }
+            })
+        );
+
+        // API Key Setters
+        context.subscriptions.push(
+            vscode.commands.registerCommand('viper.setTavilyApiKey', async () => {
+                const key = await vscode.window.showInputBox({
+                    prompt: 'Enter Tavily API Key',
+                    placeHolder: 'tvly-...',
+                    password: true
+                });
+                if (key) {
+                    await configService.setTavilyApiKey(key);
+                    vscode.window.showInformationMessage('Tavily API Key updated.');
                 }
             })
         );
@@ -926,7 +1105,27 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Relay orchestrator->UI messages to the main webview
         orchestrator.onDidPostMessage(message => {
-            provider.postMessage(message);
+            // Check if this is already a UI command (has command property)
+            // If it's a raw data structure from Agent, transform it using Presentation Layer
+            if (message && typeof message === 'object' && 'command' in message) {
+                // Already a UI command, send directly
+                provider.postMessage(message);
+            } else {
+                // Raw agent data, transform using Presentation Layer
+                // Convert to A2A message format if needed
+                const { PresentationMessageFactory } = require('./messaging/PresentationMessageFactory');
+                const uiCommands = PresentationMessageFactory.transformToUI(message as any);
+                if (uiCommands) {
+                    if (Array.isArray(uiCommands)) {
+                        uiCommands.forEach(cmd => provider.postMessage(cmd));
+                    } else {
+                        provider.postMessage(uiCommands);
+                    }
+                } else {
+                    // Fallback: send as-is
+                    provider.postMessage(message);
+                }
+            }
         });
 
         // 7. Handle agent list updates for the UI

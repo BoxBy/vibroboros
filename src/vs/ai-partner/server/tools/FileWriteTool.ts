@@ -1,7 +1,5 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import * as vscode from 'vscode';
 import { z } from 'zod';
+import { FileOperationService } from './FileOperationService';
 
 const inputSchema = z.object({
     filePath: z.string().describe("The relative path for the file from the workspace root (e.g., 'src/new-feature.ts')."),
@@ -22,41 +20,14 @@ export function getFileWriteToolDefinition() {
             outputSchema: outputSchema,
         },
         handler: async ({ filePath, content }: z.infer<typeof inputSchema>): Promise<z.infer<typeof outputSchema>> => {
-            const workspaceFolders = vscode.workspace.workspaceFolders;
-            if (!workspaceFolders || workspaceFolders.length === 0) {
-                throw new Error('No workspace folder is open.');
-            }
-            const roots = workspaceFolders.map(f => path.normalize(f.uri.fsPath));
-            const baseRoot = roots[0];
-            const candidateAbs = path.normalize(path.isAbsolute(filePath) ? filePath : path.resolve(baseRoot, filePath));
+            const service = FileOperationService.getInstance();
+            const result = await service.writeFile(filePath, content);
 
-            // Allow only if inside ANY workspace root
-            const matchedRoot = roots.find(root => {
-                const rel = path.relative(root, candidateAbs);
-                return (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) || rel === '';
-            });
-            if (!matchedRoot) {
-                throw new Error('File path is outside of the allowed workspace directory.');
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to write file');
             }
 
-            try {
-                await fs.mkdir(path.dirname(candidateAbs), { recursive: true });
-                await fs.writeFile(candidateAbs, content, 'utf-8');
-                
-                // Trigger Semantic Graph Update (Centralized for all agents)
-                try {
-                    const { SemanticModelService } = require('../../services/SemanticModelService');
-                    if (SemanticModelService) {
-                        SemanticModelService.getInstance().updateFile(candidateAbs);
-                    }
-                } catch {}
-
-                const relForMsg = path.relative(matchedRoot, candidateAbs) || candidateAbs;
-                const message = `Successfully wrote content to ${relForMsg}`;
-                return { message };
-            } catch (error: any) {
-                throw new Error(`Failed to write file at path: ${filePath}. Error: ${error.message}`);
-            }
+            return { message: result.message };
         }
     };
 }

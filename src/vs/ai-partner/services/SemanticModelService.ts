@@ -3,58 +3,28 @@ import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import { DeveloperLogService } from './DeveloperLogService';
+import type { ISemanticModelService, CodeSymbol, Relation, SemanticGraph } from '../di/interfaces/ISemanticModelService';
 
-/**
- * Represents a symbol in the codebase (Function, Class, Method, etc.)
- */
-export interface CodeSymbol {
-    name: string;
-    kind: 'function' | 'class' | 'method' | 'variable' | 'interface';
-    fileUri: string;
-    range: { startLine: number; endLine: number };
-    selectionRange?: { startLine: number; endLine: number };
-    // Phase 3 Metadata
-    signature?: string;  // Full signature: "function add(a: number): number"
-    args?: string[];     // ["a: number"]
-    returnType?: string; // "number"
-    docString?: string;  // Summary comment
-}
-
-/**
- * Represents a relationship between files or symbols.
- */
-export interface Relation {
-    sourceUri: string;
-    targetUri: string;
-    type: 'import' | 'calls' | 'extends' | 'implements';
-}
-
-/**
- * The runtime graph data structure.
- */
-export interface SemanticGraph {
-    version: number;
-    lastUpdated: string;
-    files: { [uri: string]: { checkSum: string; symbols: CodeSymbol[] } };
-    relations: Relation[];
-}
+// Re-export types for backward compatibility
+export type { CodeSymbol, Relation, SemanticGraph };
 
 /**
  * SemanticModelService
- * 
+ *
  * Responsibilities:
  * 1. Scans the workspace to build a Semantic Graph of code.
  * 2. Incremental updates on file save.
  * 3. Persists graph to .agent/semantic_graph.json
  * 4. Syncs human-readable summary to .agent/folder_overview.md
+ *
+ * Now uses dependency injection instead of singleton pattern.
  */
-export class SemanticModelService {
+export class SemanticModelService implements ISemanticModelService {
     private static instance: SemanticModelService;
     private graph: SemanticGraph;
     private readonly AGENT_DIR = '.agent';
     private readonly GRAPH_FILE = 'semantic_graph.json';
     private readonly OVERVIEW_FILE = 'folder_overview.md';
-    // private workspaceRoot: string; // Removed: Use getter
     private developerLogService: DeveloperLogService;
     private statusBarItem: vscode.StatusBarItem;
     private watcher: vscode.FileSystemWatcher | undefined;
@@ -64,16 +34,19 @@ export class SemanticModelService {
         return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
     }
 
-    private constructor() {
-        // this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || ''; // Removed
-        this.developerLogService = DeveloperLogService.getInstance();
+    /**
+     * Constructor - uses dependency injection
+     * @param developerLogService Optional developer log service (will be instantiated if not provided)
+     */
+    constructor(developerLogService?: DeveloperLogService) {
+        this.developerLogService = developerLogService || DeveloperLogService.getInstance();
         this.graph = {
             version: 1,
             lastUpdated: new Date().toISOString(),
             files: {},
             relations: []
         };
-        
+
         // Initialize Status Bar (No Icon as requested)
         this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
         this.statusBarItem.text = "Viper: Indexing...";
@@ -85,11 +58,24 @@ export class SemanticModelService {
         });
     }
 
+    /**
+     * @deprecated Use dependency injection instead
+     * This method is kept for backward compatibility during migration
+     */
     public static getInstance(): SemanticModelService {
+        console.warn('[SemanticModelService] getInstance() is deprecated. Use DI instead.');
         if (!SemanticModelService.instance) {
             SemanticModelService.instance = new SemanticModelService();
         }
         return SemanticModelService.instance;
+    }
+
+    /**
+     * Internal setter for the singleton instance (used by DI container)
+     * @internal
+     */
+    public static setInstance(instance: SemanticModelService): void {
+        SemanticModelService.instance = instance;
     }
 
     private async initialize() {
@@ -102,7 +88,10 @@ export class SemanticModelService {
             this.watcher.onDidCreate(uri => this.onFileCreate(uri));
             this.watcher.onDidChange(uri => {
                  // Debounce? onFileSave is usually better for 'change' content, but watcher helps for external changes
-                 vscode.workspace.openTextDocument(uri).then(doc => this.onFileSave(doc));
+                 if (this.shouldExclude(uri.fsPath)) return;
+                 vscode.workspace.openTextDocument(uri).then(doc => this.onFileSave(doc), err => {
+                     // Ignore open errors (binary files, etc that slipped through)
+                 });
             });
             this.watcher.onDidDelete(uri => this.onFileDelete(uri));
             
@@ -267,9 +256,23 @@ export class SemanticModelService {
             const relativePath = path.relative(this.workspaceRoot, filePath).replace(/\\/g, '/');
 
             const content = await fsPromises.readFile(filePath, 'utf-8');
-            
-            // 1. Extract Symbols
-            const symbols = this.extractSymbols(content, relativePath, filePath);
+
+            // 1. Extract Symbols - Try Language Server first, fallback to regex
+            let symbols: CodeSymbol[] = [];
+
+            try {
+                const uri = vscode.Uri.file(filePath);
+                const document = await vscode.workspace.openTextDocument(uri);
+                symbols = await this.extractSymbolsWithLanguageServer(document);
+            } catch (e) {
+                // Language Server failed, use regex fallback
+                this.developerLogService.log(`[SemanticModel] Language Server failed for ${relativePath}, using regex fallback`);
+            }
+
+            // Fallback to regex if no symbols found
+            if (symbols.length === 0) {
+                symbols = this.extractSymbolsWithBraceMatching(content, relativePath);
+            }
             
             // 2. Extract & Resolve Imports (Phase 2)
             const rawImports = this.extractImports(content, filePath);
@@ -816,23 +819,275 @@ export class SemanticModelService {
         }
     }
 
+    /**
+     * Extract symbols using LSP (Language Server Protocol) for accurate line ranges
+     */
+    private async extractSymbolsWithLanguageServer(document: vscode.TextDocument): Promise<CodeSymbol[]> {
+        const symbols: CodeSymbol[] = [];
+
+        try {
+            const documentSymbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+                'vscode.executeDocumentSymbolProvider',
+                document.uri
+            );
+
+            if (!documentSymbols) {
+                return symbols;
+            }
+
+            const processSymbol = (symbol: vscode.DocumentSymbol) => {
+                const codeSymbol: CodeSymbol = {
+                    name: symbol.name,
+                    kind: this.mapSymbolKind(symbol.kind),
+                    fileUri: document.uri.fsPath,
+                    range: {
+                        startLine: symbol.range.start.line + 1, // Convert to 1-based
+                        endLine: symbol.range.end.line + 1
+                    },
+                    selectionRange: {
+                        startLine: symbol.selectionRange.start.line + 1,
+                        endLine: symbol.selectionRange.end.line + 1
+                    },
+                    detail: symbol.detail || undefined
+                };
+
+                // Try to extract signature from detail or children
+                if (symbol.detail) {
+                    codeSymbol.signature = symbol.detail;
+                    codeSymbol.docString = symbol.detail;
+                }
+
+                symbols.push(codeSymbol);
+
+                // Process children recursively
+                if (symbol.children) {
+                    for (const child of symbol.children) {
+                        processSymbol(child);
+                    }
+                }
+            };
+
+            for (const symbol of documentSymbols) {
+                processSymbol(symbol);
+            }
+
+        } catch (error) {
+            this.developerLogService.log(`[SemanticModel] LSP extraction failed: ${error}`);
+        }
+
+        return symbols;
+    }
+
+    /**
+     * Extract symbols using brace matching for languages without LSP support
+     */
+    private extractSymbolsWithBraceMatching(content: string, relativePath: string): CodeSymbol[] {
+        const symbols: CodeSymbol[] = [];
+        const lines = content.split('\n');
+
+        // Find class/function definitions with brace matching to calculate endLine
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmedLine = line.trim();
+
+            // Skip comments and empty lines
+            if (trimmedLine.startsWith('//') || trimmedLine.startsWith('/*') || trimmedLine.startsWith('*') || trimmedLine.length === 0) {
+                continue;
+            }
+
+            // Match class/interface definitions
+            const classMatch = trimmedLine.match(/(?:class|interface|struct|trait|enum)\s+([a-zA-Z0-9_]+)/);
+            if (classMatch) {
+                const endLine = this.findMatchingBrace(lines, i);
+                symbols.push({
+                    name: classMatch[1],
+                    kind: 'class',
+                    fileUri: relativePath,
+                    range: {
+                        startLine: i + 1,
+                        endLine: endLine + 1
+                    },
+                    signature: `class ${classMatch[1]}`
+                });
+                continue;
+            }
+
+            // Match function/method definitions
+            const functionMatch = trimmedLine.match(
+                /(?:export\s+)?(?:async\s+)?(?:function\s+)?([a-zA-Z0-9_]+)\s*\(([^)]*)\)(?:\s*:\s*([^{]+))?/
+            );
+            if (functionMatch && !trimmedLine.includes('class')) {
+                const endLine = this.findMatchingBrace(lines, i);
+                const name = functionMatch[1];
+                const args = functionMatch[2];
+                const returnType = functionMatch[3] ? functionMatch[3].trim() : undefined;
+
+                symbols.push({
+                    name: name,
+                    kind: 'function',
+                    fileUri: relativePath,
+                    range: {
+                        startLine: i + 1,
+                        endLine: endLine + 1
+                    },
+                    args: args ? args.split(',').map(a => a.trim()).filter(a => a.length > 0) : [],
+                    returnType: returnType,
+                    signature: `${name}(${args})${returnType ? ': ' + returnType : ''}`
+                });
+            }
+
+            // Match arrow functions
+            const arrowMatch = trimmedLine.match(
+                /(?:const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*=>/
+            );
+            if (arrowMatch) {
+                const endLine = this.findMatchingBrace(lines, i);
+                symbols.push({
+                    name: arrowMatch[1],
+                    kind: 'function',
+                    fileUri: relativePath,
+                    range: {
+                        startLine: i + 1,
+                        endLine: endLine + 1
+                    },
+                    args: arrowMatch[2] ? arrowMatch[2].split(',').map(a => a.trim()).filter(a => a.length > 0) : [],
+                    signature: `${arrowMatch[1]}(${arrowMatch[2]})`
+                });
+            }
+
+            // Match Python functions
+            const pythonMatch = trimmedLine.match(/^\s*def\s+([a-zA-Z0-9_]+)\s*\(([^)]*)\)\s*(?:->\s*([^:]+))?:/);
+            if (pythonMatch) {
+                const endLine = this.findPythonBlockEnd(lines, i);
+                const name = pythonMatch[1];
+                const args = pythonMatch[2];
+                const returnType = pythonMatch[3] ? pythonMatch[3].trim() : undefined;
+
+                symbols.push({
+                    name: name,
+                    kind: 'function',
+                    fileUri: relativePath,
+                    range: {
+                        startLine: i + 1,
+                        endLine: endLine + 1
+                    },
+                    args: args ? args.split(',').map(a => a.trim()).filter(a => a.length > 0) : [],
+                    returnType: returnType,
+                    signature: `def ${name}(${args})${returnType ? ' -> ' + returnType : ''}`
+                });
+            }
+
+            // Match Go functions
+            const goMatch = trimmedLine.match(/^func\s+(?:\([^)]*\)\s+)?([a-zA-Z0-9_]+)\s*\(([^)]*)\)\s*(?:[^{]+)?/);
+            if (goMatch) {
+                const endLine = this.findMatchingBrace(lines, i);
+                const name = goMatch[1];
+                const args = goMatch[2];
+
+                symbols.push({
+                    name: name,
+                    kind: 'function',
+                    fileUri: relativePath,
+                    range: {
+                        startLine: i + 1,
+                        endLine: endLine + 1
+                    },
+                    args: args ? args.split(',').map(a => a.trim()).filter(a => a.length > 0) : [],
+                    signature: `func ${name}(${args})`
+                });
+            }
+        }
+
+        return symbols;
+    }
+
+    /**
+     * Find the matching closing brace to determine the end line of a block
+     */
+    private findMatchingBrace(lines: string[], startLine: number): number {
+        let braceCount = 0;
+        let foundOpeningBrace = false;
+
+        for (let i = startLine; i < lines.length; i++) {
+            const line = lines[i];
+
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                if (char === '{') {
+                    braceCount++;
+                    foundOpeningBrace = true;
+                } else if (char === '}') {
+                    braceCount--;
+                    if (braceCount === 0 && foundOpeningBrace) {
+                        return i;
+                    }
+                }
+            }
+        }
+
+        // If we can't find a matching brace, return the next line or the last line
+        return Math.min(startLine + 1, lines.length - 1);
+    }
+
+    /**
+     * Find the end of a Python block based on indentation
+     */
+    private findPythonBlockEnd(lines: string[], startLine: number): number {
+        const startIndent = lines[startLine].search(/\S/);
+
+        for (let i = startLine + 1; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.trim().length === 0) {
+                continue; // Skip empty lines
+            }
+
+            const indent = line.search(/\S/);
+            if (indent <= startIndent) {
+                return i - 1;
+            }
+        }
+
+        return lines.length - 1;
+    }
+
+    /**
+     * Map VS Code symbol kind to our CodeSymbol kind
+     */
+    private mapSymbolKind(kind: vscode.SymbolKind): 'function' | 'class' | 'method' | 'variable' | 'interface' {
+        switch (kind) {
+            case vscode.SymbolKind.Function:
+                return 'function';
+            case vscode.SymbolKind.Class:
+                return 'class';
+            case vscode.SymbolKind.Method:
+                return 'method';
+            case vscode.SymbolKind.Variable:
+            case vscode.SymbolKind.Constant:
+                return 'variable';
+            case vscode.SymbolKind.Interface:
+                return 'interface';
+            default:
+                return 'function';
+        }
+    }
+
     private extractSymbols(content: string, relativePath: string, _fullPath: string): CodeSymbol[] {
         const symbols: CodeSymbol[] = [];
         const lines = content.split('\n');
-        
+
         // Phase 3: Enhanced Regex Patterns
         // We attempt to capture: (Declaration) (Name) (Args) (ReturnType)
         const patterns = [
             // TS/JS/C#/Java Function: public async function name(...)
-            { 
+            {
                 regex: /((?:export|async|public|private|protected|static|void|int|string|val|var|function)\s+)+([a-zA-Z0-9_]+)\s*\(([^)]*)\)(?:\s*:\s*([^{]+))?/g,
-                kind: 'function' 
+                kind: 'function'
             },
             // TS/JS Arrow: const foo = (args) => ...
-            { 
-                regex: /(?:const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*=>/g, 
+            {
+                regex: /(?:const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*=>/g,
                 kind: 'function',
-                isArrow: true 
+                isArrow: true
             },
             // Python: def foo(args):
             {
@@ -847,9 +1102,9 @@ export class SemanticModelService {
                 lang: 'go'
             },
             // Class/Struct (Generic)
-            { 
-                regex: /(?:class|struct|interface|trait|enum)\s+([a-zA-Z0-9_]+)/g, 
-                kind: 'class' 
+            {
+                regex: /(?:class|struct|interface|trait|enum)\s+([a-zA-Z0-9_]+)/g,
+                kind: 'class'
             }
         ];
 
@@ -857,10 +1112,10 @@ export class SemanticModelService {
         // However, for simplicity and speed, we process line-by-line or small blocks.
         // The previous implementation was line-by-line which is safer for huge files but misses multi-line args.
         // For Phase 3, we stick to single-line signature assumption for performance, or small-window lookahead.
-        
+
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            
+
             // Basic DocString Extraction (Look behind)
             let docString = undefined;
             if (i > 0) {
@@ -882,12 +1137,12 @@ export class SemanticModelService {
                 }
 
                 // Simplifying: mostly standard regex against single line string
-                const safeRegex = new RegExp(p.regex.source, p.regex.flags.replace('g', '')); 
-                
+                const safeRegex = new RegExp(p.regex.source, p.regex.flags.replace('g', ''));
+
                 const match = safeRegex.exec(line);
                 if (match !== null) {
                     let name: string = '', argsStr: string = '', returnTypeStr: string | undefined = undefined, fullSig: string = '';
-                    
+
                     if (p.kind === 'class') {
                         name = match[1];
                         fullSig = `class ${name}`;
@@ -915,11 +1170,19 @@ export class SemanticModelService {
 
                     const args = argsStr ? argsStr.split(',').map((a: string) => a.trim()).filter((a: string) => a.length > 0) : [];
 
+                    // Calculate endLine using brace matching for accurate range
+                    let endLine = i + 1;
+                    if (p.lang === 'python') {
+                        endLine = this.findPythonBlockEnd(lines, i) + 1;
+                    } else {
+                        endLine = this.findMatchingBrace(lines, i) + 1;
+                    }
+
                     symbols.push({
                         name: name,
                         kind: p.kind as any,
                         fileUri: relativePath,
-                        range: { startLine: i + 1, endLine: i + 1 },
+                        range: { startLine: i + 1, endLine: endLine },
                         args: args,
                         returnType: returnTypeStr,
                         signature: fullSig,

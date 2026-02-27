@@ -1,56 +1,68 @@
 import * as vscode from 'vscode';
 import { EventEmitter } from 'events';
+import type { ISessionManager, ChatMessage, TaskItem, SessionMetadata, SessionState } from '../di/interfaces/ISessionManager';
 
-// Types ported from OrchestratorAgent or shared definitions
-export interface ChatMessage {
-    author: 'user' | 'agent';
-    content: any[];
-    thought?: string;
-    senderName?: string;
-    timestamp?: string;
-    kind?: 'progress' | 'normal' | 'uroboros-proposal' | 'task' | 'codeEditFile' | 'tool_trace';
-    messageId?: string;
-    filePath?: string;
-    title?: string;
-    suggestionType?: string;
-    lintSummary?: string;
-    buttons?: Array<{ label: string; command: string; payload?: any; style?: 'primary' | 'secondary' | 'danger' }>;
-}
+// Re-export types for backward compatibility
+export type { ChatMessage, TaskItem, SessionMetadata, SessionState };
 
-export interface SessionMetadata {
-    id: string;
-    title: string;
-    createdAt: string;
-    messageCount: number;
-}
-
-export interface SessionState {
-    id: string;
-    messages: ChatMessage[];
-    tasks: any[]; 
-    activeAgent?: string;
-    isWorking: boolean;
-    llmHistory: any[]; // LlmMessage type
-}
-
-export class SessionManager extends EventEmitter {
+/**
+ * Session Manager
+ *
+ * Manages chat sessions, messages, and tasks.
+ * Extends EventEmitter to emit session change events.
+ * Now uses dependency injection instead of static singleton pattern.
+ *
+ * Note: SessionManager still maintains a singleton pattern via the instance
+ * property set in constructor, but this is managed through the DI container.
+ */
+export class SessionManager extends EventEmitter implements ISessionManager {
     private static readonly ACTIVE_SESSION_ID_KEY = 'aiPartnerActiveChatSessionId';
     private static readonly SESSIONS_INDEX_KEY = 'aiPartnerChatSessionsIndex';
 
     private static instance: SessionManager;
     private activeSessionId: string | undefined;
     private state: SessionState | undefined;
+    private sessionCreationAllowed: boolean = true; // Controls whether new sessions can be created
 
     constructor(private memento: vscode.Memento) {
         super();
+        // Set the singleton instance (required for backward compatibility)
         SessionManager.instance = this;
     }
 
+    /**
+     * @deprecated Use dependency injection instead
+     * This method is kept for backward compatibility during migration
+     */
     public static getInstance(): SessionManager {
         if (!SessionManager.instance) {
-            throw new Error('SessionManager not initialized');
+            throw new Error('SessionManager not initialized. Use DI to create an instance.');
         }
         return SessionManager.instance;
+    }
+
+    /**
+     * Internal setter for the singleton instance (used by DI container)
+     * @internal
+     */
+    public static setInstance(instance: SessionManager): void {
+        SessionManager.instance = instance;
+    }
+
+    /**
+     * Allow or disallow session creation.
+     * When false, createNewSession() and addMessage() will throw errors.
+     * This is used to ensure only WelcomeScreen can create new sessions.
+     */
+    public setSessionCreationAllowed(allowed: boolean): void {
+        this.sessionCreationAllowed = allowed;
+    }
+
+    /**
+     * Check if session creation is currently allowed.
+     */
+    public isSessionCreationAllowed(): boolean {
+        return this.sessionCreationAllowed;
     }
 
     public async initialize(): Promise<void> {
@@ -69,10 +81,15 @@ export class SessionManager extends EventEmitter {
     }
 
     public async createNewSession(initialTitle?: string): Promise<string> {
+        // Check if session creation is allowed
+        if (!this.sessionCreationAllowed) {
+            throw new Error('Session creation is not allowed at this time. Only WelcomeScreen can create new sessions.');
+        }
+
         const now = new Date();
         const id = `session-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
         const title = initialTitle || `Chat ${now.toLocaleString()}`;
-        
+
         const metadata: SessionMetadata = { id, title, createdAt: now.toISOString(), messageCount: 0 };
         const sessions = this.memento.get<SessionMetadata[]>(SessionManager.SESSIONS_INDEX_KEY, []) || [];
         sessions.push(metadata);
@@ -88,7 +105,7 @@ export class SessionManager extends EventEmitter {
         };
         await this.persistSessionState(id, newState);
         await this.switchSession(id);
-        
+
         return id;
     }
 
@@ -152,15 +169,42 @@ export class SessionManager extends EventEmitter {
         this.emit('stateChanged', this.state);
     }
 
-    public async updateTaskStatus(taskId: string, status: 'completed' | 'pending' | 'failed'): Promise<void> {
+    public async updateTaskStatus(taskId: string, status: 'completed' | 'pending' | 'failed' | 'in_progress'): Promise<void> {
         if (!this.state) { return; }
-        const task = this.state.tasks.find((t: any) => t.id === taskId);
+        const task = this.state.tasks.find((t: TaskItem) => t.id === taskId);
         if (task) {
             task.status = status;
+            if (status === 'completed') {
+                task.completedAt = new Date().toISOString();
+            }
             await this.saveCurrentState();
             this.emit('taskUpdated', task);
             this.emit('stateChanged', this.state);
         }
+    }
+
+    public async addTasks(tasks: Array<{ id?: string; description: string; status?: TaskItem['status'] }>): Promise<void> {
+        if (!this.state) { return; }
+        const now = new Date().toISOString();
+        const newTasks: TaskItem[] = tasks.map(t => ({
+            id: t.id || `task-${now}-${Math.random().toString(36).slice(2, 8)}`,
+            description: t.description,
+            status: t.status || 'pending',
+            createdAt: now
+        }));
+
+        // Merge with existing tasks (avoid duplicates by description)
+        const existingDescriptions = new Set(this.state.tasks.map(t => t.description));
+        const uniqueNewTasks = newTasks.filter(t => !existingDescriptions.has(t.description));
+
+        this.state.tasks = [...this.state.tasks, ...uniqueNewTasks];
+        await this.saveCurrentState();
+        this.emit('tasksUpdated', this.state.tasks);
+        this.emit('stateChanged', this.state);
+    }
+
+    public getTasks(): TaskItem[] {
+        return this.state?.tasks || [];
     }
 
     public getSessions(): SessionMetadata[] {

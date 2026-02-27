@@ -1,7 +1,5 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import * as vscode from 'vscode';
 import { z } from 'zod';
+import { FileOperationService } from './FileOperationService';
 
 const inputSchema = z.object({
     filePath: z.string().describe("Relative path from workspace root"),
@@ -23,25 +21,17 @@ export function getFileAppendToolDefinition() {
             outputSchema,
         },
         handler: async ({ filePath, content, createIfMissing }: z.infer<typeof inputSchema>): Promise<z.infer<typeof outputSchema>> => {
-            const workspaceFolders = vscode.workspace.workspaceFolders;
-            if (!workspaceFolders) { throw new Error('No workspace folder is open.'); }
-            const root = workspaceFolders[0].uri.fsPath;
-            const abs = path.resolve(root, filePath);
-            if (!abs.startsWith(root)) { throw new Error('Path escapes workspace.'); }
+            const service = FileOperationService.getInstance();
+            const result = await service.appendFile(filePath, content, {
+                createDirectories: true,
+                updateSemanticGraph: true
+            });
 
-            try {
-                await fs.mkdir(path.dirname(abs), { recursive: true });
-                if (createIfMissing) {
-                    await fs.appendFile(abs, content, 'utf-8');
-                } else {
-                    // Ensure exists
-                    await fs.access(abs);
-                    await fs.appendFile(abs, content, 'utf-8');
-                }
-                return { bytesAppended: Buffer.byteLength(content, 'utf-8') };
-            } catch (e: any) {
-                throw new Error(`Append failed: ${e.message}`);
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to append file');
             }
+
+            return { bytesAppended: Buffer.byteLength(content, 'utf-8') };
         }
     };
 }

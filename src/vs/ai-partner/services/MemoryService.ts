@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { IMemoryService, UserPreferences } from '../di/interfaces/IMemoryService';
 
 export interface UserPreferences {
     language: string;
@@ -13,15 +14,16 @@ export interface UserPreferences {
  * MemoryService
  * Stores and retrieves user preferences and long-term memory.
  * Persists to .agent/memory.json
+ * Now uses dependency injection
  */
-export class MemoryService {
+export class MemoryService implements IMemoryService {
     private static instance: MemoryService;
     private preferences: UserPreferences;
     private readonly MEMORY_FILE = '.agent/memory.json';
     private sessionStartTime: string;
     private workspaceRoot: string;
 
-    private constructor() {
+    constructor() {
         this.workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         this.sessionStartTime = new Date().toLocaleString();
         this.preferences = {
@@ -37,11 +39,23 @@ export class MemoryService {
         return this.sessionStartTime;
     }
 
+    /**
+     * @deprecated Use dependency injection instead
+     */
     public static getInstance(): MemoryService {
+        console.warn('[MemoryService] getInstance() is deprecated. Use DI instead.');
         if (!MemoryService.instance) {
             MemoryService.instance = new MemoryService();
         }
         return MemoryService.instance;
+    }
+
+    /**
+     * Internal setter for the singleton instance (used by DI container)
+     * @internal
+     */
+    public static setInstance(instance: MemoryService): void {
+        MemoryService.instance = instance;
     }
 
     private getMemoryPath(): string {
@@ -77,6 +91,11 @@ export class MemoryService {
 
     public async getPreferences(): Promise<UserPreferences> {
         return this.preferences;
+    }
+
+    public async savePreferences(preferences: UserPreferences): Promise<void> {
+        this.preferences = preferences;
+        await this.saveMemory();
     }
 
     public async updatePreferences(newPrefs: Partial<UserPreferences>) {

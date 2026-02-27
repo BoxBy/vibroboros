@@ -57,6 +57,7 @@ async function listOneRoot(root: string, relDir: string, opts: z.infer<typeof in
     const stat = await fs.stat(absPath).catch(() => undefined);
     const entry = { name, path: rel, type: isDir ? 'dir' as const : 'file' as const, size: stat?.size, mtimeMs: stat?.mtimeMs, rootIndex };
     const pathForMatch = rel.replace(/\\/g, '/');
+    if (pathForMatch.startsWith('.agent') || pathForMatch.includes('/.agent') || pathForMatch.startsWith('.git') || pathForMatch.includes('/.git')) { return; }
     if (patternRe && !patternRe.test(pathForMatch)) { return; }
     if (ignoreRes.some(re => re.test(pathForMatch))) { return; }
     out.push(entry);
@@ -78,6 +79,9 @@ async function listOneRoot(root: string, relDir: string, opts: z.infer<typeof in
             continue;
           }
         } else if (d.isDirectory()) {
+          // Strict Block
+          if (d.name === '.agent' || d.name === '.git') { continue; }
+
           await enqueue(p, d.name, true);
           if (opts.recursive) { await walk(p); }
         } else {

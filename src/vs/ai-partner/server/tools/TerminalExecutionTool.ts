@@ -26,10 +26,18 @@ export function getTerminalExecutionToolDefinition() {
             const forbidden = [/rm\s+-rf\s+\//i, /shutdown/i, /format\s+/i, /mkfs/i, /reg\s+(add|delete)/i, /sudo\s+/i];
             if (forbidden.some(r => r.test(command))) { throw new Error('Forbidden command.'); }
             const shell = os.platform() === 'win32' ? 'powershell.exe' : '/bin/sh';
-            const cmd = os.platform() === 'win32' ? `-NoProfile -NonInteractive -Command "${command.replace(/"/g, '\\"')}"` : ['-c', command];
-            const execStr = os.platform() === 'win32' ? `${shell} ${cmd}` : `${shell} ${cmd[0]} '${cmd[1].replace(/'/g, "'\\''")}'`;
+            // Use specific args for PowerShell to avoid profile loading and interaction
+            // Note: We escape double quotes for PowerShell explicitly
+            const sanitizedCommand = command.replace(/"/g, '\\"');
+            const cmd = os.platform() === 'win32' 
+                ? `-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& { ${sanitizedCommand} }"`
+                : ['-c', command];
+                
+            const execStr = os.platform() === 'win32' 
+                ? `${shell} ${cmd}` 
+                : `${shell} ${cmd[0]} '${cmd[1].replace(/'/g, "'\\''")}'`;
             return await new Promise((resolve) => {
-                exec(execStr, { timeout: timeoutMs }, (error, stdout, stderr) => {
+                exec(execStr, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
                     if (error) {
                         const code = (error as any).code ?? 1;
                         resolve({ stdout: stdout?.toString() || '', stderr: stderr?.toString() || String(error), exitCode: code });

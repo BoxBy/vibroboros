@@ -92,6 +92,12 @@ export class ModelContextService {
             'grok-beta': 128000,
             'grok-2': 128000,
             'grok-4': 256000,
+            // Z.ai (GLM)
+            'glm-4': 128000,
+            'glm-4-plus': 128000, 
+            'glm-4-flash': 200000,
+            'glm-4-long': 1000000,
+            'glm-4-air': 128000,
         };
 
         // Fuzzy match on fallback keys
