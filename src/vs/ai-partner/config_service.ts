@@ -171,6 +171,9 @@ export class ConfigService implements IConfigService {
 
     public async saveProfile(profile: LLMProfile, apiKey?: string): Promise<LLMProfile> {
         const profiles = this.getLlmProfiles();
+        if (!profile.id) {
+            profile.id = 'profile_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+        }
         const idx = profiles.findIndex(p => p.id === profile.id);
         if (idx >= 0) {
             profiles[idx] = profile;

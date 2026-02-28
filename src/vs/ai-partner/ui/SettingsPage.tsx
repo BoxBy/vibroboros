@@ -120,7 +120,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
       
       if (message.command === 'updateModels') {
         console.log('[SettingsPage] Processing updateModels directly:', Array.isArray(message.payload) ? message.payload.length : 0, 'models');
-        setModels(message.payload || []);
+        // payload elements might be strings or objects. Ensure we store objects with id.
+        const normalizedModels = (message.payload || []).map((m: any) => typeof m === 'string' ? { id: m } : m);
+        setModels(normalizedModels);
         return;
       }
 
@@ -133,7 +135,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
           const provider = p.llmProvider;
           setLlmSettings({
             llmProvider: provider,
-            endpoint: (provider === 'openai' ? p.openaiEndpoint :
+            endpoint: p.endpoint || (provider === 'openai' ? p.openaiEndpoint :
                        provider === 'ollama' ? p.ollamaEndpoint :
                        provider === 'anthropic' ? p.anthropicEndpoint :
                        provider === 'xai' ? p.xaiEndpoint :
@@ -141,7 +143,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                        provider === 'groq' ? p.groqEndpoint :
                        provider === 'openrouter' ? p.openrouterEndpoint :
                         provider === 'zai' ? p.zaiEndpoint : '') || '',
-             apiKey: (provider === 'openai' ? p.openaiApiKeys :
+             apiKey: p.apiKey || (provider === 'openai' ? p.openaiApiKeys :
                       provider === 'ollama' ? p.ollamaApiKey :
                       provider === 'anthropic' ? p.anthropicApiKey :
                       provider === 'xai' ? p.xaiApiKey :
@@ -173,6 +175,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         console.log('[SettingsPage] activeProfileChanged received:', message.payload);
         setActiveProfileId(typeof message.payload === 'string' ? message.payload : null);
       } else if (message.command === 'profileSaved' || message.command === 'profileDeleted') {
+        if (message.command === 'profileSaved') {
+          setEditingProfileId(prev => {
+             if (!prev && message.payload?.id) {
+                 return message.payload.id;
+             }
+             return prev;
+          });
+        }
         vscodeService.postMessage({ command: 'requestProfiles' });
       } else if (message.command === 'configuredItemsUpdate') {
          setConfiguredItems(message.payload);
@@ -397,22 +407,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
     vscodeService.postMessage({ command: 'addAgent', agent: newAgent });
   };
 
-  // 자동 저장을 위한 debounce 함수
-  const debounce = (func: Function, wait: number) => {
-    let timeout: NodeJS.Timeout;
-    return (...args: any[]) => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => func(...args), wait);
-    };
-  };
-
-  // LLM 설정 저장 핸들러
-  const saveSettings = useCallback((newSettings: LlmSettings) => {
-    vscodeService.postMessage({ command: 'saveLlmSettings', payload: newSettings });
-  }, []);
-
-  // Debounced 저장 함수
-  const debouncedSave = useMemo(() => debounce(saveSettings, 500), [saveSettings]);
+  // LLM 설정 컨테이너 끝
 
   // LLM 설정 변경 핸들러
   const handleLlmSettingChange = (key: keyof LlmSettings, value: any) => {
@@ -461,9 +456,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         vscodeService.postMessage({ command: 'requestModels', payload: { provider: newState.llmProvider, endpoint: newState.endpoint, apiKey: newState.apiKey } });
       }
 
-      // 자동 저장
-      debouncedSave(newState);
-
       return newState;
     });
     // Provider 변경/클라우드 토글 시 모델 목록 요청 + 빠른 폴링 시작
@@ -487,47 +479,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
     }
   };
 
-  // LLM 설정 저장 핸들러 (일반 Profile - agentOverrides 없음)
-  const handleSaveLlmSettings = () => {
+  // Unified Profile Save Handler (handles both base settings and agent overrides)
+  const handleSaveProfileClick = () => {
     vscodeService.postMessage({ command: 'saveLlmSettings', payload: llmSettings });
-    // Save or update a profile and activate it, then refresh
     const name = (profileName && profileName.trim()) || 'Default Profile';
     const provider = llmSettings.llmProvider || 'openai';
     const model = llmSettings.model || '';
     const endpoint = llmSettings.endpoint || '';
     const apiKey = llmSettings.apiKey || '';
-    const profileBase: any = {
-      name,
-      provider,
-      endpoint,
-      model,
-      enabled: true,
-    };
-    if (editingProfileId) {
-      profileBase.id = editingProfileId;
-    }
-    const payload = {
-      profile: profileBase,
-      apiKey,
-      activateAfterSave: true,
-    };
-    vscodeService.postMessage({ command: 'saveProfile', payload });
-    vscodeService.postMessage({ command: 'requestProfiles' });
-    // Pass current provider, endpoint, and apiKey when requesting models after save
-    vscodeService.postMessage({ command: 'requestModels', payload: { provider, endpoint, apiKey } });
-    // After saving, clear edit id to avoid unintended updates on next create
-    setEditingProfileId(null);
-  };
 
-  // Per-Agent Profile 저장 핸들러 (agentOverrides 포함)
-  const handleSavePerAgentProfile = () => {
-    const name = (profileName && profileName.trim()) || 'Per-Agent Profile';
-    const provider = llmSettings.llmProvider || 'openai';
-    const model = llmSettings.model || '';
-    const endpoint = llmSettings.endpoint || '';
-    const apiKey = llmSettings.apiKey || '';
-
-    // Build agent overrides array
+    // Build agent overrides array from draft
     const overridesArray = Object.entries(agentOverridesDraft || {}).map(([agentName, override]) => ({
       agentName,
       model: override.model,
@@ -536,7 +497,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
       useExternal: !!override.useExternal,
       externalUrl: override.externalUrl,
       profileId: override.profileId,
-    })).filter(o => !o.useDefault || (o.model && o.model.trim().length > 0) || (o.endpoint && o.endpoint.trim().length > 0) || o.useExternal);
+    })).filter(o => !o.useDefault || (o.model && o.model.trim().length > 0) || (o.endpoint && o.endpoint.trim().length > 0) || o.useExternal || o.profileId);
 
     const profileBase: any = {
       name,
@@ -554,14 +515,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
     const payload = {
       profile: profileBase,
       apiKey,
-      activateAfterSave: true,
+      activateAfterSave: false, 
     };
 
-    console.log('[SettingsPage] handleSavePerAgentProfile saving:', { name, provider, model, overridesCount: overridesArray.length });
+    console.log('[SettingsPage] handleSaveProfileClick saving:', { name, overridesCount: overridesArray.length });
     vscodeService.postMessage({ command: 'saveProfile', payload });
     vscodeService.postMessage({ command: 'requestProfiles' });
     vscodeService.postMessage({ command: 'requestModels', payload: { provider, endpoint, apiKey } });
-    setEditingProfileId(null);
   };
 
   // Profiles handlers (inside component)
@@ -636,17 +596,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
       return next;
     });
 
-    // Expand appropriate section and scroll based on profile type
+    // Expand appropriate section
+    // Always show LLM Configuration so users can define base LLM Settings for override profiles
+    setShowLlmConfiguration(true);
+    
     if (isPerAgentProfile) {
       // Per-Agent profile: expand and scroll to Per-Agent LLM Overrides section
       setShowAgentOverrides(true);
-      setShowLlmConfiguration(false);
       if (perAgentSectionRef.current) {
         perAgentSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     } else {
-      // Regular profile: expand and scroll to LLM Configuration section
-      setShowLlmConfiguration(true);
+      // Regular profile
       setShowAgentOverrides(false);
       if (llmSectionRef.current) {
         llmSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -836,9 +797,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--vscode-panel-border)', padding: 8, borderRadius: 6 }}>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <strong>{p.name}{activeProfileId === p.id ? ' (Active)' : ''}{editingProfileId === p.id ? ' (Editing)' : ''}</strong>
-                <span style={{ opacity: 0.8, fontSize: 12 }}>{p.provider}</span>
-                <span style={{ opacity: 0.8, fontSize: 12 }}>{p.model}</span>
-                <span style={{ opacity: 0.8, fontSize: 12 }}>{p.endpoint}</span>
+                {Array.isArray(p.agentOverrides) && p.agentOverrides.length > 0 ? (
+                    <span style={{ opacity: 0.8, fontSize: 12, color: 'var(--vscode-charts-blue)' }}>Per-Agent Override Profile ({p.agentOverrides.length} agents)</span>
+                ) : (
+                    <>
+                        <span style={{ opacity: 0.8, fontSize: 12 }}>{p.provider}</span>
+                        <span style={{ opacity: 0.8, fontSize: 12 }}>{p.model}</span>
+                        <span style={{ opacity: 0.8, fontSize: 12 }}>{p.endpoint}</span>
+                    </>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <VSCodeButton onClick={() => startEditProfile(p)} disabled={editingProfileId === p.id}>Edit</VSCodeButton>
@@ -910,7 +877,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                 const provider = llmSettings.llmProvider;
                 const endpoint = llmSettings.endpoint;
                 const apiKey = llmSettings.apiKey;
-                vscodeService.postMessage({ command: 'requestModels', payload: { provider, endpoint, apiKey } });
+                vscodeService.postMessage({ command: 'requestModels', payload: { provider, endpoint, apiKey, forceRefresh: true } });
                 // Also fetch max context for current model if not set
                 if (llmSettings.model && !llmSettings.modelMaxContext) {
                   vscodeService.postMessage({ command: 'selectModel', payload: { model: llmSettings.model, apiKey } });
@@ -1127,7 +1094,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
               <>
                 {llmSettings.llmProvider === 'ollama' && (
                   <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', justifyContent: 'space-between' }}>
-                    <VSCodeButton onClick={handleSaveLlmSettings}>Save LLM Settings</VSCodeButton>
+                    <VSCodeButton onClick={handleSaveProfileClick}>Save Profile</VSCodeButton>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
                       <label htmlFor="ollama-is-cloud" style={{ marginRight: '5px' }}>Cloud Hosted?</label>
                       <VSCodeCheckbox
@@ -1140,7 +1107,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                 )}
                 {llmSettings.llmProvider === 'zai' && (
                   <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', justifyContent: 'space-between' }}>
-                    <VSCodeButton onClick={handleSaveLlmSettings}>Save LLM Settings</VSCodeButton>
+                    <VSCodeButton onClick={handleSaveProfileClick}>Save Profile</VSCodeButton>
                     <div style={{ display: 'flex', alignItems: 'center' }}>
                       <label htmlFor="zai-is-coding-plan" style={{ marginRight: '5px' }}>Use Coding Plan API</label>
                       <VSCodeCheckbox
@@ -1158,7 +1125,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
 
         {llmSettings.llmProvider !== 'ollama' && llmSettings.llmProvider !== 'zai' && (
           <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '16px' }}>
-            <VSCodeButton onClick={handleSaveLlmSettings}>Save LLM Settings</VSCodeButton>
+            <VSCodeButton onClick={handleSaveProfileClick}>Save Profile</VSCodeButton>
           </div>
         )}
         </>
@@ -1193,8 +1160,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                 placeholder="Profile name (e.g., Coding vs. Docs)"
                 style={{ flexGrow: 1, minWidth: 220 }}
               />
-              <VSCodeButton appearance="primary" onClick={handleSavePerAgentProfile}>
-                Save &amp; Activate Profile
+              <VSCodeButton appearance="primary" onClick={handleSaveProfileClick}>
+                Save Profile
               </VSCodeButton>
             </div>
             <div style={{ fontSize: 11, opacity: 0.7 }}>
@@ -1284,6 +1251,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                               [agentName]: { ...prevEntry, profileId: value || undefined },
                             };
                           });
+                          // Fetch models for this profile so the model dropdown gets populated
+                          const p = profiles.find(p => p.id === value);
+                          if (p) {
+                              const apiKey = p.apiKey || ''; 
+                              vscodeService.postMessage({ command: 'requestModels', payload: { provider: p.provider, endpoint: p.endpoint, apiKey } });
+                          }
                         }}
                       >
                         <VSCodeOption value="">

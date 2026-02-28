@@ -227,6 +227,13 @@ const settingsHandlers: Record<string, MessageHandler> = {
     }
 };
 
+interface ModelCacheEntry {
+    models: any[];
+    timestamp: number;
+}
+const modelsCache = new Map<string, ModelCacheEntry>();
+const MODEL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Handler for model-related commands
  */
@@ -299,6 +306,19 @@ const modelHandlers: Record<string, MessageHandler> = {
             console.log('[ModelHandler] requestModels:', { provider, endpoint, apiKey, 'hasEndpointInPayload': !!message.payload?.endpoint });
 
             if (apiKey) {
+                const cacheKey = `${provider}|${endpoint}|${apiKey}`;
+                const now = Date.now();
+                const isForceRefresh = message.payload?.forceRefresh === true;
+
+                if (!isForceRefresh) {
+                    const cached = modelsCache.get(cacheKey);
+                    if (cached && (now - cached.timestamp < MODEL_CACHE_TTL)) {
+                        console.log('[ModelHandler] Serving models from cache');
+                        context.postMessage({ command: 'updateModels', payload: cached.models });
+                        return;
+                    }
+                }
+
                 const models = await context.llmService.listModels(provider as any, apiKey, endpoint);
                 console.log('[ModelHandler] Models fetched:', models);
 
@@ -325,6 +345,7 @@ const modelHandlers: Record<string, MessageHandler> = {
                     })
                 );
 
+                modelsCache.set(cacheKey, { models: modelsWithContext, timestamp: now });
                 context.postMessage({ command: 'updateModels', payload: modelsWithContext });
             } else {
                 context.postMessage({ command: 'updateModels', payload: [] });

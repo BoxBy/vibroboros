@@ -55,7 +55,7 @@ export const ProviderSettings: React.FC<ProviderSettingsProps> = ({
           id="api-key"
           type="password"
           value={apiKey}
-          onChange={(e: any) => onApiKeyChange(e.target.value)}
+          onInput={(e: any) => onApiKeyChange(e.target.value)}
           placeholder={apiKeyPlaceholder}
           style={{ flexGrow: 1 }}
           title={apiKey ? 'API Key가 저장되어 있습니다' : undefined} />
@@ -65,7 +65,7 @@ export const ProviderSettings: React.FC<ProviderSettingsProps> = ({
         <VSCodeTextField
           id="endpoint"
           value={endpoint}
-          onChange={(e: any) => onEndpointChange(e.target.value)}
+          onInput={(e: any) => onEndpointChange(e.target.value)}
           placeholder={endpointPlaceholder}
           style={{ flexGrow: 1, ...(endpoint ? {} : { color: 'var(--vscode-input-placeholderForeground)' }) }}
         />

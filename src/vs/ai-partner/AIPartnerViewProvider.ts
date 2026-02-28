@@ -6,6 +6,8 @@ import { MCPHealthCheckService } from './services/MCPHealthCheckService';
 import { OrchestratorAgent } from './agents/OrchestratorAgent';
 import { A2AMessage, A2A_MIME_TYPES, createProgressMessage, createPlanMessage, createFileEditMessage, createA2ADataMessage, PlanData, FileEditData } from './types/A2AMessages';
 
+const modelsCache = new Map<string, { models: any[], timestamp: number }>();
+
 function getNonce() {
     let text = '';
     const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -539,64 +541,70 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                 
                 case 'requestModels':
                     try {
-                        const provider = this.configService.getLlmProvider();
-                        let apiKey = '';
-                        let endpoint = '';
-
-                        // If active profile exists, use profile data directly
-                        const activeProfile = this.configService.getActiveProfile();
-                        if (activeProfile) {
-                            endpoint = activeProfile.endpoint || '';
-                            apiKey = activeProfile.apiKey || '';
-                            // If profile doesn't store apiKey inline, fetch from secret storage
-                            if (!apiKey && activeProfile.id) {
-                                apiKey = await this.configService.getProfileApiKey(activeProfile.id);
-                            }
+                        const provider = message.payload?.provider || this.configService.getLlmProvider() || 'openai';
+                        let apiKey = message.payload?.apiKey || '';
+                        if (!apiKey) {
+                            const apiKeys = await this.configService.getApiKeys();
+                            apiKey = apiKeys?.[0] || '';
                         }
-
-                        // Fallback to per-provider settings if no profile or no endpoint
+                        
+                        let endpoint = message.payload?.endpoint || '';
                         if (!endpoint) {
                             switch (provider) {
-                                case 'openai':
-                                    apiKey = apiKey || (await this.configService.getOpenaiApiKeys())[0] || '';
-                                    endpoint = this.configService.getOpenaiEndpoint();
-                                    break;
-                                case 'ollama':
-                                    apiKey = apiKey || await this.configService.getOllamaApiKey();
-                                    endpoint = this.configService.getOllamaEndpoint();
-                                    break;
-                                case 'anthropic':
-                                    apiKey = apiKey || this.configService.getAnthropicApiKey();
-                                    endpoint = this.configService.getAnthropicEndpoint();
-                                    break;
-                                case 'xai':
-                                    apiKey = apiKey || this.configService.getXaiApiKey();
-                                    endpoint = this.configService.getXaiEndpoint();
-                                    break;
-                                case 'google':
-                                    apiKey = apiKey || this.configService.getGoogleApiKey();
-                                    endpoint = this.configService.getGoogleEndpoint();
-                                    break;
-                                case 'groq':
-                                    apiKey = apiKey || this.configService.getGroqApiKey();
-                                    endpoint = this.configService.getGroqEndpoint();
-                                    break;
-                                case 'openrouter':
-                                    apiKey = apiKey || this.configService.getOpenrouterApiKey();
-                                    endpoint = this.configService.getOpenrouterEndpoint();
-                                    break;
-                                case 'zai':
-                                    apiKey = apiKey || this.configService.getZaiApiKey();
-                                    endpoint = this.configService.getZaiEndpoint();
-                                    break;
+                                case 'openai': endpoint = this.configService.getOpenaiEndpoint(); break;
+                                case 'ollama': endpoint = this.configService.getOllamaEndpoint(); break;
+                                case 'anthropic': endpoint = this.configService.getAnthropicEndpoint(); break;
+                                case 'xai': endpoint = this.configService.getXaiEndpoint(); break;
+                                case 'google': endpoint = this.configService.getGoogleEndpoint(); break;
+                                case 'groq': endpoint = this.configService.getGroqEndpoint(); break;
+                                case 'openrouter': endpoint = this.configService.getOpenrouterEndpoint(); break;
+                                case 'zai': endpoint = this.configService.getZaiEndpoint(); break;
+                                default: endpoint = this.configService.getEndpoint() || '';
                             }
                         }
 
-                        const models = await this.llmService.listModels(provider, apiKey, endpoint);
-                        this.postMessage({ command: 'updateModels', payload: models });
-                    } catch (e) {
-                         console.error('requestModels failed', e);
-                         this.postMessage({ command: 'updateModels', payload: [] });
+                        if (apiKey) {
+                            const cacheKey = `${provider}|${endpoint}|${apiKey}`;
+                            const now = Date.now();
+                            const isForceRefresh = message.payload?.forceRefresh === true;
+
+                            if (!isForceRefresh) {
+                                const cached = modelsCache.get(cacheKey);
+                                if (cached && (now - cached.timestamp < 5 * 60 * 1000)) {
+                                    this.postMessage({ command: 'updateModels', payload: cached.models });
+                                    break;
+                                }
+                            }
+
+                            const models = await this.llmService.listModels(provider as any, apiKey, endpoint);
+                            const { STATIC_MODEL_REGISTRY } = require('./constants/ModelRegistry');
+                            
+                            const modelsWithContext = await Promise.all(
+                                models.map(async (modelId: string) => {
+                                    const staticInfo = STATIC_MODEL_REGISTRY[modelId];
+                                    if (staticInfo?.maxContextTokens) {
+                                        return { id: modelId, maxContext: staticInfo.maxContextTokens };
+                                    }
+                                    try {
+                                        const info = await Promise.race([
+                                            ModelInfoProvider.getInstance().getModelInfo(provider, modelId, apiKey, endpoint),
+                                            new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+                                        ]);
+                                        return { id: modelId, maxContext: info?.maxContextTokens || undefined };
+                                    } catch {
+                                        return { id: modelId, maxContext: undefined };
+                                    }
+                                })
+                            );
+                            
+                            modelsCache.set(cacheKey, { models: modelsWithContext, timestamp: now });
+                            this.postMessage({ command: 'updateModels', payload: modelsWithContext });
+                        } else {
+                            this.postMessage({ command: 'updateModels', payload: [] });
+                        }
+                    } catch (error) {
+                        console.error('[AIPartnerViewProvider] Error fetching models:', error);
+                        this.postMessage({ command: 'updateModels', payload: [] });
                     }
                     break;
                 
@@ -702,10 +710,22 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'requestProfiles':
                     try {
-                        const rawProfiles = this.configService.getLlmProfiles();
+                        let rawProfiles = this.configService.getLlmProfiles();
+                        let needsSave = false;
+                        rawProfiles = rawProfiles.map(p => {
+                            if (!p.id) {
+                                p.id = 'profile_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+                                needsSave = true;
+                            }
+                            return p;
+                        });
+                        
+                        if (needsSave) {
+                            await this.configService.setLlmProfiles(rawProfiles);
+                        }
+
                         // Fetch API keys for each profile for UI editing
                         const profiles = await Promise.all(rawProfiles.map(async p => {
-                            if (!p.id) { return p; }
                             const apiKey = await this.configService.getProfileApiKey(p.id);
                             return { ...p, apiKey };
                         }));
