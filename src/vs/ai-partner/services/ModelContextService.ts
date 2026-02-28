@@ -102,9 +102,9 @@ export class ModelContextService {
 
         // Fuzzy match on fallback keys
         for (const [key, value] of Object.entries(fallbackMap)) {
-            if (modelId.includes(key)) return value;
+            if (modelId.includes(key)) { return value; }
         }
 
-        return 4096; // Safe default
+        return 8192; // Safe default
     }
 }

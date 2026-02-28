@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConfigService } from './config_service';
 import { LLMService } from './services/LLMService';
+import { ModelInfoProvider } from './services/llm/ModelInfoProvider';
 import { MCPHealthCheckService } from './services/MCPHealthCheckService';
 import { OrchestratorAgent } from './agents/OrchestratorAgent';
 import { A2AMessage, A2A_MIME_TYPES, createProgressMessage, createPlanMessage, createFileEditMessage, createA2ADataMessage, PlanData, FileEditData } from './types/A2AMessages';
@@ -541,36 +542,54 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                         const provider = this.configService.getLlmProvider();
                         let apiKey = '';
                         let endpoint = '';
-                        
-                        switch (provider) {
-                            case 'openai':
-                                apiKey = (await this.configService.getOpenaiApiKeys())[0] || '';
-                                endpoint = this.configService.getOpenaiEndpoint();
-                                break;
-                            case 'ollama':
-                                apiKey = await this.configService.getOllamaApiKey();
-                                endpoint = this.configService.getOllamaEndpoint();
-                                break;
-                            case 'anthropic':
-                                apiKey = this.configService.getAnthropicApiKey();
-                                endpoint = this.configService.getAnthropicEndpoint();
-                                break;
-                            case 'xai':
-                                apiKey = this.configService.getXaiApiKey();
-                                endpoint = this.configService.getXaiEndpoint();
-                                break;
-                            case 'google':
-                                apiKey = this.configService.getGoogleApiKey();
-                                endpoint = this.configService.getGoogleEndpoint();
-                                break;
-                            case 'groq':
-                                apiKey = this.configService.getGroqApiKey();
-                                endpoint = this.configService.getGroqEndpoint();
-                                break;
-                            case 'openrouter':
-                                apiKey = this.configService.getOpenrouterApiKey();
-                                endpoint = this.configService.getOpenrouterEndpoint();
-                                break;
+
+                        // If active profile exists, use profile data directly
+                        const activeProfile = this.configService.getActiveProfile();
+                        if (activeProfile) {
+                            endpoint = activeProfile.endpoint || '';
+                            apiKey = activeProfile.apiKey || '';
+                            // If profile doesn't store apiKey inline, fetch from secret storage
+                            if (!apiKey && activeProfile.id) {
+                                apiKey = await this.configService.getProfileApiKey(activeProfile.id);
+                            }
+                        }
+
+                        // Fallback to per-provider settings if no profile or no endpoint
+                        if (!endpoint) {
+                            switch (provider) {
+                                case 'openai':
+                                    apiKey = apiKey || (await this.configService.getOpenaiApiKeys())[0] || '';
+                                    endpoint = this.configService.getOpenaiEndpoint();
+                                    break;
+                                case 'ollama':
+                                    apiKey = apiKey || await this.configService.getOllamaApiKey();
+                                    endpoint = this.configService.getOllamaEndpoint();
+                                    break;
+                                case 'anthropic':
+                                    apiKey = apiKey || this.configService.getAnthropicApiKey();
+                                    endpoint = this.configService.getAnthropicEndpoint();
+                                    break;
+                                case 'xai':
+                                    apiKey = apiKey || this.configService.getXaiApiKey();
+                                    endpoint = this.configService.getXaiEndpoint();
+                                    break;
+                                case 'google':
+                                    apiKey = apiKey || this.configService.getGoogleApiKey();
+                                    endpoint = this.configService.getGoogleEndpoint();
+                                    break;
+                                case 'groq':
+                                    apiKey = apiKey || this.configService.getGroqApiKey();
+                                    endpoint = this.configService.getGroqEndpoint();
+                                    break;
+                                case 'openrouter':
+                                    apiKey = apiKey || this.configService.getOpenrouterApiKey();
+                                    endpoint = this.configService.getOpenrouterEndpoint();
+                                    break;
+                                case 'zai':
+                                    apiKey = apiKey || this.configService.getZaiApiKey();
+                                    endpoint = this.configService.getZaiEndpoint();
+                                    break;
+                            }
                         }
 
                         const models = await this.llmService.listModels(provider, apiKey, endpoint);
@@ -590,7 +609,6 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                             openaiEndpoint: this.configService.getOpenaiEndpoint(),
                             ollamaEndpoint: this.configService.getOllamaEndpoint(),
                             ollamaApiKey: await this.configService.getOllamaApiKey(),
-                            ollamaIsCloud: this.configService.getOllamaIsCloud(),
                             anthropicApiKey: this.configService.getAnthropicApiKey(),
                             anthropicEndpoint: this.configService.getAnthropicEndpoint(),
                             xaiApiKey: this.configService.getXaiApiKey(),
@@ -601,13 +619,17 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                             groqEndpoint: this.configService.getGroqEndpoint(),
                             openrouterApiKey: this.configService.getOpenrouterApiKey(),
                             openrouterEndpoint: this.configService.getOpenrouterEndpoint(),
+                            zaiApiKey: this.configService.getZaiApiKey(),
+                            zaiEndpoint: this.configService.getZaiEndpoint(),
+                            ollamaIsCloud: this.configService.getOllamaIsCloud(),
+                            isCodingPlan: this.configService.getZaiIsCodingPlan(),
                             model: this.configService.getModel(),
-                            modelMaxContext: 0 // Default
+                            modelMaxContext: 8192 // Default
                         };
 
                         // Fetch actual context size
                         try {
-                            const info = await this.llmService.getModelInfo(
+                            const info = await ModelInfoProvider.getInstance().getModelInfo(
                                 settings.llmProvider, 
                                 settings.model,
                                 // Pass API key just in case dynamic fetch is needed
@@ -654,7 +676,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                             // Re-fetch model info to provide accurate maxContextTokens
                             let modelMaxContext = 0;
                             try {
-                                const info = await this.llmService.getModelInfo(
+                                const info = await ModelInfoProvider.getInstance().getModelInfo(
                                     s.llmProvider || 'openai', 
                                     s.model || '',
                                     // Pass API key just in case dynamic fetch is needed
@@ -680,7 +702,13 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'requestProfiles':
                     try {
-                        const profiles = this.configService.getLlmProfiles();
+                        const rawProfiles = this.configService.getLlmProfiles();
+                        // Fetch API keys for each profile for UI editing
+                        const profiles = await Promise.all(rawProfiles.map(async p => {
+                            if (!p.id) { return p; }
+                            const apiKey = await this.configService.getProfileApiKey(p.id);
+                            return { ...p, apiKey };
+                        }));
                         const activeProfileId = this.configService.getActiveProfileId();
                         this.postMessage({ command: 'profilesResponse', payload: { profiles, activeProfileId } });
                     } catch (e) {
@@ -693,7 +721,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                         const { profile, apiKey, activateAfterSave } = message.payload;
                         const saved = await this.configService.saveProfile(profile, apiKey);
                         if (activateAfterSave) {
-                            await this.configService.setActiveProfileId(saved.id);
+                            await this.configService.setActiveProfileId(saved.id || null);
                         }
                         this.postMessage({ command: 'profileSaved', payload: saved });
                         vscode.window.showInformationMessage(`Profile '${saved.name}' saved.`);
@@ -738,6 +766,22 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                         }
                     } catch (e) {
                         console.error('[ViperView] updatePlanFromUI failed:', e);
+                    }
+                    break;
+
+                case 'getSlashCommands':
+                    try {
+                        const commands = [
+                            { command: '/clear', description: 'Clear the conversation' },
+                            { command: '/help', description: 'Show available commands' },
+                            { command: '/model', description: 'Change the model' },
+                            { command: '/export', description: 'Export conversation' },
+                            { command: '/settings', description: 'Open settings' }
+                        ];
+                        this.postMessage({ command: 'slashCommandsResponse', payload: commands });
+                    } catch (e) {
+                        console.error('getSlashCommands failed', e);
+                        this.postMessage({ command: 'slashCommandsResponse', payload: [] });
                     }
                     break;
 

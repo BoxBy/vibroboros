@@ -62,7 +62,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   const [models, setModels] = useState<Array<{ id: string; maxContext?: number }>>([]);
   console.log('[SettingsPage] Component rendering, models state:', models.length);
   // Profiles state
-  const [profiles, setProfiles] = useState<Array<{ id: string; name: string; provider: string; endpoint: string; model: string; apiKey?: string; enabled?: boolean; isDefault?: boolean }>>([]);
+  const [profiles, setProfiles] = useState<Array<{ id: string; name: string; provider: string; endpoint: string; model: string; apiKey?: string; enabled?: boolean; isDefault?: boolean; agentOverrides?: { [agentName: string]: string } }>>([]);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string>('');
   const [editingProfile, setEditingProfile] = useState<{ id?: string; name: string; provider: string; endpoint: string; model: string; apiKey: string; notes?: string; timeout?: number }>({ name: '', provider: 'openai', endpoint: '', model: '', apiKey: '' });
@@ -77,7 +77,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   // Feature toggles
   const [streamingEnabled, setStreamingEnabled] = useState<boolean>(false);
   const [advancedHistorySummaryEnabled, setAdvancedHistorySummaryEnabled] = useState<boolean>(false);
-  const [agentOverridesDraft, setAgentOverridesDraft] = useState<Record<string, { useDefault: boolean; model: string; profileId?: string; useExternal?: boolean; externalUrl?: string }>>({});
+  const [agentOverridesDraft, setAgentOverridesDraft] = useState<Record<string, { useDefault: boolean; model: string; endpoint?: string; profileId?: string; useExternal?: boolean; externalUrl?: string }>>({});
   const [showAgentOverrides, setShowAgentOverrides] = useState<boolean>(false);
   const [showLlmConfiguration, setShowLlmConfiguration] = useState<boolean>(false);
 
@@ -124,10 +124,37 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         return;
       }
 
-      if (message.command === 'agentListResponse' || message.command === 'agentsResponse') {
-        setAgents(message.payload || []);
+      if (message.command === 'agentListResponse' || message.command === 'agentsResponse' || message.command === 'updateAgentList') {
+        const agents = message.payload || message.agents || [];
+        setAgents(agents);
       } else if (message.command === 'llmSettingsResponse') { // LLM 설정 응답 처리
-        setLlmSettings(message.payload);
+        const p = message.payload;
+        if (p) {
+          const provider = p.llmProvider;
+          setLlmSettings({
+            llmProvider: provider,
+            endpoint: (provider === 'openai' ? p.openaiEndpoint :
+                       provider === 'ollama' ? p.ollamaEndpoint :
+                       provider === 'anthropic' ? p.anthropicEndpoint :
+                       provider === 'xai' ? p.xaiEndpoint :
+                       provider === 'google' ? p.googleEndpoint :
+                       provider === 'groq' ? p.groqEndpoint :
+                       provider === 'openrouter' ? p.openrouterEndpoint :
+                        provider === 'zai' ? p.zaiEndpoint : '') || '',
+             apiKey: (provider === 'openai' ? p.openaiApiKeys :
+                      provider === 'ollama' ? p.ollamaApiKey :
+                      provider === 'anthropic' ? p.anthropicApiKey :
+                      provider === 'xai' ? p.xaiApiKey :
+                      provider === 'google' ? p.googleApiKey :
+                      provider === 'groq' ? p.groqApiKey :
+                      provider === 'openrouter' ? p.openrouterApiKey :
+                      provider === 'zai' ? p.zaiApiKey : '') || '',
+            ollamaIsCloud: !!p.ollamaIsCloud,
+            isCodingPlan: !!p.isCodingPlan,
+            model: p.model || '',
+            modelMaxContext: p.modelMaxContext
+          });
+        }
       } else if (message.command === 'featureToggles') {
         const p = message.payload || {};
         setStreamingEnabled(!!p.streamingEnabled);
@@ -136,7 +163,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
 
         if (typeof p.thinkingLanguage === 'string') setThinkingLanguage(p.thinkingLanguage);
         if (typeof p.userLanguage === 'string') setUserLanguage(p.userLanguage);
-        if (p.maxContextOverride !== undefined) setMaxContextOverride(p.maxContextOverride);
+         if (p.maxContextOverride !== undefined) setMaxContextOverride(p.maxContextOverride);
         if (p.useVSCodeThinkingLang !== undefined) setUseVSCodeThinkingLang(p.useVSCodeThinkingLang);
         if (p.useVSCodeUserLang !== undefined) setUseVSCodeUserLang(p.useVSCodeUserLang);
       } else if (message.command === 'profilesResponse') {
@@ -504,11 +531,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
     const overridesArray = Object.entries(agentOverridesDraft || {}).map(([agentName, override]) => ({
       agentName,
       model: override.model,
+      endpoint: override.endpoint,
       useDefault: !!override.useDefault,
       useExternal: !!override.useExternal,
       externalUrl: override.externalUrl,
       profileId: override.profileId,
-    })).filter(o => !o.useDefault || (o.model && o.model.trim().length > 0) || o.useExternal);
+    })).filter(o => !o.useDefault || (o.model && o.model.trim().length > 0) || (o.endpoint && o.endpoint.trim().length > 0) || o.useExternal);
 
     const profileBase: any = {
       name,
@@ -575,7 +603,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
 
     // Set agent overrides draft
     setAgentOverridesDraft(() => {
-      const draft: Record<string, { useDefault: boolean; model: string; profileId?: string; useExternal?: boolean; externalUrl?: string }> = {};
+      const draft: Record<string, { useDefault: boolean; model: string; endpoint?: string; profileId?: string; useExternal?: boolean; externalUrl?: string }> = {};
       const overrides = Array.isArray(p.agentOverrides) ? p.agentOverrides : [];
       overrides.forEach((o: any) => {
         if (!o || typeof o.agentName !== 'string') {
@@ -584,6 +612,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         draft[o.agentName] = {
           useDefault: !!o.useDefault,
           model: (o.model || ''),
+          endpoint: (o.endpoint || ''),
           profileId: typeof o.profileId === 'string' && o.profileId.length > 0 ? o.profileId : undefined,
           useExternal: !!o.useExternal,
           externalUrl: (o.externalUrl || ''),
@@ -984,19 +1013,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                     value={maxContextOverride !== undefined ? String(maxContextOverride) : ''}
                     onInput={(e: any) => {
                         const val = parseInt(e.target.value);
-                        const newVal = (isNaN(val) || val === 0) ? undefined : val;
+                        const newVal = isNaN(val) ? undefined : val;
                         setMaxContextOverride(newVal);
                         vscodeService.postMessage({ command: 'setMaxContextOverride', payload: { limit: newVal } });
                     }}
-                    placeholder={String(llmSettings.modelMaxContext || 4096)}
+                    placeholder={String(llmSettings.modelMaxContext || 8192)}
                     style={{ width: '120px' }}
                 />
                 <span style={{ fontSize: '12px', opacity: 0.7 }}>tokens</span>
              </div>
-             {!maxContextOverride && (!llmSettings.modelMaxContext || llmSettings.modelMaxContext === 4096) && (
+             {!maxContextOverride && (!llmSettings.modelMaxContext || llmSettings.modelMaxContext === 8192) && (
                 <div style={{ color: 'var(--vscode-charts-yellow)', fontSize: '11px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '130px' }}>
                      <span className="codicon codicon-warning"></span>
-                     <span>Default limit (4096). Enter manually above if model supports more.</span>
+                     <span>Default limit (8192). Enter manually above if model supports more.</span>
                 </div>
             )}
             <div style={{ fontSize: '11px', opacity: 0.6, marginTop: '2px', marginLeft: '130px' }}>
@@ -1307,6 +1336,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                           }}
                         />
                       )}
+                      <div style={{ fontSize: 11, opacity: 0.7, alignSelf: 'stretch', textAlign: 'right' }}>Endpoint (Optional)</div>
+                      <VSCodeTextField
+                        style={{ width: '100%' }}
+                        disabled={override.useDefault || override.useExternal}
+                        value={override.endpoint || ''}
+                        placeholder="Custom endpoint URL"
+                        onInput={(e: any) => {
+                          const value = (e.target.value || '').toString();
+                          setAgentOverridesDraft(prev => {
+                            const prevEntry = prev[agentName] || { useDefault: true, model: '', endpoint: '' };
+                            return {
+                              ...prev,
+                              [agentName]: { ...prevEntry, useDefault: false, endpoint: value },
+                            };
+                          });
+                        }}
+                      />
                     </div>
                   </div>
                 );
@@ -1347,8 +1393,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             id="websearch-provider"
             style={{ minWidth: '200px' }}
             value={webSearchProvider}
-            onChange={(e) => {
-              setWebSearchProvider(e.target.value as 'tavily' | 'google' | 'brave' | 'custom');
+            onChange={(e: any) => {
+              setWebSearchProvider((e.target as HTMLSelectElement).value as 'tavily' | 'google' | 'brave' | 'custom');
               // Update default endpoint based on provider
               const defaultEndpoints: Record<string, string> = {
                 tavily: 'https://api.tavily.com',
@@ -1356,7 +1402,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                 brave: 'https://api.search.brave.com',
                 custom: ''
               };
-              setWebSearchEndpoint(defaultEndpoints[e.target.value] || '');
+              setWebSearchEndpoint(defaultEndpoints[(e.target as HTMLSelectElement).value] || '');
             }}
           >
             <VSCodeOption value="tavily">Tavily (Recommended)</VSCodeOption>
@@ -1378,7 +1424,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             id="websearch-apikey"
             placeholder="Enter API key..."
             value={webSearchApiKey}
-            onChange={(e) => setWebSearchApiKey(e.target.value)}
+            onChange={(e: any) => setWebSearchApiKey((e.target as HTMLInputElement).value)}
             type="password"
             style={{ width: '100%' }}
           />
@@ -1394,7 +1440,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
               id="websearch-endpoint"
               placeholder="https://api.example.com/v1"
               value={webSearchEndpoint}
-              onChange={(e) => setWebSearchEndpoint(e.target.value)}
+              onChange={(e: any) => setWebSearchEndpoint((e.target as HTMLInputElement).value)}
               style={{ width: '100%' }}
             />
           </div>

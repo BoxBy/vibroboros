@@ -370,7 +370,7 @@ export const STATIC_MODEL_REGISTRY: Record<string, ModelInfo> = {
  */
 export const DEFAULT_MODEL_INFO: ModelInfo = {
     id: 'unknown',
-    maxContextTokens: 4096,
+    maxContextTokens: 8192,
     maxOutputTokens: 4096,
     provider: 'openai'
 };

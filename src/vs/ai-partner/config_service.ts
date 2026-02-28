@@ -74,7 +74,7 @@ export class ConfigService implements IConfigService {
      * This method is kept for backward compatibility during migration
      */
     public static getInstance(): ConfigService {
-        console.warn('[ConfigService] getInstance() is deprecated. Use DI instead.');
+        // Note: getInstance() is deprecated — prefer DI injection.
         if (!ConfigService['instance']) {
             // Try to resolve from DI container as fallback
             try {
@@ -836,7 +836,8 @@ export class ConfigService implements IConfigService {
         }
 
         public getMaxContextOverride(): number | undefined {
-            return this.getConfiguration('llm').get<number>('maxContextOverride');
+            const val = this.getConfiguration('llm').get<number>('maxContextOverride');
+            return (val === 0) ? undefined : val;
         }
 
         public async setMaxContextOverride(limit: number | undefined): Promise<void> {

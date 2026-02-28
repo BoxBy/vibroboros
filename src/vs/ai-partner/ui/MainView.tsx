@@ -370,6 +370,12 @@ const MainViewContent: React.FC = () => {
 		vscodeService.postMessage({ command: 'requestLlmSettings' });
 		vscodeService.postMessage({ command: 'requestModels' });
 		vscodeService.postMessage({ command: 'requestProfiles' });
+
+		// Safety timeout: force-clear loading overlay after 5s
+		const loadingTimeout = setTimeout(() => {
+			setLoadingStatus({ llmSettings: false, models: false, profiles: false, slashCommands: false });
+		}, 5000);
+		return () => clearTimeout(loadingTimeout);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []); // 빈 의존성 배열로 마운트 시 한 번만 실행
 useEffect(() => {

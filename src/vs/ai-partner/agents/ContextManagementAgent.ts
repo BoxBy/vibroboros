@@ -55,7 +55,7 @@ export class ContextManagementAgent extends BaseAgent {
             }
 
             // LOGIC-DRIVEN RULE INJECTION
-            const configService = ConfigService.getInstance();
+            const configService = this.configService;
             const summarizeRatio = configService.getSummarizeTokenLimit(); // e.g. 0.75
 
             // User Formula: max_token * summarize_token_limit * 0.7

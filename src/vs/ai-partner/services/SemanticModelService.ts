@@ -63,7 +63,7 @@ export class SemanticModelService implements ISemanticModelService {
      * This method is kept for backward compatibility during migration
      */
     public static getInstance(): SemanticModelService {
-        console.warn('[SemanticModelService] getInstance() is deprecated. Use DI instead.');
+        // Note: getInstance() is deprecated — prefer DI injection.
         if (!SemanticModelService.instance) {
             SemanticModelService.instance = new SemanticModelService();
         }
