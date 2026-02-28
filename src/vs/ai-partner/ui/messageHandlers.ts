@@ -14,7 +14,7 @@ export interface HandlerContext {
 	setSlashCommands: (commands: { command: string; description: string }[]) => void;
 	setCurrentProvider: (provider: 'openai' | 'ollama' | 'anthropic' | 'xai' | 'google' | 'groq' | 'openrouter' | undefined) => void;
 	setCurrentModel: (model: string | undefined) => void;
-	setAvailableModels: (models: string[]) => void;
+	setAvailableModels: React.Dispatch<React.SetStateAction<Array<{ id: string; maxContext?: number }>>>;
 	setProfiles: (profiles: Array<{ id: string; name: string; provider?: string; endpoint?: string; model?: string }>) => void;
 	setActiveProfileId: (id: string | null) => void;
 	setSessions: (sessions: any[]) => void;
@@ -52,7 +52,7 @@ export interface HandlerContext {
  */
 export function createMessageHandlerRegistry(context: HandlerContext): Record<string, MessageHandler> {
 	return {
-		initialDataLoaded: (payload) => {
+		initialDataLoaded: (_payload) => {
 			// Initial data loaded, all loading states should be false
 			context.setLoadingStatus({
 				llmSettings: false,
@@ -92,7 +92,8 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 		},
 		updateModels: (payload) => {
 			if (Array.isArray(payload)) {
-				context.setAvailableModels(payload);
+				const normalizedModels = payload.map((m: any) => typeof m === 'string' ? { id: m } : m);
+				context.setAvailableModels(normalizedModels);
 			}
             console.log('[MainView] Loaded Models (MCP)');
             context.vscodeService.postMessage({ command: 'debugLog', payload: { source: 'MainView', event: 'Loaded Models (MCP)' } });
@@ -115,8 +116,8 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 		historyList: (payload) => {
 			if (payload) {
 				const { sessions: sess, activeId } = payload;
-				if (Array.isArray(sess)) context.setSessions(sess);
-				if (typeof activeId === 'string' && activeId) context.setActiveSessionId(activeId);
+				if (Array.isArray(sess)) { context.setSessions(sess); }
+				if (typeof activeId === 'string' && activeId) { context.setActiveSessionId(activeId); }
 			}
 		},
         setAutonomousMode: (payload) => {
@@ -571,7 +572,7 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
                      JSON.stringify(m.attachments || []) === JSON.stringify(nextMsg.attachments || []))
                 );
 
-				if (alreadyExists) return prev;
+				if (alreadyExists) { return prev; }
 				return [...prev, nextMsg];
 			});
 			try {
@@ -600,15 +601,15 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 				context.setPlan(payload.plan);
 			}
 		},
-		proposeUroborosMode: (payload) => {
+		proposeUroborosMode: (_payload) => {
 			// Uroboros Mode 제안은 이제 bubble로 표시되므로 여기서는 처리하지 않음
 			// (OrchestratorAgent에서 이미 response 명령으로 전송됨)
 		},
-		workspaceFilesList: (payload) => {
+		workspaceFilesList: (_payload) => {
 			// This will be handled in InputArea component via useEffect
 			// We need to pass this through context or use a different approach
 		},
-		insertAttachment: (payload) => {
+		insertAttachment: (_payload) => {
 			// This will be handled in MainView component directly
 			// We need to pass setAttachments through context
 		},
@@ -621,13 +622,13 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 				});
 			}
 		},
-		taskUpdated: (payload) => {
+		taskUpdated: (_payload) => {
 			// Task status update received from backend
 			// This will trigger a re-render of task messages in MessageList
 			// The actual task data is stored in SessionManager, but we can
 			// also update a local state if needed
 		},
-		tasksUpdated: (payload) => {
+		tasksUpdated: (_payload) => {
 			// Full tasks list update received from backend
 			// Can be used to sync task state
 		},
