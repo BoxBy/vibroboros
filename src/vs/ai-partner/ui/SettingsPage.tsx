@@ -506,6 +506,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
       model,
       enabled: true,
       agentOverrides: overridesArray.length > 0 ? overridesArray : undefined,
+      ollamaIsCloud: llmSettings.ollamaIsCloud,
+      isCodingPlan: llmSettings.isCodingPlan,
     };
 
     if (editingProfileId) {
@@ -587,10 +589,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         ...prev,
         llmProvider: p.provider,
         model: p.model || '',
-        endpoint: p.endpoint || getDefaultEndpoint(p.provider),
+        endpoint: p.endpoint !== undefined ? p.endpoint : getDefaultEndpoint(p.provider),
         apiKey: profileApiKey,
-        ollamaIsCloud: p.provider === 'ollama' && (p.endpoint?.includes('ollama.com') || false),
-        isCodingPlan: p.provider === 'zai' && (p.endpoint?.includes('/coding/') || false),
+        ollamaIsCloud: p.ollamaIsCloud ?? (p.provider === 'ollama' && (p.endpoint?.includes('ollama.com') || false)),
+        isCodingPlan: p.isCodingPlan ?? (p.provider === 'zai' && (p.endpoint?.includes('/coding/') || false)),
       };
       console.log('[SettingsPage] startEditProfile setting llmSettings:', { provider: p.provider, endpoint: p.endpoint, model: p.model, hasApiKey: !!profileApiKey, isPerAgentProfile });
       return next;
@@ -1100,7 +1102,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                       <VSCodeCheckbox
                         id="ollama-is-cloud"
                         checked={llmSettings.ollamaIsCloud}
-                        onChange={(e: any) => handleLlmSettingChange('ollamaIsCloud', e.target.checked)}
+                        onChange={() => handleLlmSettingChange('ollamaIsCloud', !llmSettings.ollamaIsCloud)}
                       />
                     </div>
                   </div>
@@ -1113,7 +1115,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                       <VSCodeCheckbox
                         id="zai-is-coding-plan"
                         checked={llmSettings.isCodingPlan}
-                        onChange={(e: any) => handleLlmSettingChange('isCodingPlan', e.target.checked)}
+                        onChange={() => handleLlmSettingChange('isCodingPlan', !llmSettings.isCodingPlan)}
                       />
                     </div>
                   </div>
@@ -1185,13 +1187,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                         <VSCodeCheckbox
                           checked={override.useDefault}
                           disabled={override.useExternal}
-                          onChange={(e: any) => {
-                            const checked = !!e.target.checked;
+                          onChange={() => {
                             setAgentOverridesDraft(prev => {
                               const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
                               return {
                                 ...prev,
-                                [agentName]: { ...prevEntry, useDefault: checked },
+                                [agentName]: { ...prevEntry, useDefault: !prevEntry.useDefault },
                               };
                             });
                           }}
@@ -1202,13 +1203,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                       <div style={{ marginTop: 2 }}>
                           <VSCodeCheckbox
                               checked={!!override.useExternal}
-                              onChange={(e: any) => {
-                                  const checked = !!e.target.checked;
+                              onChange={() => {
                                   setAgentOverridesDraft(prev => {
                                       const prevEntry = prev[agentName] || { useDefault: true, model: '', profileId: undefined };
+                                      const newChecked = !prevEntry.useExternal;
                                       return {
                                           ...prev,
-                                          [agentName]: { ...prevEntry, useExternal: checked, useDefault: checked ? false : prevEntry.useDefault },
+                                          [agentName]: { ...prevEntry, useExternal: newChecked, useDefault: newChecked ? false : prevEntry.useDefault },
                                       };
                                   });
                               }}
@@ -1483,26 +1484,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             placeholder="Args (e.g., /path/to/directory)"
             style={{ width: '100%' }}
           />
-          <VSCodeButton
-            className="add-button"
-            appearance="primary"
-            onClick={handleAddMcpServer}
-            style={{ height: '28px', width: 'fit-content' }}
-          >
-            <span className="codicon codicon-plus" style={{ marginRight: '4px' }}></span>
-            Add MCP Server
-          </VSCodeButton>
-        </div>
-
-        <div style={{ marginTop: '12px' }}>
-          <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/mcp-servers.json' })} style={{ height: '28px', whiteSpace: 'nowrap', marginBottom: '12px' }}>
-            <span className="codicon codicon-json" style={{ marginRight: '6px' }}></span>
-            Open mcp-servers.json
-          </VSCodeButton>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+            <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/mcp-servers.json' })} style={{ height: '28px', width: 'fit-content' }}>
+              <span className="codicon codicon-json" style={{ marginRight: '6px' }}></span>
+              Open mcp-servers.json
+            </VSCodeButton>
+            <VSCodeButton
+              className="add-button"
+              appearance="primary"
+              onClick={handleAddMcpServer}
+              style={{ height: '28px', width: 'fit-content' }}
+            >
+              <span className="codicon codicon-plus" style={{ marginRight: '4px' }}></span>
+              Add MCP Server
+            </VSCodeButton>
+          </div>
         </div>
 
           {configuredItems.mcp.length > 0 ? (
-            <div>
+            <div style={{ marginTop: '12px' }}>
                <div 
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', opacity: 0.9, userSelect: 'none' }}
                 onClick={() => setMcpExpanded(!mcpExpanded)}
@@ -1577,12 +1577,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                )}
             </div>
           ) : (
-            <div style={{ fontSize: '13px', opacity: 0.7 }}>No MCP servers configured.</div>
+            <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '12px' }}>No MCP servers configured.</div>
           )}
         </div>
 
       {/* A2A 섹션 */}
-      <div className="settings-section">
+      <div className="settings-section" style={{ marginTop: '32px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ marginTop: 0 }}>Agents to Agents (A2A)</h3>
             <div style={{ display: 'flex', gap: '4px' }}>
@@ -1613,26 +1613,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             placeholder="Description"
             style={{ width: '100%' }}
           />
-          <VSCodeButton
-            className="add-button"
-            appearance="primary"
-            onClick={handleAddA2aServer}
-            style={{ height: '28px', width: 'fit-content' }}
-          >
-            <span className="codicon codicon-plus" style={{ marginRight: '4px' }}></span>
-            Add A2A Server
-          </VSCodeButton>
-        </div>
-
-        <div style={{ marginTop: '12px' }}>
-          <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/a2a-servers.json' })} style={{ height: '28px', whiteSpace: 'nowrap', marginBottom: '12px' }}>
-            <span className="codicon codicon-json" style={{ marginRight: '6px' }}></span>
-            Open a2a-servers.json
-          </VSCodeButton>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+            <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/a2a-servers.json' })} style={{ height: '28px', width: 'fit-content' }}>
+              <span className="codicon codicon-json" style={{ marginRight: '6px' }}></span>
+              Open a2a-servers.json
+            </VSCodeButton>
+            <VSCodeButton
+              className="add-button"
+              appearance="primary"
+              onClick={handleAddA2aServer}
+              style={{ height: '28px', width: 'fit-content' }}
+            >
+              <span className="codicon codicon-plus" style={{ marginRight: '4px' }}></span>
+              Add A2A Server
+            </VSCodeButton>
+          </div>
         </div>
 
           {configuredItems.a2a.filter(a => a !== 'SecurityAnalysisAgent').length > 0 ? (
-            <div>
+            <div style={{ marginTop: '12px' }}>
                <div 
                 style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', opacity: 0.9, userSelect: 'none' }}
                 onClick={() => setA2aExpanded(!a2aExpanded)}
@@ -1672,12 +1671,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                )}
             </div>
           ) : (
-             <div style={{ fontSize: '13px', opacity: 0.7 }}>No Agent to Agent configured.</div>
+             <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '12px' }}>No Agent to Agent configured.</div>
           )}
         </div>
 
       {/* Prompt Settings 섹션 */}
-      <div className="settings-section">
+      <div className="settings-section" style={{ marginTop: '32px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ marginTop: 0 }}>Prompt Settings</h3>
             <div style={{ display: 'flex', gap: '4px' }}>
@@ -1689,7 +1688,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         <p>Manage custom prompts via <code>.agent/AGENTS.md</code>.</p>
         
         <div style={{ marginTop: '12px' }}>
-          <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/AGENTS.md' })} style={{ height: '28px', whiteSpace: 'nowrap', marginBottom: '12px' }}>
+          <VSCodeButton appearance="primary" onClick={() => vscodeService.postMessage({ command: 'openFile', filePath: '.agent/AGENTS.md' })} style={{ height: '28px', width: 'fit-content', marginBottom: '12px' }}>
             <span className="codicon codicon-markdown" style={{ marginRight: '6px' }}></span>
             Open AGENTS.md
           </VSCodeButton>
