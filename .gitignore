@@ -1,5 +1,4 @@
 out
-dist
 node_modules
 .vscode-test/
 *.vsix
@@ -7,6 +6,7 @@ node_modules
 GEMINI.md
 .agent/
 .claude/
+.vscode/
 
 # Local dev/IDE
 .vscode/
