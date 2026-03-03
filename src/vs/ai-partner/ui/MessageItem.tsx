@@ -242,8 +242,8 @@ const ProgressGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boole
     const logs = allLogs.filter((log: any) => {
         const text = (log.text || '').trim();
         if (SYSTEM_NOISE_RE.test(text)) return false;
-        // If ANY content log exists anywhere, drop all pure thinking headers
-        if (THINKING_ONLY_RE.test(text) && hasAnyContentLog) return false;
+        // Always hide thinking logs in the UI to prevent flickering/noise
+        if (THINKING_ONLY_RE.test(text)) return false;
         return true;
     });
     const lastLog = logs[logs.length - 1];
@@ -272,7 +272,7 @@ const ProgressGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boole
                 }}
             >
                 <span className={`codicon ${isCollapsed ? 'codicon-chevron-right' : 'codicon-chevron-down'}`} style={{ fontSize: '14px', flexShrink: 0 }} />
-                <span style={{ fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>{logCount} steps</span>
+                <span style={{ fontWeight: 'normal', whiteSpace: 'nowrap', flexShrink: 0 }}>{logCount} steps</span>
                 {isCollapsed && (
                     <span style={{ 
                         opacity: 0.7, 
@@ -717,7 +717,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                     style={{ marginLeft: 0 }}
                 >
                     <span className={`codicon ${showAgentBubble ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
-                    <span style={{color: 'var(--vscode-descriptionForeground)', fontWeight: 600}}>
+                    <span style={{color: 'var(--vscode-descriptionForeground)', fontWeight: 'normal'}}>
                         {(() => {
                             const name = message.senderName || '';
                             if (!name || name.trim() === '' || name === 'OrchestratorAgent') {
