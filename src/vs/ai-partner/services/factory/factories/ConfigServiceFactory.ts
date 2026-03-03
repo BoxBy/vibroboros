@@ -15,7 +15,6 @@ export class ConfigServiceFactory extends TypedServiceFactory<ConfigService> {
             const context = container.getExtensionContext();
             return new ConfigService(context);
         }
-        // Fallback to getInstance() for backward compatibility
-        return ConfigService.getInstance();
+        throw new Error('ExtensionContext is required to create ConfigService');
     }
 }

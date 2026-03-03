@@ -38,8 +38,7 @@ export class SystemPromptFactory implements ISystemPromptFactory {
         llmService?: ILLMService
     ) {
         this.configService = configService || ServiceLocator.getConfigService();
-        // Temporarily disabled SemanticModelService
-        // this.semanticModelService = semanticModelService || ServiceLocator.getSemanticModelService();
+        this.semanticModelService = semanticModelService || ServiceLocator.getSemanticModelService();
         this.llmService = llmService || ServiceLocator.getLLMService();
     }
 

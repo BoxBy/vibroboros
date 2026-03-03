@@ -8,7 +8,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 import { A2AMessage } from '../interfaces/A2AMessage';
-import { AgentCard } from '@a2a-js/sdk';
+
 import { RequestContext, ExecutionEventBus } from '@a2a-js/sdk/server';
 import { BaseAgent } from './core/BaseAgent';
 // Removed: UIMessageFactory - Agents now use A2A standard messages
@@ -25,6 +25,7 @@ import { ExecuteCommandTool } from '../tools/ExecuteCommandTool';
 
 import { v4 as uuidv4 } from 'uuid';
 import { AgentNames } from './utils/AgentConstants';
+import { ISystemPromptFactory } from '../di/interfaces/ISystemPromptFactory';
 import { CheckpointService } from '../services/CheckpointService';
 import { ContextService } from '../services/ContextService';
 import { messages as AgentMessages } from '../messages';
@@ -110,6 +111,7 @@ export class OrchestratorAgent extends BaseAgent {
     private checkpointService: CheckpointService;
     private sessionManager: SessionManager;
     private contextService: ContextService;
+    private systemPromptFactory: ISystemPromptFactory;
 
     // --- Refactored State Management (God Object 해결) ---
     private sessionStateManager: SessionStateManager;
@@ -196,6 +198,7 @@ export class OrchestratorAgent extends BaseAgent {
 		protected llmService: LLMService,
 		authService: AuthService,
 		protected configService: ConfigService,
+		systemPromptFactory: ISystemPromptFactory,
 		state: vscode.Memento,
 		diagnosticCollection: vscode.DiagnosticCollection,
 		protected developerLogService: DeveloperLogService,
@@ -220,6 +223,7 @@ export class OrchestratorAgent extends BaseAgent {
 		this.state = state;
 		this.diagnosticCollection = diagnosticCollection;
 		this.developerLogService = developerLogService;
+		this.systemPromptFactory = systemPromptFactory;
         this.checkpointService = new CheckpointService();
         this.contextService = new ContextService();
         this.sessionManager = new SessionManager(state);
@@ -2702,6 +2706,9 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
             payload: { text: `Step ${nextIndex + 1}: ${step.description}` } 
         });
 
+        // Ensure UI shows thinking indicator during step execution
+        this._onDidPostMessage.fire({ command: 'thinking' });
+
         // Delegate to Specialist Agent
         const targetAgent = step.targetAgent || 'BrainstormAgent';
         
@@ -2861,9 +2868,15 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                     // Force UI update
                     // this._onDidPostMessage.fire({ command: 'loadHistory', payload: this.chatHistory }); // handleSessionChangeProxy already does this on state change?
                     // But explicitly firing response helps real-time feel if generic
+                     const hasMoreSteps = this.currentPlan && this.currentPlan.some(s => s.status === 'pending');
                      this._onDidPostMessage.fire({ 
                         command: 'response', 
-                        payload: { text: reportText, senderName: message.sender, timestamp: reportMsg.timestamp } 
+                        payload: { 
+                            text: reportText, 
+                            senderName: message.sender, 
+                            timestamp: reportMsg.timestamp,
+                            keepThinking: hasMoreSteps // Don't clear thinking indicator if more steps remain
+                        } 
                     });
                 }
                 break;

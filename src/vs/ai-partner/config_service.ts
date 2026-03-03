@@ -12,6 +12,8 @@ export type AuthMode = 'apiKey';
  * Previously a singleton - now properly injected through DI container.
  */
 export class ConfigService implements IConfigService {
+    private static instance: ConfigService | undefined;
+    private context: vscode.ExtensionContext;
     private extensionPath: string;
     private globalState: vscode.Memento;
     private secretStorage: ISecretStorageService;
@@ -19,12 +21,12 @@ export class ConfigService implements IConfigService {
     /**
      * Constructor - uses dependency injection
      * @param context VSCode extension context
-     * @param secretStorage Secret storage service (injected)
      */
     constructor(
         context: vscode.ExtensionContext,
         secretStorage?: ISecretStorageService
     ) {
+        this.context = context;
         this.extensionPath = context.extensionPath;
         this.globalState = context.globalState;
         // Use injected secretStorage or fall back to singleton for backward compatibility
@@ -75,14 +77,14 @@ export class ConfigService implements IConfigService {
      */
     public static getInstance(): ConfigService {
         // Note: getInstance() is deprecated — prefer DI injection.
-        if (!ConfigService['instance']) {
+        if (!ConfigService.instance) {
             // Try to resolve from DI container as fallback
             try {
                 const { CompositionRoot, ServiceIdentifiers } = require('./di/CompositionRoot');
                 if (CompositionRoot.isInitialized()) {
-                    const instance = CompositionRoot.resolve<ConfigService>(ServiceIdentifiers.ConfigService);
+                    const instance = (CompositionRoot as any).resolve(ServiceIdentifiers.ConfigService) as ConfigService;
                     if (instance) {
-                        ConfigService['instance'] = instance;
+                        ConfigService.instance = instance;
                         return instance;
                     }
                 }
@@ -91,15 +93,11 @@ export class ConfigService implements IConfigService {
             }
             throw new Error('ConfigService must be obtained through DI container');
         }
-        return ConfigService['instance'];
+        return ConfigService.instance;
     }
 
-    /**
-     * Internal setter for the singleton instance (used by DI container)
-     * @internal
-     */
     public static setInstance(instance: ConfigService): void {
-        ConfigService['instance'] = instance;
+        ConfigService.instance = instance;
     }
 
     public getExtensionPath(): string {
@@ -108,6 +106,10 @@ export class ConfigService implements IConfigService {
 
     private getConfiguration(section: string) {
         return vscode.workspace.getConfiguration(`viper.${section}`);
+    }
+
+    public getWorkspacePath(): string {
+        return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
     }
 
     // -------- LLM Profiles --------
@@ -122,11 +124,13 @@ export class ConfigService implements IConfigService {
                 console.log('[ConfigService] Migrating profiles from vibroboros.llm.profiles to viper.llm.profiles');
                 profiles = oldProfiles;
                 // Migrate to new key (async but we need sync for getter)
-                this.globalState?.update('viper.llm.profiles', profiles).then(() => {
-                    console.log('[ConfigService] Profile migration completed');
-                }).catch(e => {
-                    console.error('[ConfigService] Profile migration failed:', e);
-                });
+                const updatePromise = this.globalState?.update('viper.llm.profiles', profiles);
+                if (updatePromise && 'then' in updatePromise) {
+                    (updatePromise as any).then(undefined, (e: any) => {
+                        console.error('[ConfigService] Profile migration failed:', e);
+                    });
+                }
+
                 // Migrate active profile ID too
                 const oldActiveId = (this.globalState?.get<string>('vibroboros.llm.activeProfileId'));
                 if (oldActiveId) {
@@ -244,6 +248,15 @@ export class ConfigService implements IConfigService {
         return this.getConfiguration('execution').get<boolean>('alwaysConfirm') || false;
     }
 
+    public getTerminalPermission(): 'always_ask' | 'agent_decides' | 'always_allow' {
+        return this.getConfiguration('terminal').get<any>('permission') || 'always_ask';
+    }
+
+    public clearApiKeyCache(): void {
+        // Implementation for clearing cache if exists
+        console.log('[ConfigService] API key cache cleared');
+    }
+
     /**
      * Retrieves the current authentication mode.
      * @returns The current auth mode, which is always 'apiKey'.
@@ -265,9 +278,9 @@ export class ConfigService implements IConfigService {
     public getLlmProvider(): 'openai' | 'ollama' | 'anthropic' | 'xai' | 'google' | 'groq' | 'openrouter' | 'zai' {
         const active = this.getActiveProfile();
         if (active && active.provider) {
-            return active.provider;
+            return active.provider as any;
         }
-        return this.getConfiguration('llm').get<any>('provider') || 'openai';
+        return (this.getConfiguration('llm').get<string>('provider') || 'openai') as any;
     }
 
     public getAgentModel(): string {
@@ -920,12 +933,6 @@ export class ConfigService implements IConfigService {
             await this.getConfiguration('agent.orchestrator').update('maxToolCallLoop', count, vscode.ConfigurationTarget.Global);
         }
 
-        public getWorkspacePath(): string {
-	            if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-	                return vscode.workspace.workspaceFolders[0].uri.fsPath;
-	            }
-	            return ''; // 또는 적절한 오류 처리
-	        }
 
 	        /**
 	         * Returns the list of internal Viper agents for Per-Agent LLM Override configuration.

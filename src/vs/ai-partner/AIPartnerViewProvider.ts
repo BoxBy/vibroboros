@@ -4,6 +4,7 @@ import { LLMService } from './services/LLMService';
 import { ModelInfoProvider } from './services/llm/ModelInfoProvider';
 import { MCPHealthCheckService } from './services/MCPHealthCheckService';
 import { OrchestratorAgent } from './agents/OrchestratorAgent';
+import { CompositionRoot, ServiceIdentifiers } from './di/CompositionRoot';
 import { A2AMessage, A2A_MIME_TYPES, createProgressMessage, createPlanMessage, createFileEditMessage, createA2ADataMessage, PlanData, FileEditData } from './types/A2AMessages';
 
 const modelsCache = new Map<string, { models: any[], timestamp: number }>();
@@ -381,7 +382,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                 case 'newChat':
                     try {
                         const { initialQuery, messageId } = message;
-                        const orchestrator = OrchestratorAgent.getInstance();
+                        const orchestrator = CompositionRoot.resolve<OrchestratorAgent>(ServiceIdentifiers.OrchestratorAgent);
                         await orchestrator.acceptMessage({
                             type: 'text',
                             from: 'user',
@@ -396,7 +397,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
 
                 case 'chatMessage':
                     try {
-                        const orchestrator = OrchestratorAgent.getInstance();
+                        const orchestrator = CompositionRoot.resolve<OrchestratorAgent>(ServiceIdentifiers.OrchestratorAgent);
                         await orchestrator.acceptMessage({
                             type: 'text',
                             from: 'user',
@@ -411,7 +412,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                 case 'rollbackTo':
                         try {
                             const { messageId, timestamp } = message.payload;
-                            const orchestrator = OrchestratorAgent.getInstance();
+                            const orchestrator = CompositionRoot.resolve<OrchestratorAgent>(ServiceIdentifiers.OrchestratorAgent);
                             // Orchestrator needs to implement rollback mechanism
                             // For now, we'll assume we can signal it.
                             // But usually rollback is state management.
@@ -505,7 +506,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                             // Perform health check
                             let healthStatus = { mcp: {}, a2a: {} };
                             try {
-                                const healthService = MCPHealthCheckService.getInstance();
+                                const healthService = CompositionRoot.resolve<MCPHealthCheckService>(ServiceIdentifiers.MCPHealthCheckService);
                                 const force = message.payload?.force === true;
                                 healthStatus = await healthService.checkAllServers(root.fsPath, force);
                             } catch (e) {
@@ -539,6 +540,21 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 
+                case 'requestSystemPromptTokenCount': {
+                    try {
+                        const { SystemPromptFactory } = require('./services/SystemPromptFactory');
+                        const factory = CompositionRoot.resolve<any>(ServiceIdentifiers.SystemPromptFactory);
+                        const prompt: string = await factory.generate('router', 'OrchestratorAgent', 3, '', { excludeHistory: true });
+                        // Approximate token count: ~4 chars per token (GPT-4 standard heuristic)
+                        const tokenCount = Math.ceil(prompt.length / 4);
+                        this.postMessage({ command: 'systemPromptTokenCount', payload: tokenCount });
+                    } catch (e) {
+                        console.warn('[AIPartnerViewProvider] requestSystemPromptTokenCount failed:', e);
+                        // Send fallback estimate if factory is unavailable
+                        this.postMessage({ command: 'systemPromptTokenCount', payload: 2000 });
+                    }
+                    break;
+                }
                 case 'requestModels':
                     try {
                         const provider = message.payload?.provider || this.configService.getLlmProvider() || 'openai';
@@ -587,7 +603,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                                     }
                                     try {
                                         const info = await Promise.race([
-                                            ModelInfoProvider.getInstance().getModelInfo(provider, modelId, apiKey, endpoint),
+                                            CompositionRoot.resolve<ModelInfoProvider>(ServiceIdentifiers.ModelInfoProvider).getModelInfo(provider, modelId, apiKey, endpoint),
                                             new Promise<any>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
                                         ]);
                                         return { id: modelId, maxContext: info?.maxContextTokens || undefined };
@@ -637,7 +653,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
 
                         // Fetch actual context size
                         try {
-                            const info = await ModelInfoProvider.getInstance().getModelInfo(
+                            const info = await CompositionRoot.resolve<ModelInfoProvider>(ServiceIdentifiers.ModelInfoProvider).getModelInfo(
                                 settings.llmProvider, 
                                 settings.model,
                                 // Pass API key just in case dynamic fetch is needed
@@ -684,7 +700,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                             // Re-fetch model info to provide accurate maxContextTokens
                             let modelMaxContext = 0;
                             try {
-                                const info = await ModelInfoProvider.getInstance().getModelInfo(
+                                const info = await CompositionRoot.resolve<ModelInfoProvider>(ServiceIdentifiers.ModelInfoProvider).getModelInfo(
                                     s.llmProvider || 'openai', 
                                     s.model || '',
                                     // Pass API key just in case dynamic fetch is needed
@@ -779,9 +795,9 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                     try {
                         const { steps } = message.payload;
                         if (Array.isArray(steps)) {
-                            const orchestrator = OrchestratorAgent.getInstance();
+                            const orchestrator = CompositionRoot.resolve<OrchestratorAgent>(ServiceIdentifiers.OrchestratorAgent);
                             if (orchestrator) {
-                                orchestrator.updatePlan(steps);
+                                (orchestrator as any).updatePlan(steps);
                             }
                         }
                     } catch (e) {

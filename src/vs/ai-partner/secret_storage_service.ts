@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 
-export class SecretStorageService {
+import { ISecretStorageService } from './di/interfaces/IConfigService';
+
+export class SecretStorageService implements ISecretStorageService {
     private static instance: SecretStorageService;
     private secretStorage: vscode.SecretStorage;
     private static readonly PREFIX = 'viper.';
@@ -31,7 +33,7 @@ export class SecretStorageService {
 
     // Helper for safe retrieval with timeout
     private async getWithTimeout(key: string): Promise<string | undefined> {
-        return new Promise<string | undefined>((resolve) => {
+        return new Promise<string | undefined>(async (resolve) => {
             let completed = false;
             
             // Timeout safeguard
@@ -42,22 +44,23 @@ export class SecretStorageService {
                     resolve(undefined);
                 }
             }, 5000); // 5s timeout to handle slower storage operations
-
-            // Actual read
-            this.secretStorage.get(key).then(val => {
+ 
+            try {
+                // Actual read
+                const val = await this.secretStorage.get(key);
                 if (!completed) {
                     completed = true;
                     clearTimeout(timer);
                     resolve(val);
                 }
-            }).catch(err => {
+            } catch (err) {
                 if (!completed) {
                     completed = true;
                     clearTimeout(timer);
                     console.error(`[SecretStorageService] Error reading key for: ${key}`, err);
                     resolve(undefined);
                 }
-            });
+            }
         });
     }
 
@@ -97,5 +100,17 @@ export class SecretStorageService {
 
     public async deleteProfileApiKey(profileId: string): Promise<void> {
         await this.secretStorage.delete(this.getProfileKey(profileId));
+    }
+
+    public async get(key: string): Promise<string | undefined> {
+        return this.getWithTimeout(key);
+    }
+
+    public async set(key: string, value: string): Promise<void> {
+        await this.secretStorage.store(key, value);
+    }
+
+    public async delete(key: string): Promise<void> {
+        await this.secretStorage.delete(key);
     }
 }

@@ -53,6 +53,48 @@ export function createServiceBindings(): ServiceBinding[] {
     const bindings: ServiceBinding[] = [];
 
     // ========================================================================
+    // Infrastructure Layer - LLM Sub-services
+    bindings.push({
+        identifier: ServiceIdentifiers.TokenizerService,
+        factory: (container) => {
+            const { TokenizerService } = require('../services/llm/TokenizerService');
+            return TokenizerService.getInstance();
+        },
+        lifetime: ServiceLifetime.SINGLETON,
+        description: 'LLM tokenization service'
+    });
+
+    bindings.push({
+        identifier: ServiceIdentifiers.ModelInfoProvider,
+        factory: (container) => {
+            const { ModelInfoProvider } = require('../services/llm/ModelInfoProvider');
+            return ModelInfoProvider.getInstance();
+        },
+        lifetime: ServiceLifetime.SINGLETON,
+        description: 'LLM model metadata provider'
+    });
+
+    bindings.push({
+        identifier: ServiceIdentifiers.ContextManager,
+        factory: (container) => {
+            const { ContextManager } = require('../services/llm/ContextManager');
+            return ContextManager.getInstance();
+        },
+        lifetime: ServiceLifetime.SINGLETON,
+        description: 'LLM context window manager'
+    });
+
+    bindings.push({
+        identifier: ServiceIdentifiers.RequestHandler,
+        factory: (container) => {
+            const { RequestHandler } = require('../services/llm/RequestHandler');
+            return RequestHandler.getInstance();
+        },
+        lifetime: ServiceLifetime.SINGLETON,
+        description: 'LLM request processing service'
+    });
+
+    // ========================================================================
     // Configuration Services (Layer 0 - Foundation)
     // ========================================================================
 
@@ -153,6 +195,28 @@ export function createServiceBindings(): ServiceBinding[] {
         },
         lifetime: ServiceLifetime.SINGLETON,
         description: 'Conversation memory service'
+    });
+
+    bindings.push({
+        identifier: ServiceIdentifiers.CheckpointService,
+        factory: (container) => {
+            const { CheckpointService } = require('../services/CheckpointService');
+            return new CheckpointService();
+        },
+        lifetime: ServiceLifetime.SINGLETON,
+        description: 'Workspace checkpoint service'
+    });
+
+    bindings.push({
+        identifier: ServiceIdentifiers.AuthService,
+        factory: (container) => {
+            const { AuthService } = require('../auth_service');
+            const configService = container.resolve(ServiceIdentifiers.ConfigService);
+            return AuthService.getInstance(configService);
+        },
+        lifetime: ServiceLifetime.SINGLETON,
+        dependencies: [ServiceIdentifiers.ConfigService],
+        description: 'Authentication and identity service'
     });
 
     // ========================================================================

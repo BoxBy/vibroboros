@@ -24,6 +24,7 @@ import { A2AMessage } from './interfaces/A2AMessage';
 import { OrchestratorAgent } from './agents/OrchestratorAgent';
 import { SemanticModelService } from './services/SemanticModelService';
 import { CompositionRoot, ServiceIdentifiers } from './di/CompositionRoot';
+import { ISystemPromptFactory } from './di/interfaces/ISystemPromptFactory';
 import * as jsdiff from 'diff'; // jsdiff
 import { TerminalStreamService } from './services/TerminalStreamService';
 import type { Dirent } from 'fs';
@@ -263,11 +264,15 @@ export async function activate(context: vscode.ExtensionContext) {
         CompositionRoot.initialize(context);
 
         // 2. Get services from DI container
-        const configService = CompositionRoot.resolve(ServiceIdentifiers.ConfigService);
-        const llmService = CompositionRoot.resolve(ServiceIdentifiers.LLMService);
-        const devLogService = CompositionRoot.resolve(ServiceIdentifiers.Logger);
+        const configService = CompositionRoot.resolve<ConfigService>(ServiceIdentifiers.ConfigService);
+        const llmService = CompositionRoot.resolve<LLMService>(ServiceIdentifiers.LLMService);
+        const devLogService = CompositionRoot.resolve<DeveloperLogService>(ServiceIdentifiers.Logger);
         const semanticModelService = CompositionRoot.resolve<SemanticModelService>(ServiceIdentifiers.SemanticModelService);
-        const authService = AuthService.getInstance(configService); // AuthService still uses legacy pattern
+        const systemPromptFactory = CompositionRoot.resolve<ISystemPromptFactory>(ServiceIdentifiers.SystemPromptFactory);
+        const authService = AuthService.getInstance(configService); 
+        // Register AuthService in DI for components using it via DI
+        CompositionRoot.registerDynamic(ServiceIdentifiers.AuthService, authService);
+        
         const diagnostics = vscode.languages.createDiagnosticCollection('viper');
 
         // Warm up MCP Health Check (background)
@@ -354,8 +359,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Start Embedded Defaults (if not overridden in config)
         const embeddedMap: Record<string, { pkg: string; bin: string }> = {
-            'fetch': { pkg: 'fetch-mcp', bin: 'dist/index.js' },
-            'terminal-controller': { pkg: 'mcp-terminal', bin: 'dist/index.js' }
+            'fetch': { pkg: 'fetch-mcp', bin: 'dist/index.js' }
         };
 
         for (const [id, info] of Object.entries(embeddedMap)) {
@@ -609,12 +613,20 @@ export async function activate(context: vscode.ExtensionContext) {
             llmService,
             authService,
             configService,
+            systemPromptFactory,
             context.workspaceState,
             diagnostics,
             devLogService,
             externalAgents
         );
         orchestratorInstance = orchestrator;
+
+        // Register OrchestratorAgent in DI container so AIPartnerViewProvider can resolve it
+        CompositionRoot.registerDynamic(ServiceIdentifiers.OrchestratorAgent, orchestrator);
+
+        // Initialize AgentFactory and register all agents
+        const { AgentFactory } = require('./agents/core/AgentFactory');
+        AgentFactory.getInstance().registerAllAgents();
 
         // Register main webview provider and bridge messages
         const provider = new AIPartnerViewProvider(context.extensionUri, configService, llmService, context);

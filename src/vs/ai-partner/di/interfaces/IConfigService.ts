@@ -213,6 +213,7 @@ export interface IConfigService {
     getAuthMode(): string;
     setAuthMode(): Promise<void>;
     clearApiKeyCache(): void;
+    getTerminalPermission(): 'always_ask' | 'agent_decides' | 'always_allow';
 
     // ========================================================================
     // History Settings

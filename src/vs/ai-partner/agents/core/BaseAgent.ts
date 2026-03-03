@@ -11,6 +11,7 @@ import { getMcpClient } from "../../mcp_client_provider";
 import * as mcpClientModule from "@modelcontextprotocol/sdk/client";
 import { runAgenticLoop } from '../utils/agentHelpers';
 import { SemanticModelService } from '../../services/SemanticModelService';
+import { CompositionRoot, ServiceIdentifiers } from '../../di/CompositionRoot';
 
 /**
  * Abstract base class for all agents in the Viper system.
@@ -24,11 +25,11 @@ export abstract class BaseAgent implements AgentExecutor {
     protected worldModel: SemanticModelService;
 
     constructor(protected card: AgentCard) {
-        this.llmService = LLMService.getInstance();
-        this.configService = ConfigService.getInstance();
+        this.llmService = CompositionRoot.resolve<LLMService>(ServiceIdentifiers.LLMService);
+        this.configService = CompositionRoot.resolve<ConfigService>(ServiceIdentifiers.ConfigService);
         this.mcpClient = getMcpClient();
-        this.logger = DeveloperLogService.getInstance();
-        this.worldModel = SemanticModelService.getInstance();
+        this.logger = CompositionRoot.resolve<DeveloperLogService>(ServiceIdentifiers.Logger);
+        this.worldModel = CompositionRoot.resolve<SemanticModelService>(ServiceIdentifiers.SemanticModelService);
     }
 
     protected readonly endpoint: string = '';

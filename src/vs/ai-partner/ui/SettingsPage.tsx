@@ -100,6 +100,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   
   // New Settings
   const [summarizeTokenLimit, setSummarizeTokenLimit] = useState<number>(0.75);
+  const [systemPromptTokenCount, setSystemPromptTokenCount] = useState<number | null>(null);
 
   const [thinkingLanguage, setThinkingLanguage] = useState<string>('English');
   const [userLanguage, setUserLanguage] = useState<string>('English');
@@ -162,12 +163,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         setStreamingEnabled(!!p.streamingEnabled);
         setAdvancedHistorySummaryEnabled(!!p.advancedHistorySummaryEnabled);
         if (typeof p.summarizeTokenLimit === 'number') setSummarizeTokenLimit(p.summarizeTokenLimit);
-
         if (typeof p.thinkingLanguage === 'string') setThinkingLanguage(p.thinkingLanguage);
         if (typeof p.userLanguage === 'string') setUserLanguage(p.userLanguage);
          if (p.maxContextOverride !== undefined) setMaxContextOverride(p.maxContextOverride);
         if (p.useVSCodeThinkingLang !== undefined) setUseVSCodeThinkingLang(p.useVSCodeThinkingLang);
         if (p.useVSCodeUserLang !== undefined) setUseVSCodeUserLang(p.useVSCodeUserLang);
+      } else if (message.command === 'systemPromptTokenCount') {
+        if (typeof message.payload === 'number') setSystemPromptTokenCount(message.payload);
       } else if (message.command === 'profilesResponse') {
         setProfiles(message.payload?.profiles || []);
         setActiveProfileId(typeof message.payload?.activeProfileId === 'string' ? message.payload.activeProfileId : null);
@@ -221,6 +223,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
     vscodeService.postMessage({ command: 'requestFeatureToggles' });
     vscodeService.postMessage({ command: 'refreshConfiguredItems' }); // Request items on mount
     vscodeService.postMessage({ command: 'requestAgents' }); // Request internal agents for Per-Agent LLM Override
+    vscodeService.postMessage({ command: 'requestSystemPromptTokenCount' }); // Measure actual system prompt token count
 
     return () => {
       window.removeEventListener('message', handleMessage);
@@ -1046,7 +1049,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
             <div style={{ marginLeft: '130px', fontSize: '12px', opacity: 0.9, backgroundColor: 'var(--vscode-textBlockQuote-background)', padding: '8px', borderRadius: '4px' }}>
             {(() => {
                 const maxCtx = maxContextOverride || llmSettings.modelMaxContext || 4096;
-                const sysPromptEst = 2000; // Estimated system prompt size
+                const sysPromptEst = systemPromptTokenCount ?? 2000;
+                const sysPromptLabel = systemPromptTokenCount !== null
+                    ? systemPromptTokenCount.toLocaleString()
+                    : '~2,000 (measuring...)';
                 const usableCtx = Math.max(0, maxCtx - sysPromptEst);
                 const historyLimit = Math.floor(usableCtx * summarizeTokenLimit);
                 
@@ -1054,7 +1060,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                         <div><strong>Token Usage Estimate:</strong></div>
                         <div>Model Context: <strong>{maxCtx.toLocaleString()}</strong> tokens</div>
-                        <div>System Prompt (Est.): <strong>~{sysPromptEst.toLocaleString()}</strong> tokens</div>
+                        <div>System Prompt: <strong>{sysPromptLabel}</strong> tokens</div>
                         <div style={{ marginTop: '4px', borderTop: '1px solid var(--vscode-editor-foreground)', paddingTop: '2px' }}>
                             Available for Chat History: <strong style={{ color: 'var(--vscode-textLink-foreground)' }}>{historyLimit.toLocaleString()}</strong> tokens
                         </div>

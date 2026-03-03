@@ -17,23 +17,27 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, 
         let currentAgentGroup: any = null;
 
         messages.forEach((msg, idx) => {
+            const isProgressMsg = msg.kind === 'progress';
             const isSpecialistAgent = msg.sender === 'ai' && 
                                      msg.senderName && 
                                      msg.senderName.trim() !== 'OrchestratorAgent' && 
-                                     msg.kind !== 'progress' && 
+                                     !isProgressMsg && 
                                      msg.kind !== 'task' && 
                                      msg.kind !== 'codeEditFile';
             
-            // Check if there's any user message after this point in the list
+            // Collapse when: a user message OR a non-progress AI response follows
+            const hasSubsequentMessage = messages.slice(idx + 1).some(m =>
+                m.sender === 'user' || (m.sender === 'ai' && m.kind !== 'progress')
+            );
             const hasSubsequentUserMessage = messages.slice(idx + 1).some(m => m.sender === 'user');
 
-            if (msg.kind === 'progress') {
+            if (isProgressMsg) {
                 currentAgentGroup = null;
                 if (!currentProgressGroup) {
                     currentProgressGroup = {
                         kind: 'progressGroup',
                         messages: [msg],
-                        hasSubsequentUserMessage,
+                        hasSubsequentUserMessage: hasSubsequentMessage,
                         timestamp: msg.timestamp,
                         sender: msg.sender
                     };
@@ -41,7 +45,7 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, 
                 } else {
                     currentProgressGroup.messages.push(msg);
                     // Update to the latest 'subsequent' status
-                    currentProgressGroup.hasSubsequentUserMessage = hasSubsequentUserMessage;
+                    currentProgressGroup.hasSubsequentUserMessage = hasSubsequentMessage;
                 }
             } else if (isSpecialistAgent) {
                 currentProgressGroup = null;

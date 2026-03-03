@@ -53,11 +53,10 @@ export class ServiceLocator {
 
     /**
      * Get Semantic Model Service
-     * Temporarily disabled
      */
-    // static getSemanticModelService(): ISemanticModelService {
-    //     return CompositionRoot.resolve<ISemanticModelService>(ServiceIdentifiers.SemanticModelService);
-    // }
+    static getSemanticModelService(): ISemanticModelService {
+        return CompositionRoot.resolve<ISemanticModelService>(ServiceIdentifiers.SemanticModelService);
+    }
 
     /**
      * Get Session Manager

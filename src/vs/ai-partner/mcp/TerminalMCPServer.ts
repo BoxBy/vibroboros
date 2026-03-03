@@ -9,6 +9,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import * as vscode from 'vscode';
 import { ConfigService } from '../config_service';
+import { CompositionRoot, ServiceIdentifiers } from '../di/CompositionRoot';
 
 
 /**
@@ -17,12 +18,11 @@ import { ConfigService } from '../config_service';
  */
 export class TerminalMCPServer {
     private server: Server;
-    private terminal: vscode.Terminal | null = null;
     private outputBuffer: string[] = [];
     private configService: ConfigService;
 
     constructor() {
-        this.configService = ConfigService.getInstance();
+        this.configService = CompositionRoot.resolve<ConfigService>(ServiceIdentifiers.ConfigService);
         this.server = new Server(
             {
                 name: 'viper-terminal',
@@ -98,12 +98,14 @@ export class TerminalMCPServer {
 
             switch (name) {
                 case 'execute_terminal_command':
+                    if (!args) { throw new Error('Missing arguments'); }
                     return await this.executeTerminalCommand(args.command as string, args.cwd as string | undefined);
                 
                 case 'get_terminal_history':
-                    return this.getTerminalHistory(args.lines as number | undefined);
+                    return this.getTerminalHistory(args?.lines as number | undefined);
                 
                 case 'analyze_terminal_errors':
+                    if (!args) { throw new Error('Missing arguments'); }
                     return this.analyzeTerminalErrors(args.output as string);
                 
                 default:

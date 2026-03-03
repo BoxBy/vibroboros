@@ -3,12 +3,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { IMemoryService, UserPreferences } from '../di/interfaces/IMemoryService';
 
-export interface UserPreferences {
-    language: string;
-    codingStyle: string; // e.g. 'Functional', 'OOP', 'Concise'
-    preferredFrameworks: string[];
-    customInstructions: string;
-}
 
 /**
  * MemoryService
@@ -43,7 +37,6 @@ export class MemoryService implements IMemoryService {
      * @deprecated Use dependency injection instead
      */
     public static getInstance(): MemoryService {
-        console.warn('[MemoryService] getInstance() is deprecated. Use DI instead.');
         if (!MemoryService.instance) {
             MemoryService.instance = new MemoryService();
         }

@@ -486,7 +486,7 @@ body {
 
 .progress-group-content {
     animation: slideDown 0.25s ease-out;
-    padding-left: 12px; /* Reduce from default */
+    padding-left: 8px; /* Reduced from 12px */
 }
 
 /* Reduce markdown indentation in progress logs */
@@ -497,7 +497,7 @@ body {
 
 .progress-group-content .markdown-content ul, 
 .progress-group-content .markdown-content ol {
-    padding-left: 16px;
+    padding-left: 10px;
     margin-left: 0;
 }
 

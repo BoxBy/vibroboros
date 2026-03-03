@@ -48,4 +48,19 @@ export interface ISemanticModelService {
      * Update the graph for a file
      */
     updateGraph(filePath: string): Promise<void>;
+
+    /**
+     * Get a simplified directory structure string
+     */
+    getDirectoryStructureOnly(): string;
+
+    /**
+     * Get context relevant to a specific file and related files
+     */
+    getSmartContext(activeFilePath?: string, explicitRelatedFiles?: string[]): string;
+
+    /**
+     * Get general context for a query
+     */
+    getContextForQuery(query: string): string;
 }

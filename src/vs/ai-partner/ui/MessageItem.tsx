@@ -111,6 +111,36 @@ const ProgressLogItem: React.FC<ProgressLogItemProps> = ({ message, isLast, dept
             .replace(/<\/thinking>/g, '\n');
     };
 
+    const formatLogContent = (content: string) => {
+        if (content.includes('[MCP]') && content.includes('with args:')) {
+            const match = content.match(/\[MCP\] Executing Tool: (.*?) with args: (.*)/);
+            if (match) {
+                const tool = match[1];
+                let args = match[2].trim();
+                // Remove outer braces if they exist
+                if (args.startsWith('{') && args.endsWith('}')) {
+                    args = args.substring(1, args.length - 1).trim();
+                }
+                return (
+                    <>
+                        <span>[MCP] Executing Tool: {tool}</span>
+                        <div style={{ paddingLeft: '8px', opacity: 0.8, whiteSpace: 'pre-wrap', fontSize: '12px', marginTop: '2px' }}>
+                            {args}
+                        </div>
+                    </>
+                );
+            }
+        }
+        return <ReactMarkdown 
+            children={formatBlock(content)}
+            remarkPlugins={[remarkGfm]}
+            components={{
+                ...markdownComponents,
+                p: ({node, ...props}) => <p style={{margin: '0 0 4px 0'}} {...props} />
+            }}
+        />;
+    };
+
     return (
         <div className="progress-log-container">
             {/* Main/Parent Block */}
@@ -122,11 +152,11 @@ const ProgressLogItem: React.FC<ProgressLogItemProps> = ({ message, isLast, dept
                 }}
                 style={{
                     padding: '2px 0 2px 8px',
-                    margin: depth > 0 ? `4px 0 4px ${depth * 20}px` : '0', // Recursive indentation
-                    fontSize: '0.93em', 
+                    margin: depth > 0 ? `4px 0 4px ${depth * 14}px` : '0', // Recursive indentation
+                    fontSize: '14px', 
                     color: 'var(--vscode-descriptionForeground)',
                     fontFamily: 'var(--vscode-font-family)',
-                    borderLeft: isCollapsed ? 'none' : '2px solid var(--vscode-textBlockQuote-border)', // Vertical Line 1
+                    borderLeft: 'none', 
                     lineHeight: '1.4em',
                     position: 'relative',
                     cursor: 'pointer',
@@ -137,55 +167,46 @@ const ProgressLogItem: React.FC<ProgressLogItemProps> = ({ message, isLast, dept
                     left: isCollapsed ? '0px' : '-1px',
                     top: '4px',
                     color: 'var(--vscode-editorGuide-activeBackground)',
-                    fontWeight: isCollapsed ? 'bold' : 'normal'
-                }}>{isCollapsed ? '>' : ''}</span>
-                
-                {isCollapsed ? (
-                    <span style={{ paddingLeft: '12px', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {collapsedPreview}
-                    </span>
-                ) : (
-                    <div style={{ paddingLeft: '4px', overflow: 'hidden' }} className="markdown-content dense-markdown">
-                        {preRouting && <ReactMarkdown 
-                            children={formatBlock(preRouting)}
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                                ...markdownComponents,
-                                p: ({node, ...props}) => <p style={{margin: '0 0 4px 0'}} {...props} />
-                            }}
-                        />}
-                        
-                        {routingLine && (
-                            <div style={{
-                                margin: '8px 0', 
-                                fontStyle: 'italic', 
-                                color: 'var(--vscode-textLink-foreground)'
-                            }}>
-                                {routingLine}
-                            </div>
-                        )}
-                    </div>
-                )}
+                    fontWeight: 'normal'
+                }}>
+                    <i className={`codicon codicon-chevron-${isCollapsed ? 'right' : 'down'}`} style={{ fontSize: '14px' }} />
+                </span>
+
+                <div className="progress-log-text" style={{ 
+                    paddingLeft: '16px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: isCollapsed ? 'nowrap' : 'normal'
+                }}>
+                    {isCollapsed ? collapsedPreview : (
+                        <div className="progress-log-expanded">
+                            {formatLogContent(preRouting)}
+                            
+                            {routingLine && (
+                                <div style={{
+                                    margin: '8px 0', 
+                                    fontStyle: 'italic', 
+                                    color: 'var(--vscode-textLink-foreground)'
+                                }}>
+                                    {routingLine}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Part 3: Nested/Indented Block (Worker Agent) */}
             {!isCollapsed && postRouting && (
                 <div className="progress-log-nested" style={{
-                    marginLeft: `${(depth + 1) * 20}px`, // Indent further relative to current depth
+                    marginLeft: `${(depth + 1) * 14}px`, // Indent further relative to current depth
                     paddingLeft: '8px',
-                    borderLeft: '2px solid var(--vscode-textBlockQuote-border)', // Vertical Line 2 (Separated)
+                    borderLeft: 'none', 
                     marginTop: '4px',
-                    fontSize: '0.93em',
+                    fontSize: '14px',
                     color: 'var(--vscode-descriptionForeground)'
                 }}>
-                     <ReactMarkdown 
-                        children={formatBlock(postRouting)}
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                            ...markdownComponents,
-                            p: ({node, ...props}) => <p style={{margin: '0 0 4px 0'}} {...props} />
-                        }}
-                    />
+                     {formatLogContent(postRouting)}
                 </div>
             )}
         </div>
@@ -206,7 +227,25 @@ const ProgressGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boole
         }
     }, [hasSubsequentUserMessage, userInteracted]);
 
-    const logs = group.messages || [];
+    const allLogs = group.messages || [];
+
+    // Filter noise from progress log:
+    // 1. Remove pure "[XXX] Thinking..." entries that have a subsequent non-thinking log
+    //    (works for both completed and streaming: if even one content log exists after, hide all prior pure thinking headers)
+    // 2. Remove "[System] ..." retry/error messages
+    const THINKING_ONLY_RE = /^\[.*?\]\s*Thinking\.\.\.?\s*$/;
+    const SYSTEM_NOISE_RE = /^\[System\]/i;
+    const hasAnyContentLog = allLogs.some((log: any) => {
+        const t = (log.text || '').trim();
+        return !THINKING_ONLY_RE.test(t) && !SYSTEM_NOISE_RE.test(t);
+    });
+    const logs = allLogs.filter((log: any) => {
+        const text = (log.text || '').trim();
+        if (SYSTEM_NOISE_RE.test(text)) return false;
+        // If ANY content log exists anywhere, drop all pure thinking headers
+        if (THINKING_ONLY_RE.test(text) && hasAnyContentLog) return false;
+        return true;
+    });
     const lastLog = logs[logs.length - 1];
     const logCount = logs.length;
 
@@ -215,28 +254,25 @@ const ProgressGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boole
     const cleanSummary = lastLog ? stripEmojis(lastLog.text.replace(/^>\s*/gm, '')) : '';
 
     return (
-        <div className="progress-group" style={{ marginBottom: 12 }}>
+        <div className="progress-group" style={{ marginBottom: 4 }}>
             <div 
                 className="progress-group-header"
                 onClick={() => {
                     setIsCollapsed(!isCollapsed);
                     setUserInteracted(true);
                 }}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '4px 8px',
-                    fontSize: '0.85em',
-                    color: 'var(--vscode-descriptionForeground)',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    background: isCollapsed ? 'rgba(0,0,0,0.05)' : 'transparent',
-                    borderRadius: '4px'
+                style={{ 
+                    cursor: 'pointer', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '6px',
+                    padding: '2px 0',
+                    fontSize: '14px',
+                    marginBottom: '4px'
                 }}
             >
-                <span className={`codicon ${isCollapsed ? 'codicon-triangle-right' : 'codicon-chevron-down'}`} style={{ fontSize: '12px' }} />
-                <span style={{ fontWeight: 600 }}>{logCount} steps</span>
+                <span className={`codicon ${isCollapsed ? 'codicon-chevron-right' : 'codicon-chevron-down'}`} style={{ fontSize: '14px', flexShrink: 0 }} />
+                <span style={{ fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>{logCount} steps</span>
                 {isCollapsed && (
                     <span style={{ 
                         opacity: 0.7, 
@@ -322,7 +358,7 @@ const AgentGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boolean;
     const agentName = messages[0]?.senderName || 'Agent';
 
     return (
-        <div className="agent-group" style={{ marginBottom: 16 }}>
+        <div className="agent-group" style={{ marginBottom: 8 }}>
             <div 
                 className="agent-group-header"
                 onClick={() => {
@@ -334,7 +370,7 @@ const AgentGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boolean;
                     alignItems: 'center',
                     gap: '8px',
                     padding: '6px 10px',
-                    fontSize: '0.9em',
+                    fontSize: '14px',
                     color: 'var(--vscode-descriptionForeground)',
                     cursor: 'pointer',
                     userSelect: 'none',
@@ -346,7 +382,7 @@ const AgentGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boolean;
             >
                 <span className={`codicon ${isCollapsed ? 'codicon-chevron-right' : 'codicon-chevron-down'}`} style={{ fontSize: '14px' }} />
                 <span className="codicon codicon-robot" style={{ fontSize: '14px' }} />
-                <span style={{ fontWeight: 600 }}>{agentName} Discussing ({messages.length} messages)</span>
+                <span>{agentName} Discussing ({messages.length} messages)</span>
             </div>
             
             {!isCollapsed && (
@@ -374,17 +410,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
     const isOrchestrator = (!message.senderName || (message.senderName || '').trim() === 'OrchestratorAgent');
     const [showAgentBubble, setShowAgentBubble] = useState<boolean>(true);
     const [chipsOpen, setChipsOpen] = useState(false);
-    // renderedDiffHtml may still be used if some other part needs it, but mostly we use stats now for CodeEditFile
-    const [renderedDiffHtml, setRenderedDiffHtml] = useState<string | null>(null);
     const prevDiffRef = useRef(message.diff);
 
     useEffect(() => {
-        if (message.diff && message.diff.diffHtml) {
-            setRenderedDiffHtml(message.diff.diffHtml);
-        } else {
-            setRenderedDiffHtml(null);
-        }
-
         // Auto-collapse if diff was present but is now gone (action taken)
         if (prevDiffRef.current && !message.diff) {
             setShowAgentBubble(false);
@@ -424,9 +452,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
         const parsedTasks = tasks.length > 0 ? tasks : ((message as any).content?.[0]?.text || '').split('\n').filter((l: string) => /^\s*(?:-|\d+\.|\[ \]|\[x\])\s+/.test(l));
 
         return (
-            <div className="message-group" style={{ marginBottom: 16, width: '100%' }}>
+            <div className="message-group" style={{ marginBottom: 8, width: '100%' }}>
                 <div className="message model-message" style={{ padding: '12px', background: 'var(--vscode-editor-background)', border: '1px solid var(--vscode-widget-border)', borderRadius: 6, width: '100%' }}>
-                    <div style={{ fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span className="codicon codicon-checklist" />
                         <span>Task List</span>
                     </div>
@@ -494,7 +522,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
         }, [message.diff]);
         
         return (
-            <div className="message-group" style={{ marginBottom: 16, width: '100%' }}>
+            <div className="message-group" style={{ marginBottom: 8, width: '100%' }}>
                 <div className="message model-message" style={{
                     padding: 0,
                     overflow: 'hidden',
@@ -521,8 +549,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                                 <span
                                     onClick={handleFileNameClick}
                                     style={{
-                                        fontWeight: 600,
-                                        fontSize: '13px',
+                                        fontSize: '14px',
                                         color: 'var(--vscode-textLink-foreground)',
                                         cursor: 'pointer',
                                         textDecoration: 'none',
@@ -620,7 +647,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                 .sender-info {
                     display: flex;
                     justify-content: space-between;
-                    font-size: 12px;
+                    font-size: 14px;
                     color: #888;
                     margin-bottom: 4px;
                 }
@@ -632,12 +659,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                     flex-direction: row-reverse;
                 }
                 .sender-label {
-                    font-weight: bold;
+                    font-weight: normal;
                 }
                 .thought-toggle {
                     cursor: pointer;
                     margin: 6px 0;
-                    font-size: 12px;
+                    font-size: 14px;
                     background: var(--vscode-editor-inactiveSelectionBackground);
                     padding: 4px 8px;
                     border-radius: 4px;
@@ -661,20 +688,21 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                     border-left: 2px solid var(--vscode-textLink-foreground);
                     background: var(--vscode-editor-lineHighlightBackground);
                     border-radius: 0 4px 4px 0;
-                    font-size: 0.9em;
+                    font-size: 14px;
                     color: var(--vscode-editorCodeLens-foreground);
                 }
                 .agent-toggle {
                     cursor: pointer;
-                    margin: 2px 0 4px 0;
+                    padding: 2px 0;
                     font-size: 14px;
                     display: inline-flex;
                     align-items: center;
-                    gap: 4px;
+                    gap: 6px;
                     color: var(--vscode-descriptionForeground);
+                    margin-top: 0;
                 }
                 .agent-toggle .codicon {
-                    font-size: 16px;
+                    font-size: 14px;
                 }
             `}</style>
             {isModel && (
@@ -686,9 +714,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                     onClick={() => setShowAgentBubble(v => !v)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowAgentBubble(v => !v); } }}
                     title={showAgentBubble ? 'Hide agent output' : 'Show agent output'}
+                    style={{ marginLeft: 0 }}
                 >
                     <span className={`codicon ${showAgentBubble ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
-                    <span style={{color: 'var(--vscode-descriptionForeground)'}}>
+                    <span style={{color: 'var(--vscode-descriptionForeground)', fontWeight: 600}}>
                         {(() => {
                             const name = message.senderName || '';
                             if (!name || name.trim() === '' || name === 'OrchestratorAgent') {
@@ -712,7 +741,6 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                     style={{ marginLeft: 0, display: 'flex' }}
                 >
                     <span className={`codicon ${showThought ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
-                    <span>Thinking Process</span>
                 </div>
             )}
             {isModel && message.thought && showThought && (
@@ -729,7 +757,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                             display: 'inline-flex', alignItems: 'center', gap: 6,
                             color: 'var(--vscode-foreground)',
                             background: 'transparent', border: 'none', cursor: 'pointer',
-                            fontSize: 12
+                            fontSize: 14
                         }}
                         title="Attachments"
                     >
@@ -772,7 +800,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                                                     color: 'var(--vscode-badge-foreground)',
                                                     border: '1px solid var(--vscode-editorWidget-border)',
                                                     borderRadius: 8,
-                                                    padding: '2px 0', paddingLeft: 4, paddingRight: 3, fontSize: 12,
+                                                    padding: '2px 0', paddingLeft: 4, paddingRight: 3, fontSize: 14,
                                                     cursor: (a as any).uri ? 'pointer' : 'default'
                                                 }}
                                                 onClick={() => {
@@ -856,7 +884,6 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                                 title="Referenced files"
                             >
                                 <span className={`codicon ${chipsOpen ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
-                                <span className={`codicon ${chipsOpen ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
                                 <span>Referenced ({message.attachments.length})</span>
                             </button>
                             {chipsOpen && (
@@ -933,13 +960,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', fontSize: '12px', color: 'var(--vscode-descriptionForeground)', cursor: 'pointer' }}>
                                     <input
                                         type="checkbox"
-                                        onChange={(e) => {
-                                            if (e.target.checked) {
-                                                vscodeService.postMessage({
-                                                    command: 'declineUroborosMode',
-                                                    payload: { userText: proposal.userText, suppressForSession: true }
-                                                });
-                                            }
+                                        onChange={() => {
+                                            vscodeService.postMessage({
+                                                command: 'declineUroborosMode',
+                                                payload: { userText: proposal.userText, suppressForSession: true }
+                                            });
+                                            if (onAction) onAction();
                                         }}
                                     />
                                     Don't ask again in this session

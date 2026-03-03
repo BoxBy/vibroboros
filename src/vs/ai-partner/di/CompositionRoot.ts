@@ -10,8 +10,8 @@
  * 3. Provide service access to application
  */
 
-import { ServiceContainer, ServiceLifetime, serviceContainer } from './ServiceContainer';
-import { bootstrapContainer, getRequiredService, getOptionalService } from './bindings';
+import { ServiceContainer, serviceContainer } from './ServiceContainer';
+import { bootstrapContainer, getRequiredService, getOptionalService as getDIOptionalService } from './bindings';
 
 /**
  * Service identifiers (symbols for type safety)
@@ -31,6 +31,7 @@ export const ServiceIdentifiers = {
     SemanticModelService: Symbol('ISemanticModelService'),
     Logger: Symbol('ILogger'),
     SecretStorage: Symbol('ISecretStorage'),
+    AuthService: Symbol('IAuthService'),
 
     // ========================================================================
     // Infrastructure Layer - LLM Sub-services
