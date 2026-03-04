@@ -6,6 +6,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import remarkGfm from 'remark-gfm';
 import { vscodeService } from './services/vscode';
 import { diffLines } from 'diff';
+import { TerminalOutput } from './components/TerminalOutput';
 
 interface MessageItemProps {
     message: DisplayMessage;
@@ -92,42 +93,61 @@ const ProgressLogItem: React.FC<ProgressLogItemProps> = ({ message, isLast, dept
 
     // Clean text for collapsed preview
     const collapsedPreview = useMemo(() => {
-        if (routingLine) return routingLine; // Req 1: Show only Routing line if present
+        if (routingLine) return routingLine; 
         
+        // Simplify dynamic thinking headers (e.g. "[OrchestratorAgent] Thinking... Thinking Process...")
+        const text = message.text || '';
+        const orchThinkRegex = /^(?:>\s*)?\[(OrchestratorAgent|Orchestrator|Agent)\](?:\s*Thinking\.\.\.|\s*Thinking Process).*$/i;
+        const orchMatch = text.match(orchThinkRegex);
+        if (orchMatch) return `[${orchMatch[1]}] Thinking...`;
+
         // Req 3: Show "Thinking..." header if present
-        const headerMatch = message.text.match(/^\[.*?\] Thinking\.\.\./);
+        const headerMatch = text.match(/^\[.*?\] Thinking\.\.\./);
         if (headerMatch) return headerMatch[0];
 
         // Fallback: first line or stripped
-        const clean = message.text
+        const clean = text
              .replace(/<\/?thinking>/g, '')
-             .replace(/^>\s*/gm, ''); // Keep emojis
+             .replace(/^>\s*/gm, ''); 
         return clean.split('\n')[0].substring(0, 100) + (clean.length > 100 ? '...' : '');
     }, [message.text, routingLine]);
 
     const formatBlock = (content: string) => {
         return content
+            .split('\n').map(line => line.trimEnd() + '  ').join('\n') // Force hard line breaks
             .replace(/<thinking>/g, '\n> ')
-            .replace(/<\/thinking>/g, '\n');
+            .replace(/<\/thinking>/g, '\n')
+            // Simplify headers - target ONLY the header and its metadata part, preserving subsequent content
+            .replace(/^\s*\[(OrchestratorAgent|Orchestrator|Agent)\]\s*(?:Thinking\.\.\.|\s*Thinking Process)(?:\s*Thinking Process\s*\([^)]*\))?/gim, '[$1] Thinking...');
     };
 
     const formatLogContent = (content: string) => {
-        if (content.includes('[MCP]') && content.includes('with args:')) {
-            const match = content.match(/\[MCP\] Executing Tool: (.*?) with args: (.*)/);
+        // MCP Executing Tool
+        if (content.includes('[MCP]') && content.includes('Executing Tool:')) {
+            const match = content.match(/\[MCP\] Executing Tool: (.*?)(?: with args: (.*))?$/);
             if (match) {
                 const tool = match[1];
-                let args = match[2].trim();
-                // Remove outer braces if they exist
-                if (args.startsWith('{') && args.endsWith('}')) {
-                    args = args.substring(1, args.length - 1).trim();
-                }
                 return (
-                    <>
-                        <span>[MCP] Executing Tool: {tool}</span>
-                        <div style={{ paddingLeft: '8px', opacity: 0.8, whiteSpace: 'pre-wrap', fontSize: '12px', marginTop: '2px' }}>
-                            {args}
+                    <div>[MCP] Executing Tool: {tool}</div>
+                );
+            }
+        }
+
+        // MCP Error Handling
+        if (content.includes('failed: MCP error')) {
+            const match = content.match(/(.*failed: MCP error)(.*)/s);
+            if (match) {
+                const header = match[1].trim();
+                const detail = match[2].trim();
+                return (
+                    <details style={{ cursor: 'pointer' }}>
+                        <summary style={{ listStyle: 'none', fontWeight: 500, color: 'var(--vscode-errorForeground, #f14c4c)' }}>
+                            {header}
+                        </summary>
+                        <div style={{ paddingLeft: '12px', marginTop: '4px', opacity: 0.8, fontSize: '12px', whiteSpace: 'pre-wrap', borderLeft: '2px solid var(--vscode-errorForeground)' }}>
+                            {detail}
                         </div>
-                    </>
+                    </details>
                 );
             }
         }
@@ -136,7 +156,10 @@ const ProgressLogItem: React.FC<ProgressLogItemProps> = ({ message, isLast, dept
             remarkPlugins={[remarkGfm]}
             components={{
                 ...markdownComponents,
-                p: ({node, ...props}) => <p style={{margin: '0 0 4px 0'}} {...props} />
+                p: ({node, ...props}) => <p style={{margin: '0 0 4px 0'}} {...props} />,
+                ul: ({node, ...props}) => <ul style={{paddingLeft: '28px', margin: '6px 0'}} {...props} />,
+                ol: ({node, ...props}) => <ol style={{paddingLeft: '28px', margin: '6px 0'}} {...props} />,
+                li: ({node, ...props}) => <li style={{marginBottom: '4px'}} {...props} />
             }}
         />;
     };
@@ -152,7 +175,7 @@ const ProgressLogItem: React.FC<ProgressLogItemProps> = ({ message, isLast, dept
                 }}
                 style={{
                     padding: '2px 0 2px 8px',
-                    margin: depth > 0 ? `4px 0 4px ${depth * 14}px` : '0', // Recursive indentation
+                    margin: depth > 0 ? `4px 0 4px ${depth * 7}px` : '0', // Halved indentation
                     fontSize: '14px', 
                     color: 'var(--vscode-descriptionForeground)',
                     fontFamily: 'var(--vscode-font-family)',
@@ -199,7 +222,7 @@ const ProgressLogItem: React.FC<ProgressLogItemProps> = ({ message, isLast, dept
             {/* Part 3: Nested/Indented Block (Worker Agent) */}
             {!isCollapsed && postRouting && (
                 <div className="progress-log-nested" style={{
-                    marginLeft: `${(depth + 1) * 14}px`, // Indent further relative to current depth
+                    marginLeft: `${(depth + 1) * 7}px`, // Halved indentation
                     paddingLeft: '8px',
                     borderLeft: 'none', 
                     marginTop: '4px',
@@ -233,17 +256,24 @@ const ProgressGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boole
     // 1. Remove pure "[XXX] Thinking..." entries that have a subsequent non-thinking log
     //    (works for both completed and streaming: if even one content log exists after, hide all prior pure thinking headers)
     // 2. Remove "[System] ..." retry/error messages
-    const THINKING_ONLY_RE = /^\[.*?\]\s*Thinking\.\.\.?\s*$/;
     const SYSTEM_NOISE_RE = /^\[System\]/i;
-    const hasAnyContentLog = allLogs.some((log: any) => {
-        const t = (log.text || '').trim();
-        return !THINKING_ONLY_RE.test(t) && !SYSTEM_NOISE_RE.test(t);
-    });
     const logs = allLogs.filter((log: any) => {
         const text = (log.text || '').trim();
         if (SYSTEM_NOISE_RE.test(text)) return false;
-        // Always hide thinking logs in the UI to prevent flickering/noise
-        if (THINKING_ONLY_RE.test(text)) return false;
+        
+        // Restore thinking logs if they look like header markers (e.g. [OrchestratorAgent])
+        // Hide only the purely mechanical "Thinking..." lines OR headers with NO content
+        const orchHeaderPattern = /^(?:>\s*)?\[(OrchestratorAgent|Orchestrator|Agent)\](?:\s*Thinking\.\.\.|\s*Thinking Process).*$/i;
+        const mechanicalThinkingRE = /^Thinking\.\.\.?\s*$/i;
+
+        if (mechanicalThinkingRE.test(text)) return false;
+        
+        // If it's a header line AND it's the ONLY content of this log, hide it
+        if (orchHeaderPattern.test(text)) {
+            const contentAfterHeader = text.replace(orchHeaderPattern, '').trim();
+            if (!contentAfterHeader) return false;
+        }
+        
         return true;
     });
     const lastLog = logs[logs.length - 1];
@@ -291,42 +321,20 @@ const ProgressGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boole
                     {(() => {
                         // Stack-based indentation logic
                         const depths: number[] = [];
-                        // Initial stack with the root agent (usually Orchestrator or the first sender)
                         const rootAgent = logs[0]?.senderName || 'OrchestratorAgent';
                         const stack: string[] = [rootAgent];
 
                         logs.forEach((log: any) => {
                             const text = log.text || '';
-                            
-                            // 1. Identify Speaker & Unwind Stack
                             const agentMatch = text.match(/^\[(.*?)\]/);
                             if (agentMatch) {
                                 const speaker = agentMatch[1].trim();
                                 const stackIdx = stack.indexOf(speaker);
-                                if (stackIdx !== -1) {
-                                    // Speaker found in stack -> Unwind back to this speaker
-                                    // e.g. [A, B, C] -> Speaker B -> [A, B]
-                                    stack.splice(stackIdx + 1);
-                                } else {
-                                    // Speaker not in stack?
-                                    // Could be a new agent implicitly starting without "Routing to" log
-                                    // Or mis-parsed name.
-                                    // For visual continuity, we don't push automatically unless likely.
-                                    // But typically, we just stick to current level if unknown.
-                                }
+                                if (stackIdx !== -1) stack.splice(stackIdx + 1);
                             }
-
-                            // 2. Record Depth for this log
-                            // Depth is simply (stack.length - 1)
                             depths.push(Math.max(0, stack.length - 1));
-
-                            // 3. Check for Routing *after* recording depth (since "Routing" log belongs to current speaker)
                             const routingMatch = text.match(/Routing to (.*?)(?:\.\.\.|…|$)/i);
-                            if (routingMatch) {
-                                const targetAgent = routingMatch[1].trim();
-                                // Push new agent to stack for *subsequent* logs
-                                stack.push(targetAgent);
-                            }
+                            if (routingMatch) stack.push(routingMatch[1].trim());
                         });
 
                         return logs.map((log: any, idx: number) => (
@@ -338,6 +346,21 @@ const ProgressGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boole
                             />
                         ));
                     })()}
+                    {/* Terminal messages nested inside group — hide when collapsed */}
+                    {(group.terminalMessages || []).map((tm: any, idx: number) => {
+                        const payload = tm.payload || {};
+                        return (
+                            <div key={`terminal-${idx}`} style={{ marginTop: 6 }}>
+                                <TerminalOutput
+                                    command={payload.command || tm.text}
+                                    cwd={payload.cwd}
+                                    output={payload.output}
+                                    exitCode={payload.exitCode}
+                                    toolName={payload.toolName || tm.senderName}
+                                />
+                            </div>
+                        );
+                    })}
                 </div>
             )}
         </div>
@@ -358,7 +381,7 @@ const AgentGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boolean;
     const agentName = messages[0]?.senderName || 'Agent';
 
     return (
-        <div className="agent-group" style={{ marginBottom: 8 }}>
+        <div className="agent-group" style={{ marginBottom: 4 }}>
             <div 
                 className="agent-group-header"
                 onClick={() => {
@@ -377,7 +400,7 @@ const AgentGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boolean;
                     background: 'rgba(0, 0, 0, 0.03)',
                     border: '1px solid var(--vscode-widget-border)',
                     borderRadius: '6px',
-                    marginBottom: isCollapsed ? 0 : '10px'
+                    marginBottom: isCollapsed ? 0 : '4px'
                 }}
             >
                 <span className={`codicon ${isCollapsed ? 'codicon-chevron-right' : 'codicon-chevron-down'}`} style={{ fontSize: '14px' }} />
@@ -386,7 +409,14 @@ const AgentGroupItem: React.FC<{ group: any; hasSubsequentUserMessage?: boolean;
             </div>
             
             {!isCollapsed && (
-                <div className="agent-group-content" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                <div className="agent-group-content" style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 0,
+                    paddingLeft: 12,
+                    borderLeft: '2px solid var(--vscode-widget-border)',
+                    marginLeft: 6
+                }}>
                     {messages.map((msg: any, idx: number) => (
                         <MessageItem 
                             key={idx} 
@@ -445,12 +475,88 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
         return <ProgressLogItem message={message} isLast={!!isLast} />;
     }
 
-    // Task UI rendering
+    if ((message as any).kind === 'terminal') {
+        const payload = (message as any).payload || {};
+        return (
+            <div className="message-group" style={{ marginBottom: 4, width: '100%' }}>
+                <TerminalOutput 
+                    command={payload.command || message.text}
+                    cwd={payload.cwd}
+                    output={payload.output}
+                    exitCode={payload.exitCode}
+                    toolName={payload.toolName || (message.senderName === 'Terminal' ? 'terminal_run' : message.senderName)}
+                />
+            </div>
+        );
+    }
+
+    // Task UI rendering (Natural Flow for TaskDecompositionAgent)
     if ((message as any).kind === 'task') {
         const tasks: string[] = (message as any).tasks || [];
+        const isNaturalFlow = message.senderName === 'TaskDecompositionAgent' || message.senderName === 'TaskDecomposition';
+        
         // Fallback: parse text if tasks array is missing but kind is task
-        const parsedTasks = tasks.length > 0 ? tasks : ((message as any).content?.[0]?.text || '').split('\n').filter((l: string) => /^\s*(?:-|\d+\.|\[ \]|\[x\])\s+/.test(l));
+        const parsedTasks = tasks.length > 0 ? tasks : ((message as any).content?.[0]?.text || '').split('\n').filter((l: string) => /^\s*(?:-|\d+\.|\[ \]|\[x\]|\[\/\])\s+/.test(l));
 
+        if (isNaturalFlow) {
+            const total = parsedTasks.length;
+            // Detect completion: [x] marker OR ✅ emoji present but ❌ absent
+            const completed = parsedTasks.filter((t: string) => /\[x\]/i.test(t) || (t.includes('✅') && !t.includes('❌'))).length;
+            const percent = total > 0 ? (completed / total) * 100 : 0;
+
+            return (
+                <div className="message-group" style={{ marginBottom: 12, width: '100%' }}>
+                    <div className="message model-message" style={{ padding: '10px 14px', background: 'var(--vscode-editor-background)', border: '1px solid var(--vscode-widget-border)', borderRadius: 12, borderBottomLeftRadius: 2 }}>
+                        <div style={{ fontSize: '12px', color: 'var(--vscode-descriptionForeground)', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Progress</span>
+                            <span>{completed}/{total}</span>
+                        </div>
+                        <div className="task-progress-bar">
+                            <div className="task-progress-fill" style={{ width: `${percent}%` }} />
+                        </div>
+                        <div className="task-natural-container" style={{ background: 'transparent', padding: 0, margin: 0, borderLeft: 'none' }}>
+                            {parsedTasks.map((task: string, idx: number) => {
+                                const isCompleted = /\[x\]/i.test(task) || (task.includes('✅') && !task.includes('❌'));
+                                const isInProgress = !isCompleted && (/\[\/\]/i.test(task) || task.includes('🔄'));
+                                // Strip leading markers: `- [x]`, `- [/]`, `- [ ]`, `- `, `1. `, plus trailing ✅/🔄 emoji
+                                const cleanText = task
+                                    .replace(/^\s*(?:\d+\.\s+|-\s+)?(?:\[(?:x|\/| )\]\s+)/i, '')
+                                    .replace(/^\s*[-*]\s+/, '')
+                                    .replace(/✅|🔄|❌/g, '')
+                                    .trim();
+                                const iconColor = isCompleted ? 'var(--vscode-testing-iconPassed)' : isInProgress ? 'var(--vscode-charts-blue)' : 'var(--vscode-descriptionForeground)';
+                                return (
+                                    <div key={idx} className={`task-natural-item ${isCompleted ? 'completed' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                        <div className="task-icon" style={{ 
+                                            flexShrink: 0, 
+                                            width: '18px', 
+                                            display: 'flex', 
+                                            justifyContent: 'center',
+                                            fontSize: '14px',
+                                            color: iconColor
+                                        }}>
+                                            {isCompleted ? '✓' : isInProgress ? '●' : '○'}
+                                        </div>
+                                        <div className="task-text" style={{ flex: 1, textDecoration: isCompleted ? 'line-through' : 'none', opacity: isCompleted ? 0.6 : 1 }}>
+                                            <ReactMarkdown
+                                                children={cleanText}
+                                                remarkPlugins={[remarkGfm]}
+                                                components={{
+                                                    ...markdownComponents,
+                                                    p: ({node, ...props}) => <span style={{margin: 0, display: 'inline'}} {...props} />
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Boxed fallback for other agents
         return (
             <div className="message-group" style={{ marginBottom: 8, width: '100%' }}>
                 <div className="message model-message" style={{ padding: '12px', background: 'var(--vscode-editor-background)', border: '1px solid var(--vscode-widget-border)', borderRadius: 6, width: '100%' }}>
@@ -461,25 +567,34 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                     <div className="task-list" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {parsedTasks.map((task: string, idx: number) => {
                             const isCompleted = /\[x\]/i.test(task) || (task.includes('✅') && !task.includes('❌')); // simplistic check
-                            const cleanText = task.replace(/^\s*(?:-|\d+\.|\[ \]|\[x\])\s*/, '').replace(/✅/g, '').trim();
+                            const cleanText = task.replace(/^\s*(?:-|\d+\.|\[ \]|\[x\]|\[\/\])\s*/i, '').replace(/✅/g, '').trim();
                             // Render Task Item with Markdown
                             return (
                                 <div key={idx} style={{ 
                                     display: 'flex', 
-                                    alignItems: 'start', 
+                                    alignItems: 'center', 
                                     gap: 8, 
                                     opacity: isCompleted ? 0.6 : 1,
-                                    textDecoration: isCompleted ? 'line-through' : 'none'
+                                    textDecoration: isCompleted ? 'line-through' : 'none',
+                                    marginBottom: '4px'
                                 }}>
-                                    <span className={`codicon ${isCompleted ? 'codicon-pass' : 'codicon-circle-outline'}`} 
-                                          style={{ marginTop: 3, color: isCompleted ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-descriptionForeground)' }} />
+                                    <div style={{ 
+                                        flexShrink: 0, 
+                                        width: '18px', 
+                                        display: 'flex', 
+                                        justifyContent: 'center',
+                                        fontSize: '14px',
+                                        color: isCompleted ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-descriptionForeground)' 
+                                    }}>
+                                        {isCompleted ? '✓' : '○'}
+                                    </div>
                                     <div className="markdown-content task-content" style={{ flex: 1 }}>
                                         <ReactMarkdown
                                             children={cleanText}
                                             remarkPlugins={[remarkGfm]}
                                             components={{
                                                 ...markdownComponents,
-                                                p: ({node, ...props}) => <p style={{margin: 0}} {...props} />
+                                                p: ({node, ...props}) => <span style={{margin: 0, display: 'inline'}} {...props} />
                                             }}
                                         />
                                     </div>
@@ -864,11 +979,16 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                     {/* Agent 이름 제거 - bubble 외부에만 표시 */}
                     <span className="timestamp">{formatTimestamp(message.timestamp)}</span>
                 </div>
-                <div className="message-content">
                     <ReactMarkdown
-                        children={message.text}
+                        children={(message.text || '').split('\n').map(l => l.trimEnd() + '  ').join('\n')}
                         remarkPlugins={[remarkGfm]}
-                        components={markdownComponents}
+                        components={{
+                            ...markdownComponents,
+                            p: ({node, ...props}) => <p style={{margin: '0 0 8px 0', whiteSpace: 'pre-wrap'}} {...props} />,
+                            ul: ({node, ...props}) => <ul style={{paddingLeft: '10px', margin: '4px 0'}} {...props} />,
+                            ol: ({node, ...props}) => <ol style={{paddingLeft: '10px', margin: '4px 0'}} {...props} />,
+                            li: ({node, ...props}) => <li style={{margin: '2px 0'}} {...props} />
+                        }}
                     />
                     {isModel && Array.isArray(message.attachments) && message.attachments.length > 0 && (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', margin: '4px 0 2px 0' }}>
@@ -1039,7 +1159,6 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                         </div>
                     )}
                 </div>
-            </div>
             )}
 
         </div>

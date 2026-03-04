@@ -38,7 +38,7 @@ export class TaskDecompositionAgent extends BaseAgent {
                  finalUserInput = JSON.stringify(payload, null, 2);
              }
         }
-        return SystemPromptFactory.generate('pm', 'TaskDecompositionAgent', assignedComplexity, finalUserInput);
+        return SystemPromptFactory.getInstance().generate('pm', 'TaskDecompositionAgent', assignedComplexity, finalUserInput);
     }
 
 
@@ -72,69 +72,77 @@ export class TaskDecompositionAgent extends BaseAgent {
         // No-op
     }
 
+    protected async handleCustomTool(name: string, args: any): Promise<any | undefined> {
+        if (name === 'submit_tasks') {
+            const tasks = args.tasks || [];
+            // We can resolve by returning success, and handling the logic in handleExecutionResult
+            // Or we handle here and throw an error or return success. Let runAgenticLoop return this.
+            return JSON.stringify({ success: true, message: "Tasks submitted successfully." });
+        }
+        return undefined;
+    }
+
     protected async handleExecutionResult(result: string, requestContext: RequestContext, eventBus: ExecutionEventBus, correlationId?: string): Promise<void> {
+        // Since we use strict Tool Calling (submit_tasks), the result can just be text.
+        // The actual parsing of tasks is best intercepted in onLoopComplete, or if the loop returns 
+        // the JSON as result text.
+        
         let tasks: string[] = [];
         
         try {
-            // Clean up Markdown backticks if present
-            const jsonMatch = result.match(/```json\n([\s\S]*?)\n```/) || result.match(/```\n([\s\S]*?)\n```/) || result.match(/\{[\s\S]*\}/);
-            let cleanResult = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : result;
-            cleanResult = cleanResult.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim();
-            // Robustness: Extract JSON object if embedded in text
-            const firstBrace = cleanResult.indexOf('{');
-            const lastBrace = cleanResult.lastIndexOf('}');
-            if (firstBrace !== -1 && lastBrace !== -1) {
-                cleanResult = cleanResult.substring(firstBrace, lastBrace + 1);
-            }
-
-            const parsed = JSON.parse(cleanResult);
+            const parsed = JSON.parse(result);
             if (Array.isArray(parsed)) {
                 tasks = parsed;
             } else if (parsed && Array.isArray(parsed.tasks)) {
                 tasks = parsed.tasks;
             }
-            
-            if (tasks.length === 0) {
-                 // Check for generic response wrapper from LLM (Self-Correction Fallback)
-                 if (parsed?.response && typeof parsed.response === 'string') {
-                      eventBus.publish({ kind: 'message', messageId: uuidv4(), role: 'agent', parts: [{ kind: 'text', text: parsed.response }], contextId: (requestContext as any).contextId } as any);
-                      return;
-                 }
-
-                 // Check for clarification
-                 if (parsed?.request_clarification) {
-                     // Publish clarification
-                     const { question, context, options } = parsed.request_clarification;
-                     eventBus.publish({
-                         kind: 'message',
-                         messageId: uuidv4(),
-                         role: 'agent',
-                         parts: [{
-                             kind: 'data',
-                             mimeType: 'application/vnd.clarification-request+json',
-                             data: { question, context, options }
-                         }],
-                         contextId: (requestContext as any)?.contextId
-                     } as any);
-                     return;
-                 }
-                 
-                 // If just text response
-                 if (typeof result === 'string' && result.length > 0) {
-                      eventBus.publish({ kind: 'message', messageId: uuidv4(), role: 'agent', parts: [{ kind: 'text', text: result }], contextId: (requestContext as any).contextId } as any);
-                      return;
-                 }
-            }
-
         } catch (e) {
-            // Text fallback
-             eventBus.publish({ kind: 'message', messageId: uuidv4(), role: 'agent', parts: [{ kind: 'text', text: result }], contextId: (requestContext as any).contextId } as any);
-             return;
+            // Not a JSON result directly
         }
 
         if (tasks.length > 0) {
             await this.handleTaskSubmission(tasks, requestContext, eventBus, correlationId);
+            return;
         }
+
+        // Just output the textual response or clarification
+        eventBus.publish({ 
+            kind: 'message', 
+            messageId: uuidv4(), 
+            role: 'agent', 
+            parts: [{ kind: 'text', text: result }], 
+            contextId: (requestContext as any).contextId 
+        } as any);
+    }
+
+    protected async onLoopComplete(messages: any[]): Promise<void> {
+        // Fallback: If handleExecutionResult wasn't passed the JSON args from the tool call directly,
+        // we can extract the tasks from the message history tool calls.
+        // Wait, TaskDecompositionAgent publishes task proposal and TASK.md. We should get it here or in handleExecutionResult.
+        // Let's rely on handleExecutionResult seeing the JSON if `submit_tasks` was the final call,
+        // or we can extract it here and trigger handleTaskSubmission.
+        // Actually, runAgenticLoop usually returns the final string context. 
+        // Let's extract tasks from the tool call in the history to be 100% sure.
+        let foundTasks: string[] | null = null;
+        for (const msg of messages) {
+            if (msg.role === 'assistant' && msg.tool_calls) {
+                for (const tc of msg.tool_calls) {
+                    if (tc.function.name === 'submit_tasks') {
+                         try {
+                             const args = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments;
+                             if (args?.tasks) {
+                                 foundTasks = args.tasks;
+                             }
+                         } catch (e) {}
+                    }
+                }
+            }
+        }
+        
+        // Expose them to the instance so handleExecutionResult can use them if needed, 
+        // but handleExecutionResult doesn't have access to foundTasks easily unless we store it.
+        // Let's store it on the instance:
+        (this as any)._extractedTasks = foundTasks;
     }
 
     private async handleTaskSubmission(tasks: string[], requestContext: RequestContext, eventBus: ExecutionEventBus, correlationId?: string) {

@@ -384,6 +384,69 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 				});
 			}
 		},
+		terminal_stream: (payload) => {
+			if (payload && payload.text) {
+				context.setMessages(prev => {
+					const lastMsg = prev[prev.length - 1] as any;
+
+					// If last message is a progressGroup, nest terminal inside it
+					if (lastMsg?.kind === 'progressGroup') {
+						const newMessages = [...prev];
+						const terminals = lastMsg.terminalMessages || [];
+						if (terminals.length > 0) {
+							// Append output to first terminal
+							const updatedTerminals = [...terminals];
+							updatedTerminals[0] = {
+								...updatedTerminals[0],
+								payload: { ...updatedTerminals[0].payload, output: (updatedTerminals[0].payload?.output || '') + payload.text }
+							};
+							newMessages[newMessages.length - 1] = { ...lastMsg, terminalMessages: updatedTerminals };
+						} else {
+							// Create first terminal inside the group
+							const newTerminal = {
+								sender: 'ai',
+								kind: 'terminal',
+								senderName: 'Terminal',
+								timestamp: new Date().toISOString(),
+								payload: {
+									toolName: 'run_command',
+									command: payload.command || 'Running command...',
+									output: payload.text
+								}
+							};
+							newMessages[newMessages.length - 1] = { ...lastMsg, terminalMessages: [newTerminal] };
+						}
+						return newMessages;
+					}
+
+					// Fallback: update existing standalone terminal or create new one
+					if (lastMsg?.kind === 'terminal' && lastMsg.payload?.toolName === 'run_command') {
+						const newMessages = [...prev];
+						newMessages[newMessages.length - 1] = {
+							...lastMsg,
+							payload: { ...lastMsg.payload, output: (lastMsg.payload?.output || '') + payload.text }
+						};
+						return newMessages;
+					} else {
+						// Create standalone terminal if no progressGroup
+						return [
+							...prev,
+							{
+								sender: 'ai',
+								kind: 'terminal',
+								senderName: 'Terminal',
+								timestamp: new Date().toISOString(),
+								payload: {
+									toolName: 'run_command',
+									command: payload.command || 'Running command...',
+									output: payload.text
+								}
+							} as any
+						];
+					}
+				});
+			}
+		},
 		progressLogChunk: (payload) => {
 			if (payload && payload.text) {
 				context.setMessages(prev => {

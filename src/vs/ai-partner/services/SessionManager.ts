@@ -156,17 +156,36 @@ export class SessionManager extends EventEmitter implements ISessionManager {
     }
 
     public async addMessage(message: ChatMessage): Promise<void> {
-        if (!this.state || !this.activeSessionId) {
-            await this.createNewSession();
+        await this.addMessageToSession(this.activeSessionId || '', message);
+    }
+
+    public async addMessageToSession(sessionId: string, message: ChatMessage): Promise<void> {
+        let stateToUpdate = this.state;
+        let targetId = sessionId || this.activeSessionId;
+
+        if (!targetId && !this.sessionCreationAllowed) {
+            throw new Error('No active session and session creation is disallowed.');
         }
-        this.state!.messages.push(message);
-        await this.saveCurrentState();
-        
-        // Update metadata message count
-        await this.updateMessageCount(this.activeSessionId!, this.state!.messages.length);
-        
-        this.emit('messageAdded', message);
-        this.emit('stateChanged', this.state);
+
+        if (!targetId) {
+            targetId = await this.createNewSession();
+            stateToUpdate = this.state;
+        }
+
+        if (this.activeSessionId === targetId && this.state) {
+            this.state.messages.push(message);
+            await this.saveCurrentState();
+            await this.updateMessageCount(targetId, this.state.messages.length);
+            this.emit('messageAdded', message);
+            this.emit('stateChanged', this.state);
+        } else {
+            // Background session update
+            const state = await this.loadSessionState(targetId);
+            state.messages.push(message);
+            await this.persistSessionState(targetId, state);
+            await this.updateMessageCount(targetId, state.messages.length);
+            // Optionally emit sessionListUpdated if count changed
+        }
     }
 
     public async updateTaskStatus(taskId: string, status: 'completed' | 'pending' | 'failed' | 'in_progress'): Promise<void> {

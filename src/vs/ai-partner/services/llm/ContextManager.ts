@@ -10,12 +10,15 @@
 import { IContextManager } from './IContextManager';
 import { ITokenizerService } from './ITokenizerService';
 import { IModelInfoProvider } from './IModelInfoProvider';
-import { LlmMessage, LLMProvider, ModelInfo } from '../../services/LLMService';
+import { LlmMessage, LLMProvider } from '../../services/LLMService';
+import { ModelInfo } from '../../constants/ModelRegistry';
+import { CompositionRoot, ServiceIdentifiers } from '../../di/CompositionRoot';
+import { ConfigService } from '../../config_service';
 
 export class ContextManager implements IContextManager {
     private static instance: ContextManager;
-    private tokenizer: ITokenizerService;
-    private modelInfoProvider: IModelInfoProvider;
+    private tokenizer!: ITokenizerService;
+    private modelInfoProvider!: IModelInfoProvider;
 
     private constructor(tokenizer?: ITokenizerService, modelInfoProvider?: IModelInfoProvider) {
         // Lazy initialization or dependency injection
@@ -131,20 +134,24 @@ export class ContextManager implements IContextManager {
         modelInfo: ModelInfo,
         effort: 'low' | 'medium' | 'high' | number | undefined
     ): { paramName: string, paramValue: any, warning?: string } | null {
-        if (!effort || !modelInfo.supportsReasoning) {
+        if (!modelInfo.supportsReasoning) {
             return null;
         }
 
+        const configService = CompositionRoot.resolve<ConfigService>(ServiceIdentifiers.ConfigService);
+        const resolvedEffort = effort || configService.getGlobalReasoningEffort();
+
         // 1. Handle Integer Input (Custom Budget)
-        if (typeof effort === 'number') {
+        if (typeof resolvedEffort === 'number') {
+            const effortNum = resolvedEffort;
             if (modelInfo.reasoningType === 'budget') {
                 return { paramName: 'budget_tokens', paramValue: effort };
             }
             // Fallback for non-budget models
             let fallbackLevel = 'high';
-            if (effort < 10000) {
+            if (effortNum < 10000) {
                 fallbackLevel = 'low';
-            } else if (effort < 50000) {
+            } else if (effortNum < 50000) {
                 fallbackLevel = 'medium';
             }
             return {
@@ -158,12 +165,14 @@ export class ContextManager implements IContextManager {
 
         // Anthropic (Budget)
         if (modelInfo.reasoningType === 'budget') {
+            const budgets = configService.getReasoningBudgets();
             const maxOut = modelInfo.maxOutputTokens || 64000;
             let budget = 0;
-            switch (effort) {
-                case 'low': budget = Math.max(1024, Math.floor(maxOut * 0.2)); break;
-                case 'medium': budget = Math.max(4096, Math.floor(maxOut * 0.5)); break;
-                case 'high': budget = Math.max(8192, Math.floor(maxOut * 0.8)); break;
+            switch (resolvedEffort) {
+                // High effort uses 80% of max output tokens as a safe performance ceiling (Senior Intuition)
+                case 'low': budget = budgets.low || Math.max(1024, Math.floor(maxOut * 0.2)); break;
+                case 'medium': budget = budgets.medium || Math.max(4096, Math.floor(maxOut * 0.5)); break;
+                case 'high': budget = budgets.high || Math.max(8192, Math.floor(maxOut * 0.8)); break;
             }
             return { paramName: 'budget_tokens', paramValue: budget };
         }
@@ -171,19 +180,19 @@ export class ContextManager implements IContextManager {
         // Google (ThinkingLevel)
         if (modelInfo.reasoningType === 'level') {
             // Gemini 3.0 supports only Low / High (no Medium)
-            if (effort === 'medium' && modelInfo.id.includes('gemini-3')) {
+            if (resolvedEffort === 'medium' && modelInfo.id.includes('gemini-3')) {
                 return {
                     paramName: 'thinkingLevel',
                     paramValue: 'high',
                     warning: `Gemini 3.0 does not support 'medium'. Upgraded to 'high'.`
                 };
             }
-            return { paramName: 'thinkingLevel', paramValue: effort };
+            return { paramName: 'thinkingLevel', paramValue: resolvedEffort };
         }
 
         // OpenAI / xAI / Groq (ReasoningEffort)
         if (modelInfo.reasoningType === 'effort') {
-            return { paramName: 'reasoning_effort', paramValue: effort };
+            return { paramName: 'reasoning_effort', paramValue: resolvedEffort };
         }
 
         return null;
@@ -200,17 +209,19 @@ export class ContextManager implements IContextManager {
     /**
      * 사용 가능한 입력 컨텍스트 토큰 수를 계산합니다.
      */
-    public calculateAvailableContext(modelInfo: ModelInfo, safetyBuffer: number = 0.9): number {
+    public calculateAvailableContext(modelInfo: ModelInfo, safetyBuffer?: number): number {
+        const configService = CompositionRoot.resolve<ConfigService>(ServiceIdentifiers.ConfigService);
+        const effectiveBuffer = safetyBuffer ?? configService.getSafetyBufferRatio();
         const maxContext = modelInfo.maxContextTokens;
         const maxOutput = modelInfo.maxOutputTokens || 4096;
-        return Math.floor((maxContext - maxOutput) * safetyBuffer);
+        return Math.floor((maxContext - maxOutput) * effectiveBuffer);
     }
 
     /**
      * 전체 컨텍스트 길이를 계산합니다 (시스템 프롬프트 + 메시지).
      */
     public async calculateTotalContextLength(
-        provider: LLMProvider,
+        _provider: LLMProvider,
         modelId: string,
         messages: LlmMessage[],
         systemPrompt?: string
@@ -237,7 +248,7 @@ export class ContextManager implements IContextManager {
         modelId: string,
         messages: LlmMessage[],
         systemPrompt?: string,
-        safetyBuffer: number = 0.9
+        safetyBuffer?: number
     ): Promise<boolean> {
         const modelInfoProvider = this.getModelInfoProvider();
         const modelInfo = await modelInfoProvider.getModelInfo(provider, modelId);
@@ -256,7 +267,7 @@ export class ContextManager implements IContextManager {
         modelId: string,
         messages: LlmMessage[],
         systemPrompt?: string,
-        safetyBuffer: number = 0.9
+        safetyBuffer?: number
     ): Promise<number> {
         const modelInfoProvider = this.getModelInfoProvider();
         const modelInfo = await modelInfoProvider.getModelInfo(provider, modelId);

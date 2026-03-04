@@ -817,6 +817,47 @@ export class ConfigService implements IConfigService {
             await this.getConfiguration('agent.orchestrator').update('userLanguage', lang, vscode.ConfigurationTarget.Global);
         }
 
+        public getGlobalRequestTimeout(): number {
+            return this.getConfiguration('llm').get<number>('requestTimeout') || 60000;
+        }
+
+        public async setGlobalRequestTimeout(timeout: number): Promise<void> {
+            await this.getConfiguration('llm').update('requestTimeout', timeout, vscode.ConfigurationTarget.Global);
+        }
+
+        public getGlobalTemperature(): number {
+            return this.getConfiguration('llm').get<number>('temperature') || 0.1;
+        }
+
+        public async setGlobalTemperature(temp: number): Promise<void> {
+            await this.getConfiguration('llm').update('temperature', temp, vscode.ConfigurationTarget.Global);
+        }
+
+        public getSafetyBufferRatio(): number {
+            return this.getConfiguration('llm').get<number>('safetyBufferRatio') || 0.9;
+        }
+
+        public async setSafetyBufferRatio(ratio: number): Promise<void> {
+            await this.getConfiguration('llm').update('safetyBufferRatio', ratio, vscode.ConfigurationTarget.Global);
+        }
+
+        public getReasoningBudgets(): { low: number; medium: number; high: number } {
+            const defaults = { low: 0.2, medium: 0.5, high: 0.8 };
+            return this.getConfiguration('llm').get<{ low: number; medium: number; high: number }>('reasoningBudgets') || defaults;
+        }
+
+        public async setReasoningBudgets(budgets: { low: number; medium: number; high: number }) {
+            await this.getConfiguration('llm').update('reasoningBudgets', budgets, vscode.ConfigurationTarget.Global);
+        }
+
+        public getGlobalReasoningEffort(): 'low' | 'medium' | 'high' {
+            return this.getConfiguration('llm').get<'low' | 'medium' | 'high'>('globalReasoningEffort') || 'medium';
+        }
+
+        public async setGlobalReasoningEffort(effort: 'low' | 'medium' | 'high') {
+            await this.getConfiguration('llm').update('globalReasoningEffort', effort, vscode.ConfigurationTarget.Global);
+        }
+
         public getUseVSCodeThinkingLang(): boolean {
             return this.getConfiguration('agent.orchestrator').get<boolean>('useVSCodeThinkingLang') || false;
         }
@@ -858,6 +899,42 @@ export class ConfigService implements IConfigService {
 
         public async setMaxContextOverride(limit: number | undefined): Promise<void> {
             await this.getConfiguration('llm').update('maxContextOverride', limit, vscode.ConfigurationTarget.Global);
+        }
+
+        // ========================================================================
+        // Security & Automation Settings
+        // ========================================================================
+
+        public getStrictMode(): boolean {
+            return this.getConfiguration('security').get<boolean>('strictMode') || false;
+        }
+
+        public async setStrictMode(enabled: boolean): Promise<void> {
+            await this.getConfiguration('security').update('strictMode', enabled, vscode.ConfigurationTarget.Global);
+        }
+
+        public getReviewPolicy(): 'always' | 'agent-decides' | 'never' {
+            return this.getConfiguration('artifact').get<'always' | 'agent-decides' | 'never'>('reviewPolicy') || 'agent-decides';
+        }
+
+        public async setReviewPolicy(policy: 'always' | 'agent-decides' | 'never'): Promise<void> {
+            await this.getConfiguration('artifact').update('reviewPolicy', policy, vscode.ConfigurationTarget.Global);
+        }
+
+        public getTerminalAutoExecution(): boolean {
+            return this.getConfiguration('terminal').get<boolean>('autoExecution') || false;
+        }
+
+        public async setTerminalAutoExecution(enabled: boolean): Promise<void> {
+            await this.getConfiguration('terminal').update('autoExecution', enabled, vscode.ConfigurationTarget.Global);
+        }
+
+        public getFileAccessPolicy(): 'allow-all' | 'request-each' | 'read-only' {
+            return this.getConfiguration('fileAccess').get<'allow-all' | 'request-each' | 'read-only'>('policy') || 'request-each';
+        }
+
+        public async setFileAccessPolicy(policy: 'allow-all' | 'request-each' | 'read-only'): Promise<void> {
+            await this.getConfiguration('fileAccess').update('policy', policy, vscode.ConfigurationTarget.Global);
         }
 
         public getUroborosMode(): boolean {

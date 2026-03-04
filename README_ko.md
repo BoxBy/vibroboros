@@ -5,8 +5,8 @@
 </p>
 
 <div align="center">
-  <a href="LICENSE.txt"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=Viper.viper"><img src="https://img.shields.io/visual-studio-marketplace/v/Viper.viper.svg?color=blue&label=VS%20Marketplace" alt="VS Marketplace"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="라이선스: AGPL v3"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=Viper.viper"><img src="https://img.shields.io/visual-studio-marketplace/v/Viper.viper.svg?color=blue&label=VS%20Marketplace" alt="VS 마켓플레이스"></a>
 </div>
 
 ## 소개
@@ -19,6 +19,7 @@ Viper는 VS Code에 통합된 정교한 다중 에이전트 AI 코딩 파트너�
 * **A2A 통신**: 에이전트 간 통신은 표준 HTTP 기반 Agent‑to‑Agent 프로토콜을 통해 이루어지며, 시스템을 모듈식이고 확장 가능하게 만듭니다.
 * **동적 작업 계획**: `OrchestratorAgent`가 사용자의 목표를 기반으로 실행 계획을 동적으로 생성하고, 적절한 전문 에이전트에게 작업을 위임합니다.
 * **능동적 & 백그라운드 작업**: `CodeWatcherAgent`, `SecurityAnalysisAgent`와 같은 에이전트가 백그라운드에서 동작하여 문제를 찾아내고 프로젝트 인덱스를 유지합니다.
+* **보안 및 자동화 설정**: `Strict Mode`, `Review Policy`, `Terminal Auto-Execution`, `File Access Policy` 등 정교한 제어 기능을 제공하여 안전한 에이전트 자율 운영을 보장합니다.
 * **확장 가능한 도구 체인**: 시스템은 Model Context Protocol (MCP) 표준을 사용하여 파일 I/O, 터미널 실행, 웹 검색 등의 도구를 에이전트에 제공합니다.
 
 ## 아키텍처
@@ -47,8 +48,8 @@ Viper는 진정한 Agent‑to‑Agent(A2A) 아키텍처를 기반으로 구축�
 
 ## 기여하기
 
-기여는 언제나 환영입니다! 시작하는 방법에 대한 자세한 내용은 [기여 가이드라인](./CONTRIBUTING_ko.md)을 참고하세요.
+기여는 언제나 환영입니다!
 
 ## 라이선스
 
-이 프로젝트는 MIT 라이선스로 배포됩니다. 자세한 내용은 [LICENSE.txt](./LICENSE.txt) 파일을 참고하세요.
+이 프로젝트는 GNU Affero General Public License v3.0에 따라 라이선스가 부여됩니다. 자세한 내용은 [LICENSE](./LICENSE) 파일을 참고하세요.

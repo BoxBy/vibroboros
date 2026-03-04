@@ -35,7 +35,8 @@ export interface DisplayMessage {
 		filePath: string;
 		suggestionType: string;
 	};
-	kind?: 'normal' | 'task' | 'codeEditFile' | 'progress' | 'tool_trace';
+	kind?: 'normal' | 'task' | 'codeEditFile' | 'progress' | 'tool_trace' | 'terminal';
+	payload?: any;
 	// Optional metadata used when kind === 'codeEditFile'
 	filePath?: string;
 	title?: string;
@@ -184,6 +185,8 @@ const MainViewContent: React.FC = () => {
     };
     const [pendingDiffs, setPendingDiffs] = useState<PendingDiff[]>([]);
     const [showDiffSummary, setShowDiffSummary] = useState<boolean>(false);
+    const [isPlanVisible, setIsPlanVisible] = useState<boolean>(true); // Default to true if plan exists
+    const [isPlanCollapsed, setIsPlanCollapsed] = useState<boolean>(true);
     const diffSummaryRef = useRef<HTMLDivElement>(null);
 
     // Attachments inserted via context menus or @commands
@@ -386,6 +389,116 @@ useEffect(() => {
 }, [messages, pendingDiffs]);
 
     const handleSendMessage = (messageText: string) => {
+    // Debug Terminal Streaming Command — simulates real-time streaming output
+    if (messageText.trim() === '/debug-terminal') {
+        const terminalCommand = 'ping localhost -n 5';
+        const streamChunks = [
+            '\nPinging localhost [127.0.0.1] with 32 bytes of data:\n',
+            'Reply from 127.0.0.1: bytes=32 time<1ms TTL=128\n',
+            'Reply from 127.0.0.1: bytes=32 time<1ms TTL=128\n',
+            'Reply from 127.0.0.1: bytes=32 time<1ms TTL=128\n',
+            'Reply from 127.0.0.1: bytes=32 time<1ms TTL=128\n',
+            'Reply from 127.0.0.1: bytes=32 time<1ms TTL=128\n',
+            '\nPing statistics for 127.0.0.1:\n',
+            '    Packets: Sent = 5, Received = 5, Lost = 0 (0% loss)\n',
+            'Approximate round trip times in milli-seconds:\n',
+            '    Minimum = 0ms, Maximum = 0ms, Average = 0ms\n'
+        ];
+
+        const terminalMsg: any = {
+            sender: 'ai',
+            kind: 'terminal',
+            senderName: 'Terminal',
+            text: terminalCommand,
+            payload: {
+                toolName: 'run_command',
+                command: terminalCommand,
+                output: ''
+            },
+            timestamp: new Date().toISOString()
+        };
+
+        // Pack the terminal inside the progressGroup so it collapses with the steps
+        setMessages(prev => [
+            ...prev,
+            { sender: 'user', text: '/debug-terminal', timestamp: new Date().toISOString() },
+            {
+                sender: 'ai',
+                kind: 'progressGroup',
+                messages: [{
+                    sender: 'ai',
+                    kind: 'progress',
+                    text: 'Executing tool: terminal_run',
+                    senderName: 'OrchestratorAgent',
+                    timestamp: new Date().toISOString()
+                }],
+                terminalMessages: [terminalMsg],
+                timestamp: new Date().toISOString()
+            } as any
+        ]);
+
+        // Stream chunks into the terminus message
+        let i = 0;
+        const intervalId = setInterval(() => {
+            if (i >= streamChunks.length) {
+                clearInterval(intervalId);
+                return;
+            }
+            const chunk = streamChunks[i++];
+            setMessages(prev => {
+                const newMessages = [...prev];
+                const lastMsg = newMessages[newMessages.length - 1] as any;
+                if (lastMsg?.kind === 'progressGroup' && lastMsg.terminalMessages?.length > 0) {
+                    const updatedTerminals = [...lastMsg.terminalMessages];
+                    updatedTerminals[0] = {
+                        ...updatedTerminals[0],
+                        payload: { ...updatedTerminals[0].payload, output: (updatedTerminals[0].payload?.output || '') + chunk }
+                    };
+                    newMessages[newMessages.length - 1] = { ...lastMsg, terminalMessages: updatedTerminals };
+                }
+                return newMessages;
+            });
+        }, 400);
+
+        return;
+    }
+
+    // Debug Task Command
+    if (messageText.trim() === '/debug-task') {
+        setMessages(prev => [
+            ...prev,
+            { sender: 'user', text: '/debug-task', timestamp: new Date().toISOString() },
+            { 
+                sender: 'ai', 
+                senderName: 'TaskDecompositionAgent',
+                kind: 'task',
+                text: 'Here are some tasks to verify the natural flow UI:',
+                tasks: [
+                    '- [x] Research existing infrastructure ✅',
+                    '- [/] Implement Terminal component...',
+                    '- [ ] Verify Plan pop-up logic'
+                ],
+                timestamp: new Date().toISOString()
+            } as any
+        ]);
+        return;
+    }
+
+    // Debug Plan Command
+    if (messageText.trim() === '/debug-plan') {
+        setMessages(prev => [
+            ...prev,
+            { sender: 'user', text: '/debug-plan', timestamp: new Date().toISOString() }
+        ]);
+        setPlan([
+            { description: 'Implement TerminalOutput component', status: 'completed' },
+            { description: 'Refactor MessageItem for tasks', status: 'in-progress' },
+            { description: 'Test Plan pop-up with /debug-plan', status: 'pending' }
+        ]);
+        setIsPlanVisible(true);
+        return;
+    }
+
     const sendingFromWelcome = (view === 'welcome');
     if (view !== 'chat') setView('chat');
     welcomeLockRef.current = false;
@@ -668,7 +781,6 @@ const handleNewChat = () => {
                                 return activeSessionId ? 'chat' : 'welcome';
                             }
                             // Enter settings
-                            setPlan([]);
                             return 'settings';
                         });
                     }}
@@ -725,8 +837,17 @@ const handleNewChat = () => {
                         `}</style>
                     </div>
                 )}
-                {view === 'chat' && (
-                    <PlanView plan={plan} isAutonomousMode={isAutonomousMode} />
+                {view === 'chat' && plan.length > 0 && isPlanVisible && (
+                    <div className="plan-popup-overlay">
+                        <div className="plan-popup-content">
+                            <PlanView 
+                                plan={plan} 
+                                isAutonomousMode={isAutonomousMode} 
+                                isCollapsed={isPlanCollapsed}
+                                onToggleCollapse={() => setIsPlanCollapsed(!isPlanCollapsed)}
+                            />
+                        </div>
+                    </div>
                 )}
                 {view !== 'settings' && !!statusText && !isThinking && (
                     <div className="agent-activity" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid var(--vscode-panel-border)' }}>

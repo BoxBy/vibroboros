@@ -12,8 +12,10 @@
 
 import { IRequestHandler, CompletionParams, CompletionOptions } from './IRequestHandler';
 import { LlmMessage, LlmFullResponse, LLMProvider } from '../../services/LLMService';
-import { ILLMProvider } from '../providers/ILLMProvider';
-import { buildProviderRequest, getRequestStrategy } from './strategies';
+import { ILLMProvider } from './providers/ILLMProvider';
+import { getRequestStrategy } from './strategies';
+import { CompositionRoot, ServiceIdentifiers } from '../../di/CompositionRoot';
+import { ConfigService } from '../../config_service';
 
 export class RequestHandler implements IRequestHandler {
     private static instance: RequestHandler;
@@ -38,7 +40,7 @@ export class RequestHandler implements IRequestHandler {
         this.providers.set(providerId, provider);
     }
 
-    public supportsStreaming(provider: LLMProvider): boolean {
+    public supportsStreaming(_provider: LLMProvider): boolean {
         return true; // All supported providers support streaming
     }
 
@@ -71,13 +73,15 @@ export class RequestHandler implements IRequestHandler {
             tools,
             model,
             onChunk,
-            timeout = 60000,
             options,
-            token,
-            temperature = 0.1,
+            token: _token,
             maxTokens,
             modelInfo
         } = params;
+
+        const configService = CompositionRoot.resolve<ConfigService>(ServiceIdentifiers.ConfigService);
+        const effectiveTimeout = params.timeout ?? configService.getGlobalRequestTimeout();
+        const effectiveTemperature = params.temperature ?? configService.getGlobalTemperature();
 
         const isLocalOllama = provider === 'ollama' && endpoint?.includes('localhost');
         const needsApiKey = !isLocalOllama && provider !== 'google';
@@ -93,7 +97,7 @@ export class RequestHandler implements IRequestHandler {
                 model,
                 apiKey,
                 endpoint,
-                temperature,
+                temperature: effectiveTemperature,
                 maxTokens: maxTokens || modelInfo?.maxOutputTokens,
                 structured: options?.structured,
                 tools: tools
@@ -108,35 +112,33 @@ export class RequestHandler implements IRequestHandler {
         // Try using Strategy Pattern for request building
         const strategy = getRequestStrategy(provider);
         if (strategy) {
-            return this.handleStrategyRequest(params, strategy);
+            return this.handleStrategyRequest(params, strategy, effectiveTimeout, effectiveTemperature);
         }
 
         // Legacy Fallback for providers not yet migrated
-        return this.handleLegacyRequest(params);
+        return this.handleLegacyRequest(params, effectiveTimeout, effectiveTemperature);
     }
 
     /**
      * Handle request using Strategy Pattern
      * Eliminates switch statements by delegating to provider-specific strategies
      */
-    private async handleStrategyRequest(params: CompletionParams, strategy: any): Promise<LlmFullResponse> {
-        const { provider, conversationHistory, apiKey, endpoint, tools, model, onChunk, timeout, token, options } = params;
+    private async handleStrategyRequest(params: CompletionParams, strategy: any, effectiveTimeout: number, effectiveTemperature: number): Promise<LlmFullResponse> {
+        const { provider, conversationHistory, apiKey, endpoint, tools, model, onChunk, token, options } = params;
 
-        const request = buildProviderRequest({
-            provider,
-            conversationHistory,
+        const request = strategy.buildRequest(conversationHistory, {
+            model,
             apiKey,
             endpoint,
             tools,
-            model,
-            temperature: 0.1,
+            temperature: effectiveTemperature,
             options
         });
 
-        return this.executeRequest(request.url, request.headers, request.body, provider, onChunk, timeout, token, options);
+        return this.executeRequest(request.url, request.headers, request.body, provider, onChunk, effectiveTimeout, token, options);
     }
 
-    private async handleLegacyRequest(params: CompletionParams): Promise<LlmFullResponse> {
+    private async handleLegacyRequest(params: CompletionParams, effectiveTimeout: number, effectiveTemperature: number): Promise<LlmFullResponse> {
         const {
             provider,
             conversationHistory,
@@ -145,10 +147,8 @@ export class RequestHandler implements IRequestHandler {
             tools,
             model,
             onChunk,
-            timeout = 60000,
             options,
-            token,
-            temperature = 0.1
+            token
         } = params;
 
         let requestEndpoint = endpoint || '';
@@ -165,7 +165,7 @@ export class RequestHandler implements IRequestHandler {
                     tools,
                     tool_choice: 'auto',
                     stream: !!onChunk,
-                    temperature: 0.1,
+                    temperature: effectiveTemperature,
                 };
 
                 if (options && options.structured) {
@@ -187,7 +187,7 @@ export class RequestHandler implements IRequestHandler {
                     headers['Authorization'] = `Bearer ${apiKey}`;
                 }
 
-                requestEndpoint = await this.resolveOpenAICompatibleEndpoint(requestEndpoint, headers, requestBody, timeout);
+                requestEndpoint = await this.resolveOpenAICompatibleEndpoint(requestEndpoint, headers, requestBody, effectiveTimeout);
                 break;
             }
             case 'ollama': {
@@ -299,7 +299,7 @@ export class RequestHandler implements IRequestHandler {
         }
 
         // Execute request
-        return this.executeRequest(requestEndpoint, headers, requestBody, provider, onChunk, timeout, token, options);
+        return this.executeRequest(requestEndpoint, headers, requestBody, provider, onChunk, effectiveTimeout, token, options);
     }
 
     private async executeRequest(
@@ -310,7 +310,7 @@ export class RequestHandler implements IRequestHandler {
         onChunk?: (chunk: string) => void,
         timeout = 60000,
         token?: any,
-        options?: CompletionOptions
+        _options?: CompletionOptions
     ): Promise<LlmFullResponse> {
         const controller = new AbortController();
 
@@ -414,7 +414,9 @@ export class RequestHandler implements IRequestHandler {
 
         while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+                break;
+            }
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
@@ -423,7 +425,9 @@ export class RequestHandler implements IRequestHandler {
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
                     const jsonStr = line.substring(6);
-                    if (jsonStr === '[DONE]') break;
+                    if (jsonStr === '[DONE]') {
+                        break;
+                    }
 
                     try {
                         const chunk = JSON.parse(jsonStr);
@@ -444,7 +448,9 @@ export class RequestHandler implements IRequestHandler {
                                         function: { name: '', arguments: '' }
                                     };
                                 }
-                                if (toolCall.id) accumulatedToolCalls[index].id = toolCall.id;
+                                if (toolCall.id) {
+                                    accumulatedToolCalls[index].id = toolCall.id;
+                                }
                                 if (toolCall.function?.name) {
                                     accumulatedToolCalls[index].function.name = toolCall.function.name;
                                 }
@@ -489,7 +495,9 @@ export class RequestHandler implements IRequestHandler {
 
         while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+                break;
+            }
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
@@ -497,7 +505,9 @@ export class RequestHandler implements IRequestHandler {
 
             for (const line of lines) {
                 const trimmed = line.trim();
-                if (!trimmed) continue;
+                if (!trimmed) {
+                    continue;
+                }
 
                 try {
                     const obj = JSON.parse(trimmed);

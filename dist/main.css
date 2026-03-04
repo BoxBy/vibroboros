@@ -57,10 +57,10 @@ body {
 .main-view {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 .welcome-container {
   display: flex;
@@ -285,6 +285,12 @@ body {
   gap: 8px;
   font-size: 13px;
 }
+.task-natural-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
 .context-menu-item:hover {
   background-color: var(--vscode-menu-selectionBackground);
   color: var(--vscode-menu-selectionForeground);
@@ -391,8 +397,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-width: 80%;
-  margin-bottom: 16px;
+  max-width: 85%;
+  margin-bottom: 12px;
   animation: fadeIn 0.3s ease;
 }
 .progress-group {
@@ -408,7 +414,8 @@ body {
 }
 .progress-group-content {
   animation: slideDown 0.25s ease-out;
-  padding-left: 8px;
+  padding-left: 10px;
+  margin-top: 4px;
 }
 .progress-group-content .markdown-content p {
   margin-left: 0;
@@ -508,9 +515,9 @@ body {
   background-color: var(--vscode-editorWidget-background);
   border: 1px solid var(--vscode-editorWidget-border);
   border-radius: 6px;
-  padding: 12px 16px;
-  margin: 0 16px 0 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 10px 14px;
+  margin: 4px 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 .diff-summary-header {
   display: flex;
@@ -659,5 +666,24 @@ body {
 .popup-input:focus {
   border-color: var(--vscode-focusBorder);
   outline: none;
+}
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.plan-popup {
+  background-color: var(--vscode-sideBar-background);
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+.plan-popup .plan-header:hover {
+  background-color: var(--vscode-list-hoverBackground);
 }
 /*# sourceMappingURL=main.css.map */

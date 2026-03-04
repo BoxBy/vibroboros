@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import * as os from 'os';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
+import { Server } from '@modelcontextprotocol/sdk/server';
 
 const inputSchema = z.object({
     command: z.string().describe("The shell command to execute."),
@@ -13,7 +14,7 @@ const outputSchema = z.object({
     exitCode: z.number().describe("Exit code"),
 });
 
-export function getTerminalExecutionToolDefinition() {
+export function getTerminalExecutionToolDefinition(server?: Server) {
     return {
         name: 'run_command',
         description: {
@@ -29,21 +30,53 @@ export function getTerminalExecutionToolDefinition() {
             // Use specific args for PowerShell to avoid profile loading and interaction
             // Note: We escape double quotes for PowerShell explicitly
             const sanitizedCommand = command.replace(/"/g, '\\"');
-            const cmd = os.platform() === 'win32' 
-                ? `-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& { ${sanitizedCommand} }"`
+            const args = os.platform() === 'win32' 
+                ? ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `& { ${sanitizedCommand} }`]
                 : ['-c', command];
                 
-            const execStr = os.platform() === 'win32' 
-                ? `${shell} ${cmd}` 
-                : `${shell} ${cmd[0]} '${cmd[1].replace(/'/g, "'\\''")}'`;
             return await new Promise((resolve) => {
-                exec(execStr, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-                    if (error) {
-                        const code = (error as any).code ?? 1;
-                        resolve({ stdout: stdout?.toString() || '', stderr: stderr?.toString() || String(error), exitCode: code });
-                    } else {
-                        resolve({ stdout: stdout?.toString() || '', stderr: stderr?.toString() || '', exitCode: 0 });
+                let stdoutData = '';
+                let stderrData = '';
+                
+                const proc = spawn(shell, args);
+                
+                let isComplete = false;
+                const timeoutTimer = setTimeout(() => {
+                    if (!isComplete) {
+                        proc.kill();
                     }
+                }, timeoutMs);
+
+                proc.stdout.on('data', (data) => {
+                    const text = data.toString();
+                    stdoutData += text;
+                    if (server) {
+                        try {
+                            server.notification({ method: 'notifications/terminal/stream', params: { text, command } });
+                        } catch (e) {}
+                    }
+                });
+
+                proc.stderr.on('data', (data) => {
+                    const text = data.toString();
+                    stderrData += text;
+                    if (server) {
+                        try {
+                            server.notification({ method: 'notifications/terminal/stream', params: { text, command } });
+                        } catch (e) {}
+                    }
+                });
+
+                proc.on('close', (code) => {
+                    isComplete = true;
+                    clearTimeout(timeoutTimer);
+                    resolve({ stdout: stdoutData, stderr: stderrData, exitCode: code ?? 1 });
+                });
+                
+                proc.on('error', (error) => {
+                    isComplete = true;
+                    clearTimeout(timeoutTimer);
+                    resolve({ stdout: stdoutData, stderr: stderrData + String(error), exitCode: 1 });
                 });
             });
         }

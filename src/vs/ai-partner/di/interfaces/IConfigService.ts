@@ -204,6 +204,18 @@ export interface IConfigService {
     setZaiIsCodingPlan(isCodingPlan: boolean): Promise<void>;
 
     // ========================================================================
+    // Security & Automation Settings
+    // ========================================================================
+    getStrictMode(): boolean;
+    setStrictMode(enabled: boolean): Promise<void>;
+    getReviewPolicy(): 'always' | 'agent-decides' | 'never';
+    setReviewPolicy(policy: 'always' | 'agent-decides' | 'never'): Promise<void>;
+    getTerminalAutoExecution(): boolean;
+    setTerminalAutoExecution(enabled: boolean): Promise<void>;
+    getFileAccessPolicy(): 'allow-all' | 'request-each' | 'read-only';
+    setFileAccessPolicy(policy: 'allow-all' | 'request-each' | 'read-only'): Promise<void>;
+
+    // ========================================================================
     // Other Settings
     // ========================================================================
     getDeveloperMode(): boolean;

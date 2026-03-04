@@ -85,6 +85,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     basicSettings: true,
     llmSettings: true,
+    advancedLlmSettings: false,
+    advancedSettings: false,
     webSearchSettings: false,
     serverConnections: false,
   });
@@ -107,6 +109,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   const [maxContextOverride, setMaxContextOverride] = useState<number | undefined>(undefined);
   const [useVSCodeThinkingLang, setUseVSCodeThinkingLang] = useState<boolean>(false);
   const [useVSCodeUserLang, setUseVSCodeUserLang] = useState<boolean>(false);
+
+  // Advanced Global Settings
+  const [globalRequestTimeout, setGlobalRequestTimeout] = useState<number>(60000);
+  const [globalTemperature, setGlobalTemperature] = useState<number>(0.1);
+  const [safetyBufferRatio, setSafetyBufferRatio] = useState<number>(0.9);
+  const [globalReasoningEffort, setGlobalReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium');
+
+  // Advanced Security & Automation
+  const [strictMode, setStrictMode] = useState<boolean>(false);
+  const [reviewPolicy, setReviewPolicy] = useState<'always' | 'agent-decides' | 'never'>('agent-decides');
+  const [terminalAutoExecution, setTerminalAutoExecution] = useState<boolean>(false);
+  const [fileAccessPolicy, setFileAccessPolicy] = useState<'allow-all' | 'request-each' | 'read-only'>('request-each');
 
   // startModelPolling은 더 이상 필요 없음 (MainView가 models를 관리)
   const startModelPolling = useCallback((durationMs: number = 20000, intervalMs: number = 2000) => {
@@ -168,6 +182,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
          if (p.maxContextOverride !== undefined) setMaxContextOverride(p.maxContextOverride);
         if (p.useVSCodeThinkingLang !== undefined) setUseVSCodeThinkingLang(p.useVSCodeThinkingLang);
         if (p.useVSCodeUserLang !== undefined) setUseVSCodeUserLang(p.useVSCodeUserLang);
+        
+        // Global LLM defaults
+        if (typeof p.globalRequestTimeout === 'number') setGlobalRequestTimeout(p.globalRequestTimeout);
+        if (typeof p.globalTemperature === 'number') setGlobalTemperature(p.globalTemperature);
+        if (typeof p.safetyBufferRatio === 'number') setSafetyBufferRatio(p.safetyBufferRatio);
+        if (p.globalReasoningEffort) setGlobalReasoningEffort(p.globalReasoningEffort);
       } else if (message.command === 'systemPromptTokenCount') {
         if (typeof message.payload === 'number') setSystemPromptTokenCount(message.payload);
       } else if (message.command === 'profilesResponse') {
@@ -365,38 +385,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
     setA2aUrlInput('');
     setA2aDescInput('');
   };
-// ...
-          {configuredItems.prompts.length > 0 ? (
-            <div>
-               {configuredItems.prompts.map(agent => (
-                 <div key={agent.name} style={{ marginBottom: '8px' }}>
-                   <div 
-                    style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.9, cursor: 'pointer', userSelect: 'none' }}
-                     onClick={() => togglePrompt(agent.name)}
-                   >
-                      <span className={`codicon codicon-${expandedPrompts[agent.name] ? 'chevron-down' : 'chevron-right'}`}></span>
-                      <span style={{ fontSize: '13px', fontWeight: 600 }}>{agent.name}</span>
-                   </div>
-                   {expandedPrompts[agent.name] && (
-                       <div style={{ marginTop: '8px', paddingLeft: '16px', borderLeft: '2px solid var(--vscode-dropdown-border)' }}>
-                           <pre style={{ 
-                               fontSize: '12px', 
-                               whiteSpace: 'pre-wrap', 
-                               backgroundColor: 'var(--vscode-editor-background)', 
-                               padding: '8px',
-                               borderRadius: '4px',
-                               margin: 0
-                           }}>
-                               {agent.content || '(No specific guidelines)'}
-                           </pre>
-                       </div>
-                   )}
-                 </div>
-               ))}
-            </div>
-          ) : (
-            <div style={{ fontSize: '13px', opacity: 0.7 }}>No prompt configurations found.</div>
-          )}
 
   const handleAddAgent = () => {
     // For now, adds a placeholder agent. A form should be implemented later.
@@ -1070,6 +1058,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
           </div>
         </div>
 
+
+
+
+
         {llmSettings.llmProvider && (
           <ProviderSettings
             apiKey={llmSettings.apiKey}
@@ -1344,9 +1336,160 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
       </>
       )}
 
-      <VSCodeDivider style={{ margin: '24px 0' }} />
+      <VSCodeDivider style={{ margin: '16px 0' }} />
 
-      {/* ========== Web Search Settings Group ========== */}
+      {/* ========== Advanced Settings Group (Global context, reasoning, language) ========== */}
+      <div
+        style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            cursor: 'pointer',
+            padding: '8px 0',
+            marginBottom: '12px'
+        }}
+        onClick={() => toggleGroup('advancedSettings')}
+      >
+        <span className={`codicon codicon-${expandedGroups.advancedSettings ? 'chevron-down' : 'chevron-right'}`} />
+        <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--vscode-foreground)' }}>Advanced Settings</h2>
+      </div>
+
+      {expandedGroups.advancedSettings && (
+        <div style={{ paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '16px' }}>
+          
+          {/* Section: LLM Performance & Safety */}
+          <div className="settings-section">
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600 }}>LLM Performance & Safety</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <label style={{ minWidth: '160px', fontSize: '12px' }}>Global Timeout (ms):</label>
+                <input
+                  type="number"
+                  value={globalRequestTimeout}
+                  onChange={(e: any) => setGlobalRequestTimeout(parseInt(e.target.value) || 0)}
+                  onBlur={(e: any) => vscodeService.postMessage({ command: 'setGlobalRequestTimeout', payload: { timeout: parseInt(e.target.value) || 60000 } })}
+                  style={{ backgroundColor: 'var(--vscode-input-background)', color: 'var(--vscode-input-foreground)', border: '1px solid var(--vscode-input-border)', borderRadius: '2px', padding: '3px 5px', width: '80px', fontFamily: 'var(--vscode-font-family)', fontSize: '12px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <label style={{ minWidth: '160px', fontSize: '12px' }}>Default Temperature:</label>
+                <input
+                  type="text"
+                  value={globalTemperature.toString()}
+                  onChange={(e: any) => { let val = parseFloat(e.target.value); if (!isNaN(val)) setGlobalTemperature(val); }}
+                  onBlur={(e: any) => { let val = parseFloat(e.target.value); if (!isNaN(val)) { val = Math.max(0, Math.min(2, val)); vscodeService.postMessage({ command: 'setGlobalTemperature', payload: { temperature: val } }); } }}
+                  style={{ backgroundColor: 'var(--vscode-input-background)', color: 'var(--vscode-input-foreground)', border: '1px solid var(--vscode-input-border)', borderRadius: '2px', padding: '3px 5px', width: '60px', textAlign: 'right', fontSize: '12px' }}
+                />
+                <span style={{ fontSize: '11px', opacity: 0.7 }}>(0.0 - 2.0)</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <label style={{ minWidth: '160px', fontSize: '12px' }}>Safety Buffer Ratio:</label>
+                <input
+                  type="text"
+                  value={safetyBufferRatio.toString()}
+                  onChange={(e: any) => { let val = parseFloat(e.target.value); if (!isNaN(val)) setSafetyBufferRatio(val); }}
+                  onBlur={(e: any) => { let val = parseFloat(e.target.value); if (!isNaN(val)) { val = Math.max(0.1, Math.min(1.0, val)); vscodeService.postMessage({ command: 'setSafetyBufferRatio', payload: { ratio: val } }); } }}
+                  style={{ backgroundColor: 'var(--vscode-input-background)', color: 'var(--vscode-input-foreground)', border: '1px solid var(--vscode-input-border)', borderRadius: '2px', padding: '3px 5px', width: '60px', textAlign: 'right', fontSize: '12px' }}
+                />
+                <span style={{ fontSize: '11px', opacity: 0.7 }}>Default 0.9</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <label style={{ minWidth: '160px', fontSize: '12px' }}>Reasoning Effort:</label>
+                <VSCodeDropdown
+                  value={globalReasoningEffort}
+                  onChange={(e: any) => { const effort = (e.target as HTMLSelectElement).value as 'low' | 'medium' | 'high'; setGlobalReasoningEffort(effort); vscodeService.postMessage({ command: 'setGlobalReasoningEffort', payload: { effort } }); }}
+                  style={{ minWidth: '100px' }}
+                >
+                  <VSCodeOption value="low">Low</VSCodeOption>
+                  <VSCodeOption value="medium">Medium</VSCodeOption>
+                  <VSCodeOption value="high">High</VSCodeOption>
+                </VSCodeDropdown>
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Security & Automation */}
+          <div className="settings-section" style={{ marginTop: '16px' }}>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600 }}>Security</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              <VSCodeCheckbox
+                checked={strictMode}
+                onChange={(e: any) => {
+                  const val = e.target.checked;
+                  setStrictMode(val);
+                  vscodeService.postMessage({ command: 'setStrictMode', payload: { enabled: val } });
+                }}
+              >
+                Strict Mode
+              </VSCodeCheckbox>
+              <div style={{ fontSize: '11px', opacity: 0.7, paddingLeft: '24px', lineHeight: '1.4' }}>
+                When enabled, enforces settings that prevent the agent from autonomously running targeted exploits and requires human review for all agent actions.
+              </div>
+            </div>
+
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600 }}>Artifact</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <label style={{ minWidth: '120px', fontSize: '12px' }}>Review Policy:</label>
+                <VSCodeDropdown
+                  value={reviewPolicy}
+                  onChange={(e: any) => {
+                    const val = (e.target as HTMLSelectElement).value as any;
+                    setReviewPolicy(val);
+                    vscodeService.postMessage({ command: 'setReviewPolicy', payload: { policy: val } });
+                  }}
+                  style={{ minWidth: '140px' }}
+                >
+                  <VSCodeOption value="always">Asks for Review</VSCodeOption>
+                  <VSCodeOption value="agent-decides">Agent Decides</VSCodeOption>
+                  <VSCodeOption value="never">Always Proceeds</VSCodeOption>
+                </VSCodeDropdown>
+              </div>
+              <div style={{ fontSize: '11px', opacity: 0.7, lineHeight: '1.4' }}>
+                Specifies Agent's behavior when asking for review on artifacts, which are documents it creates to enable a richer conversation experience.
+              </div>
+            </div>
+
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600 }}>Terminal</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              <VSCodeCheckbox
+                checked={terminalAutoExecution}
+                disabled={strictMode}
+                onChange={(e: any) => {
+                  const val = e.target.checked;
+                  setTerminalAutoExecution(val);
+                  vscodeService.postMessage({ command: 'setTerminalAutoExecution', payload: { enabled: val } });
+                }}
+              >
+                Terminal Command Auto Execution (Disabled in Strict Mode)
+              </VSCodeCheckbox>
+            </div>
+
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 600 }}>File Access</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <label style={{ minWidth: '120px', fontSize: '12px' }}>File Access Policy:</label>
+                <VSCodeDropdown
+                  value={fileAccessPolicy}
+                  onChange={(e: any) => {
+                    const val = (e.target as HTMLSelectElement).value as any;
+                    setFileAccessPolicy(val);
+                    vscodeService.postMessage({ command: 'setFileAccessPolicy', payload: { policy: val } });
+                  }}
+                  style={{ minWidth: '140px' }}
+                >
+                  <VSCodeOption value="request-each">Request Each Time</VSCodeOption>
+                  <VSCodeOption value="allow-all">Allow All</VSCodeOption>
+                  <VSCodeOption value="read-only">Read Only</VSCodeOption>
+                </VSCodeDropdown>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      <VSCodeDivider style={{ margin: '24px 0' }} />
       <div
         style={{
           display: 'flex',

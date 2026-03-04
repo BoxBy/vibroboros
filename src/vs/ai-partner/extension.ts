@@ -634,6 +634,21 @@ export async function activate(context: vscode.ExtensionContext) {
             vscode.window.registerWebviewViewProvider(AIPartnerViewProvider.viewType, provider, { webviewOptions: { retainContextWhenHidden: true } })
         );
 
+        // Intercept MCP terminal streaming notifications
+        try {
+            if (typeof (mcpClient as any).setNotificationHandler === 'function') {
+                (mcpClient as any).setNotificationHandler('notifications/terminal/stream', (notification: any) => {
+                    const text = notification?.params?.text || '';
+                    const commandStr = notification?.params?.command || '';
+                    if (text) {
+                        provider.postMessage({ command: 'terminal_stream', payload: { text, command: commandStr } });
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn('[viper] Failed to set MCP notification handler:', e);
+        }
+
         provider.onDidReceiveMessage(async (message: any) => {
             // Handle messages from main AI Partner webview
             try {
@@ -785,7 +800,15 @@ export async function activate(context: vscode.ExtensionContext) {
                             vscode.window.showErrorMessage('Failed to open file: ' + (e?.message || e));
                         }
                     }
-                } else {
+                } else if (message.command === 'relocateTerminal') {
+                    const command = message.payload?.command;
+                    if (command) {
+                        const terminal = vscode.window.createTerminal('Viper Relocated Terminal');
+                        terminal.show();
+                        terminal.sendText(command);
+                    }
+                }
+                else {
                     orchestrator.handleUIMessage(message);
                 }
             } catch (err) {

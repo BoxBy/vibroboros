@@ -63,7 +63,7 @@ export function createMCPServer(): Server {
         getCopyToolDefinition(),
         getListDirToolDefinition(),
         getStatToolDefinition(),
-        getTerminalExecutionToolDefinition(),
+        getTerminalExecutionToolDefinition(server),
         getWebSearchToolDefinition(),
         getGitAutomationToolDefinition(),
         getSecurityVulnerabilityToolDefinition(),

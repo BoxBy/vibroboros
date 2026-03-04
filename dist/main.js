@@ -1087,7 +1087,7 @@ var require_react_development = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState8(initialState) {
+        function useState9(initialState) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useState(initialState);
         }
@@ -1890,7 +1890,7 @@ var require_react_development = __commonJS({
         exports.useMemo = useMemo4;
         exports.useReducer = useReducer;
         exports.useRef = useRef6;
-        exports.useState = useState8;
+        exports.useState = useState9;
         exports.useSyncExternalStore = useSyncExternalStore;
         exports.useTransition = useTransition;
         exports.version = ReactVersion;
@@ -2386,9 +2386,9 @@ var require_react_dom_development = __commonJS({
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart === "function") {
           __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(new Error());
         }
-        var React12 = require_react();
+        var React13 = require_react();
         var Scheduler = require_scheduler();
-        var ReactSharedInternals = React12.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React13.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         var suppressWarning = false;
         function setSuppressWarning(newSuppressWarning) {
           {
@@ -2437,7 +2437,7 @@ var require_react_dom_development = __commonJS({
         var HostPortal = 4;
         var HostComponent = 5;
         var HostText = 6;
-        var Fragment7 = 7;
+        var Fragment8 = 7;
         var Mode = 8;
         var ContextConsumer = 9;
         var ContextProvider = 10;
@@ -3594,7 +3594,7 @@ var require_react_dom_development = __commonJS({
               return "DehydratedFragment";
             case ForwardRef:
               return getWrappedName$1(type, type.render, "ForwardRef");
-            case Fragment7:
+            case Fragment8:
               return "Fragment";
             case HostComponent:
               return type;
@@ -3995,7 +3995,7 @@ var require_react_dom_development = __commonJS({
           {
             if (props.value == null) {
               if (typeof props.children === "object" && props.children !== null) {
-                React12.Children.forEach(props.children, function(child) {
+                React13.Children.forEach(props.children, function(child) {
                   if (child == null) {
                     return;
                   }
@@ -12023,7 +12023,7 @@ var require_react_dom_development = __commonJS({
             }
           }
           function updateFragment2(returnFiber, current2, fragment, lanes, key) {
-            if (current2 === null || current2.tag !== Fragment7) {
+            if (current2 === null || current2.tag !== Fragment8) {
               var created = createFiberFromFragment(fragment, returnFiber.mode, lanes, key);
               created.return = returnFiber;
               return created;
@@ -12426,7 +12426,7 @@ var require_react_dom_development = __commonJS({
               if (child.key === key) {
                 var elementType = element3.type;
                 if (elementType === REACT_FRAGMENT_TYPE) {
-                  if (child.tag === Fragment7) {
+                  if (child.tag === Fragment8) {
                     deleteRemainingChildren(returnFiber, child.sibling);
                     var existing = useFiber(child, element3.props.children);
                     existing.return = returnFiber;
@@ -17902,7 +17902,7 @@ var require_react_dom_development = __commonJS({
               var _resolvedProps2 = workInProgress2.elementType === type ? _unresolvedProps2 : resolveDefaultProps(type, _unresolvedProps2);
               return updateForwardRef(current2, workInProgress2, type, _resolvedProps2, renderLanes2);
             }
-            case Fragment7:
+            case Fragment8:
               return updateFragment(current2, workInProgress2, renderLanes2);
             case Mode:
               return updateMode(current2, workInProgress2, renderLanes2);
@@ -18174,7 +18174,7 @@ var require_react_dom_development = __commonJS({
             case SimpleMemoComponent:
             case FunctionComponent:
             case ForwardRef:
-            case Fragment7:
+            case Fragment8:
             case Mode:
             case Profiler:
             case ContextConsumer:
@@ -22435,7 +22435,7 @@ var require_react_dom_development = __commonJS({
           return fiber;
         }
         function createFiberFromFragment(elements2, mode, lanes, key) {
-          var fiber = createFiber(Fragment7, elements2, key, mode);
+          var fiber = createFiber(Fragment8, elements2, key, mode);
           fiber.lanes = lanes;
           return fiber;
         }
@@ -23591,7 +23591,7 @@ var require_react_jsx_runtime_development = __commonJS({
     if (true) {
       (function() {
         "use strict";
-        var React12 = require_react();
+        var React13 = require_react();
         var REACT_ELEMENT_TYPE = Symbol.for("react.element");
         var REACT_PORTAL_TYPE = Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
@@ -23617,7 +23617,7 @@ var require_react_jsx_runtime_development = __commonJS({
           }
           return null;
         }
-        var ReactSharedInternals = React12.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React13.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function error(format) {
           {
             {
@@ -24467,11 +24467,11 @@ var require_react_jsx_runtime_development = __commonJS({
             return jsxWithValidation(type, props, key, false);
           }
         }
-        var jsx13 = jsxWithValidationDynamic;
-        var jsxs12 = jsxWithValidationStatic;
+        var jsx14 = jsxWithValidationDynamic;
+        var jsxs13 = jsxWithValidationStatic;
         exports.Fragment = REACT_FRAGMENT_TYPE;
-        exports.jsx = jsx13;
-        exports.jsxs = jsxs12;
+        exports.jsx = jsx14;
+        exports.jsxs = jsxs13;
       })();
     }
   }
@@ -25786,7 +25786,7 @@ var require_react_development2 = __commonJS({
           }
           return dispatcher.useContext(Context);
         }
-        function useState8(initialState) {
+        function useState9(initialState) {
           var dispatcher = resolveDispatcher();
           return dispatcher.useState(initialState);
         }
@@ -26589,7 +26589,7 @@ var require_react_development2 = __commonJS({
         exports.useMemo = useMemo4;
         exports.useReducer = useReducer;
         exports.useRef = useRef6;
-        exports.useState = useState8;
+        exports.useState = useState9;
         exports.useSyncExternalStore = useSyncExternalStore;
         exports.useTransition = useTransition;
         exports.version = ReactVersion;
@@ -26620,7 +26620,7 @@ var require_react_jsx_runtime_development2 = __commonJS({
     if (true) {
       (function() {
         "use strict";
-        var React12 = require_react2();
+        var React13 = require_react2();
         var REACT_ELEMENT_TYPE = Symbol.for("react.element");
         var REACT_PORTAL_TYPE = Symbol.for("react.portal");
         var REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
@@ -26646,7 +26646,7 @@ var require_react_jsx_runtime_development2 = __commonJS({
           }
           return null;
         }
-        var ReactSharedInternals = React12.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+        var ReactSharedInternals = React13.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
         function error(format) {
           {
             {
@@ -27496,11 +27496,11 @@ var require_react_jsx_runtime_development2 = __commonJS({
             return jsxWithValidation(type, props, key, false);
           }
         }
-        var jsx13 = jsxWithValidationDynamic;
-        var jsxs12 = jsxWithValidationStatic;
+        var jsx14 = jsxWithValidationDynamic;
+        var jsxs13 = jsxWithValidationStatic;
         exports.Fragment = REACT_FRAGMENT_TYPE;
-        exports.jsx = jsx13;
-        exports.jsxs = jsxs12;
+        exports.jsx = jsx14;
+        exports.jsxs = jsxs13;
       })();
     }
   }
@@ -40663,10 +40663,10 @@ var require_jsstacktrace = __commonJS({
 var require_jsx = __commonJS({
   "node_modules/refractor/lang/jsx.js"(exports, module) {
     "use strict";
-    module.exports = jsx13;
-    jsx13.displayName = "jsx";
-    jsx13.aliases = [];
-    function jsx13(Prism) {
+    module.exports = jsx14;
+    jsx14.displayName = "jsx";
+    jsx14.aliases = [];
+    function jsx14(Prism) {
       ;
       (function(Prism2) {
         var javascript = Prism2.util.clone(Prism2.languages.javascript);
@@ -52094,11 +52094,11 @@ var require_refractor = __commonJS({
 });
 
 // src/vs/ai-partner/ui/index.tsx
-var import_react17 = __toESM(require_react());
+var import_react18 = __toESM(require_react());
 var import_client = __toESM(require_client());
 
 // src/vs/ai-partner/ui/MainView.tsx
-var import_react16 = __toESM(require_react());
+var import_react17 = __toESM(require_react());
 
 // src/vs/ai-partner/ui/Header.tsx
 var import_react2 = __toESM(require_react());
@@ -62320,7 +62320,7 @@ function getElementKeys(type, config) {
   }
   return config.keys;
 }
-function provideReactWrapper(React12, designSystem) {
+function provideReactWrapper(React13, designSystem) {
   let registrations = [];
   const registry = {
     register(container, ...rest) {
@@ -62345,7 +62345,7 @@ function provideReactWrapper(React12, designSystem) {
         return cachedWrapper;
       }
     }
-    class ReactComponent extends React12.Component {
+    class ReactComponent extends React13.Component {
       constructor() {
         super(...arguments);
         this._element = null;
@@ -62408,10 +62408,10 @@ function provideReactWrapper(React12, designSystem) {
             newReactProps[k === "className" ? "class" : k] = v;
           }
         }
-        return React12.createElement(getTagName(type, config), newReactProps);
+        return React13.createElement(getTagName(type, config), newReactProps);
       }
     }
-    const reactComponent = React12.forwardRef((props, ref2) => React12.createElement(ReactComponent, Object.assign(Object.assign({}, props), { __forwardedRef: ref2 }), props === null || props === void 0 ? void 0 : props.children));
+    const reactComponent = React13.forwardRef((props, ref2) => React13.createElement(ReactComponent, Object.assign(Object.assign({}, props), { __forwardedRef: ref2 }), props === null || props === void 0 ? void 0 : props.children));
     if (!wrappersCache.has(type)) {
       wrappersCache.set(type, /* @__PURE__ */ new Map());
     }
@@ -64471,6 +64471,8 @@ var SettingsPage = ({ models: propModels = [] }) => {
   const [expandedGroups, setExpandedGroups] = (0, import_react5.useState)({
     basicSettings: true,
     llmSettings: true,
+    advancedLlmSettings: false,
+    advancedSettings: false,
     webSearchSettings: false,
     serverConnections: false
   });
@@ -64487,6 +64489,14 @@ var SettingsPage = ({ models: propModels = [] }) => {
   const [maxContextOverride, setMaxContextOverride] = (0, import_react5.useState)(void 0);
   const [useVSCodeThinkingLang, setUseVSCodeThinkingLang] = (0, import_react5.useState)(false);
   const [useVSCodeUserLang, setUseVSCodeUserLang] = (0, import_react5.useState)(false);
+  const [globalRequestTimeout, setGlobalRequestTimeout] = (0, import_react5.useState)(6e4);
+  const [globalTemperature, setGlobalTemperature] = (0, import_react5.useState)(0.1);
+  const [safetyBufferRatio, setSafetyBufferRatio] = (0, import_react5.useState)(0.9);
+  const [globalReasoningEffort, setGlobalReasoningEffort] = (0, import_react5.useState)("medium");
+  const [strictMode, setStrictMode] = (0, import_react5.useState)(false);
+  const [reviewPolicy, setReviewPolicy] = (0, import_react5.useState)("agent-decides");
+  const [terminalAutoExecution, setTerminalAutoExecution] = (0, import_react5.useState)(false);
+  const [fileAccessPolicy, setFileAccessPolicy] = (0, import_react5.useState)("request-each");
   const startModelPolling = (0, import_react5.useCallback)((durationMs = 2e4, intervalMs = 2e3) => {
     console.log("[SettingsPage] startModelPolling called but disabled (MainView handles models)");
   }, []);
@@ -64527,6 +64537,10 @@ var SettingsPage = ({ models: propModels = [] }) => {
         if (p.maxContextOverride !== void 0) setMaxContextOverride(p.maxContextOverride);
         if (p.useVSCodeThinkingLang !== void 0) setUseVSCodeThinkingLang(p.useVSCodeThinkingLang);
         if (p.useVSCodeUserLang !== void 0) setUseVSCodeUserLang(p.useVSCodeUserLang);
+        if (typeof p.globalRequestTimeout === "number") setGlobalRequestTimeout(p.globalRequestTimeout);
+        if (typeof p.globalTemperature === "number") setGlobalTemperature(p.globalTemperature);
+        if (typeof p.safetyBufferRatio === "number") setSafetyBufferRatio(p.safetyBufferRatio);
+        if (p.globalReasoningEffort) setGlobalReasoningEffort(p.globalReasoningEffort);
       } else if (message.command === "systemPromptTokenCount") {
         if (typeof message.payload === "number") setSystemPromptTokenCount(message.payload);
       } else if (message.command === "profilesResponse") {
@@ -64692,29 +64706,6 @@ var SettingsPage = ({ models: propModels = [] }) => {
     setA2aUrlInput("");
     setA2aDescInput("");
   };
-  {
-    configuredItems.prompts.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { children: configuredItems.prompts.map((agent) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { marginBottom: "8px" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
-        "div",
-        {
-          style: { display: "flex", alignItems: "center", gap: "8px", opacity: 0.9, cursor: "pointer", userSelect: "none" },
-          onClick: () => togglePrompt(agent.name),
-          children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: `codicon codicon-${expandedPrompts[agent.name] ? "chevron-down" : "chevron-right"}` }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: { fontSize: "13px", fontWeight: 600 }, children: agent.name })
-          ]
-        }
-      ),
-      expandedPrompts[agent.name] && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { marginTop: "8px", paddingLeft: "16px", borderLeft: "2px solid var(--vscode-dropdown-border)" }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("pre", { style: {
-        fontSize: "12px",
-        whiteSpace: "pre-wrap",
-        backgroundColor: "var(--vscode-editor-background)",
-        padding: "8px",
-        borderRadius: "4px",
-        margin: 0
-      }, children: agent.content || "(No specific guidelines)" }) })
-    ] }, agent.name)) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: "13px", opacity: 0.7 }, children: "No prompt configurations found." });
-  }
   const handleAddAgent = () => {
     const newAgent = {
       path: "./agents/NewAgent.ts",
@@ -65564,6 +65555,188 @@ var SettingsPage = ({ models: propModels = [] }) => {
         ] })
       ] })
     ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeDivider, { style: { margin: "16px 0" } }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+      "div",
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          cursor: "pointer",
+          padding: "8px 0",
+          marginBottom: "12px"
+        },
+        onClick: () => toggleGroup("advancedSettings"),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: `codicon codicon-${expandedGroups.advancedSettings ? "chevron-down" : "chevron-right"}` }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h2", { style: { margin: 0, fontSize: "14px", fontWeight: 600, color: "var(--vscode-foreground)" }, children: "Advanced Settings" })
+        ]
+      }
+    ),
+    expandedGroups.advancedSettings && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { paddingLeft: "16px", display: "flex", flexDirection: "column", gap: "16px", marginBottom: "16px" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "settings-section", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h3", { style: { margin: "0 0 10px 0", fontSize: "13px", fontWeight: 600 }, children: "LLM Performance & Safety" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: "10px" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("label", { style: { minWidth: "160px", fontSize: "12px" }, children: "Global Timeout (ms):" }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "input",
+              {
+                type: "number",
+                value: globalRequestTimeout,
+                onChange: (e) => setGlobalRequestTimeout(parseInt(e.target.value) || 0),
+                onBlur: (e) => vscodeService.postMessage({ command: "setGlobalRequestTimeout", payload: { timeout: parseInt(e.target.value) || 6e4 } }),
+                style: { backgroundColor: "var(--vscode-input-background)", color: "var(--vscode-input-foreground)", border: "1px solid var(--vscode-input-border)", borderRadius: "2px", padding: "3px 5px", width: "80px", fontFamily: "var(--vscode-font-family)", fontSize: "12px" }
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("label", { style: { minWidth: "160px", fontSize: "12px" }, children: "Default Temperature:" }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "input",
+              {
+                type: "text",
+                value: globalTemperature.toString(),
+                onChange: (e) => {
+                  let val = parseFloat(e.target.value);
+                  if (!isNaN(val)) setGlobalTemperature(val);
+                },
+                onBlur: (e) => {
+                  let val = parseFloat(e.target.value);
+                  if (!isNaN(val)) {
+                    val = Math.max(0, Math.min(2, val));
+                    vscodeService.postMessage({ command: "setGlobalTemperature", payload: { temperature: val } });
+                  }
+                },
+                style: { backgroundColor: "var(--vscode-input-background)", color: "var(--vscode-input-foreground)", border: "1px solid var(--vscode-input-border)", borderRadius: "2px", padding: "3px 5px", width: "60px", textAlign: "right", fontSize: "12px" }
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: { fontSize: "11px", opacity: 0.7 }, children: "(0.0 - 2.0)" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("label", { style: { minWidth: "160px", fontSize: "12px" }, children: "Safety Buffer Ratio:" }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "input",
+              {
+                type: "text",
+                value: safetyBufferRatio.toString(),
+                onChange: (e) => {
+                  let val = parseFloat(e.target.value);
+                  if (!isNaN(val)) setSafetyBufferRatio(val);
+                },
+                onBlur: (e) => {
+                  let val = parseFloat(e.target.value);
+                  if (!isNaN(val)) {
+                    val = Math.max(0.1, Math.min(1, val));
+                    vscodeService.postMessage({ command: "setSafetyBufferRatio", payload: { ratio: val } });
+                  }
+                },
+                style: { backgroundColor: "var(--vscode-input-background)", color: "var(--vscode-input-foreground)", border: "1px solid var(--vscode-input-border)", borderRadius: "2px", padding: "3px 5px", width: "60px", textAlign: "right", fontSize: "12px" }
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: { fontSize: "11px", opacity: 0.7 }, children: "Default 0.9" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("label", { style: { minWidth: "160px", fontSize: "12px" }, children: "Reasoning Effort:" }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+              VSCodeDropdown,
+              {
+                value: globalReasoningEffort,
+                onChange: (e) => {
+                  const effort = e.target.value;
+                  setGlobalReasoningEffort(effort);
+                  vscodeService.postMessage({ command: "setGlobalReasoningEffort", payload: { effort } });
+                },
+                style: { minWidth: "100px" },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeOption, { value: "low", children: "Low" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeOption, { value: "medium", children: "Medium" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeOption, { value: "high", children: "High" })
+                ]
+              }
+            )
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "settings-section", style: { marginTop: "16px" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h3", { style: { margin: "0 0 10px 0", fontSize: "13px", fontWeight: 600 }, children: "Security" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            VSCodeCheckbox,
+            {
+              checked: strictMode,
+              onChange: (e) => {
+                const val = e.target.checked;
+                setStrictMode(val);
+                vscodeService.postMessage({ command: "setStrictMode", payload: { enabled: val } });
+              },
+              children: "Strict Mode"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: "11px", opacity: 0.7, paddingLeft: "24px", lineHeight: "1.4" }, children: "When enabled, enforces settings that prevent the agent from autonomously running targeted exploits and requires human review for all agent actions." })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h3", { style: { margin: "0 0 10px 0", fontSize: "13px", fontWeight: 600 }, children: "Artifact" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("label", { style: { minWidth: "120px", fontSize: "12px" }, children: "Review Policy:" }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+              VSCodeDropdown,
+              {
+                value: reviewPolicy,
+                onChange: (e) => {
+                  const val = e.target.value;
+                  setReviewPolicy(val);
+                  vscodeService.postMessage({ command: "setReviewPolicy", payload: { policy: val } });
+                },
+                style: { minWidth: "140px" },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeOption, { value: "always", children: "Asks for Review" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeOption, { value: "agent-decides", children: "Agent Decides" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeOption, { value: "never", children: "Always Proceeds" })
+                ]
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: "11px", opacity: 0.7, lineHeight: "1.4" }, children: "Specifies Agent's behavior when asking for review on artifacts, which are documents it creates to enable a richer conversation experience." })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h3", { style: { margin: "0 0 10px 0", fontSize: "13px", fontWeight: 600 }, children: "Terminal" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          VSCodeCheckbox,
+          {
+            checked: terminalAutoExecution,
+            disabled: strictMode,
+            onChange: (e) => {
+              const val = e.target.checked;
+              setTerminalAutoExecution(val);
+              vscodeService.postMessage({ command: "setTerminalAutoExecution", payload: { enabled: val } });
+            },
+            children: "Terminal Command Auto Execution (Disabled in Strict Mode)"
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h3", { style: { margin: "0 0 10px 0", fontSize: "13px", fontWeight: 600 }, children: "File Access" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: "8px" }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("label", { style: { minWidth: "120px", fontSize: "12px" }, children: "File Access Policy:" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+            VSCodeDropdown,
+            {
+              value: fileAccessPolicy,
+              onChange: (e) => {
+                const val = e.target.value;
+                setFileAccessPolicy(val);
+                vscodeService.postMessage({ command: "setFileAccessPolicy", payload: { policy: val } });
+              },
+              style: { minWidth: "140px" },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeOption, { value: "request-each", children: "Request Each Time" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeOption, { value: "allow-all", children: "Allow All" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeOption, { value: "read-only", children: "Read Only" })
+              ]
+            }
+          )
+        ] }) })
+      ] })
+    ] }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(VSCodeDivider, { style: { margin: "24px 0" } }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
       "div",
@@ -65978,10 +66151,10 @@ var WelcomeScreen = ({ onSendMessage, recentSessions = [], onPickSession }) => {
 };
 
 // src/vs/ai-partner/ui/MessageList.tsx
-var import_react12 = __toESM(require_react());
+var import_react13 = __toESM(require_react());
 
 // src/vs/ai-partner/ui/MessageItem.tsx
-var import_react11 = __toESM(require_react());
+var import_react12 = __toESM(require_react());
 
 // node_modules/devlop/lib/default.js
 function ok() {
@@ -67606,11 +67779,11 @@ function addChildren(props, children2) {
     }
   }
 }
-function productionCreate(_, jsx13, jsxs12) {
+function productionCreate(_, jsx14, jsxs13) {
   return create4;
   function create4(_2, type, props, key) {
     const isStaticChildren = Array.isArray(props.children);
-    const fn = isStaticChildren ? jsxs12 : jsx13;
+    const fn = isStaticChildren ? jsxs13 : jsx14;
     return key ? fn(type, props, key) : fn(type, props);
   }
 }
@@ -79905,8 +80078,168 @@ function tokenize(value, options) {
   return retLines;
 }
 
-// src/vs/ai-partner/ui/MessageItem.tsx
+// src/vs/ai-partner/ui/components/TerminalOutput.tsx
+var import_react11 = __toESM(require_react());
 var import_jsx_runtime6 = __toESM(require_jsx_runtime());
+var TerminalOutput = ({
+  command,
+  cwd: cwd2,
+  output,
+  exitCode,
+  toolName,
+  onAllow,
+  onDecline
+}) => {
+  const [showAlwaysRunConfig, setShowAlwaysRunConfig] = (0, import_react11.useState)(false);
+  const [alwaysRunEnabled, setAlwaysRunEnabled] = (0, import_react11.useState)(false);
+  const [timeout, setTimeout_] = (0, import_react11.useState)(6e4);
+  const needsApproval = typeof onAllow === "function" || typeof onDecline === "function";
+  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "terminal-container", style: {
+    backgroundColor: "#1e1e1e",
+    color: "#cccccc",
+    borderRadius: "6px",
+    border: "1px solid #333",
+    overflow: "hidden",
+    fontFamily: 'var(--vscode-editor-font-family, "Cascadia Code", Consolas, monospace)',
+    fontSize: "13px",
+    margin: "4px 0",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.3)"
+  }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "terminal-header", style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "6px 12px",
+      backgroundColor: "#252526",
+      borderBottom: "1px solid #333"
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: { fontSize: "11px", color: "#888", textTransform: "uppercase", letterSpacing: "0.5px" }, children: toolName ? `Executing tool: ${toolName}` : "Ran command" }),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "12px" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+          "div",
+          {
+            style: { display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", color: "#bbb" },
+            onClick: () => setShowAlwaysRunConfig((v) => !v),
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: { fontSize: "11px" }, children: "Always run" }),
+              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("i", { className: `codicon ${showAlwaysRunConfig ? "codicon-chevron-up" : "codicon-chevron-down"}`, style: { fontSize: "12px" } })
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", color: "#bbb" }, onClick: () => {
+          vscodeService.postMessage({ command: "relocateTerminal", payload: { command } });
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: { fontSize: "11px" }, children: "Relocate" }),
+          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("i", { className: "codicon codicon-link-external", style: { fontSize: "12px" } })
+        ] })
+      ] })
+    ] }),
+    showAlwaysRunConfig && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: {
+      backgroundColor: "#2d2d2d",
+      borderBottom: "1px solid #444",
+      padding: "10px 14px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "8px",
+      fontSize: "12px"
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { style: { color: "#ccc", fontWeight: 600, marginBottom: 2 }, children: "Always Run Settings" }),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("label", { style: { display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", color: "#bbb" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          "input",
+          {
+            type: "checkbox",
+            checked: alwaysRunEnabled,
+            onChange: (e) => {
+              setAlwaysRunEnabled(e.target.checked);
+              vscodeService.postMessage({ command: "setAlwaysRun", payload: { enabled: e.target.checked, timeout } });
+            },
+            style: { cursor: "pointer" }
+          }
+        ),
+        "Always run terminal commands without asking"
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "8px", color: "#bbb" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { children: "Timeout (ms):" }),
+        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          "input",
+          {
+            type: "number",
+            value: timeout,
+            onChange: (e) => setTimeout_(parseInt(e.target.value) || 6e4),
+            onBlur: () => vscodeService.postMessage({ command: "setAlwaysRun", payload: { enabled: alwaysRunEnabled, timeout } }),
+            style: {
+              width: "90px",
+              background: "#3c3c3c",
+              border: "1px solid #555",
+              color: "#ccc",
+              borderRadius: 3,
+              padding: "2px 6px",
+              fontSize: "12px"
+            }
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "terminal-command-line", style: {
+      padding: "10px 12px",
+      backgroundColor: "#1e1e1e",
+      display: "flex",
+      alignItems: "flex-start",
+      gap: "8px",
+      borderBottom: "1px dotted #333"
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: { color: "#666", opacity: 0.8, whiteSpace: "nowrap" }, children: cwd2 ? `${cwd2} >` : ">" }),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("code", { style: { color: "#d4d4d4", flex: 1, whiteSpace: "pre-wrap", wordBreak: "break-all" }, children: command }),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("i", { className: "codicon codicon-copy", style: { fontSize: "14px", color: "#666", cursor: "pointer" }, title: "Copy command", onClick: () => {
+        navigator.clipboard.writeText(command);
+        vscodeService.postMessage({ command: "showInformationMessage", text: "Command copied to clipboard" });
+      } })
+    ] }),
+    output ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "terminal-output-body", style: {
+      padding: "12px",
+      maxHeight: "300px",
+      overflowY: "auto",
+      whiteSpace: "pre-wrap",
+      lineHeight: "1.5",
+      color: "#d4d4d4"
+    }, children: output }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { style: { padding: "10px 12px", color: "#666", fontSize: "12px", fontStyle: "italic" }, children: "Waiting for output\u2026" }),
+    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "terminal-footer", style: {
+      display: "flex",
+      justifyContent: needsApproval ? "flex-end" : "space-between",
+      alignItems: "center",
+      padding: "6px 12px",
+      backgroundColor: "#252526",
+      borderTop: "1px solid #333",
+      fontSize: "11px",
+      gap: "8px"
+    }, children: needsApproval ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: { color: "#888", marginRight: "auto" }, children: "Allow this command to run?" }),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        "button",
+        {
+          onClick: onDecline,
+          style: { background: "transparent", border: "1px solid #555", color: "#ccc", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: "11px" },
+          children: "Decline"
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        "button",
+        {
+          onClick: onAllow,
+          style: { background: "#0e639c", border: "none", color: "#fff", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: "11px" },
+          children: "Allow"
+        }
+      )
+    ] }) : exitCode !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { color: exitCode === 0 ? "#89d185" : "#f14c4c", marginLeft: "auto" }, children: [
+      "Exit ",
+      exitCode === 0 ? "success" : `code ${exitCode}`
+    ] }) : null })
+  ] });
+};
+
+// src/vs/ai-partner/ui/MessageItem.tsx
+var import_jsx_runtime7 = __toESM(require_jsx_runtime());
 var formatTimestamp = (isoString) => {
   if (!isoString) return "";
   try {
@@ -79918,7 +80251,7 @@ var formatTimestamp = (isoString) => {
 var markdownComponents = {
   code({ node: node2, className, children: children2, ...props }) {
     const match = /language-(\w+)/.exec(className || "");
-    return !className?.includes("language-carousel") ? match ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    return !className?.includes("language-carousel") ? match ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       prism_default2,
       {
         children: String(children2).replace(/\n$/, ""),
@@ -79928,17 +80261,17 @@ var markdownComponents = {
         customStyle: { margin: 0, borderRadius: 0 },
         ...props
       }
-    ) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("code", { className, ...props, children: children2 }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "carousel-placeholder", children: "[Carousel]" });
+    ) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { className, ...props, children: children2 }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "carousel-placeholder", children: "[Carousel]" });
   }
 };
 var ProgressLogItem = ({ message, isLast, depth = 0 }) => {
-  const [isCollapsed, setIsCollapsed] = (0, import_react11.useState)(!isLast);
-  (0, import_react11.useEffect)(() => {
+  const [isCollapsed, setIsCollapsed] = (0, import_react12.useState)(!isLast);
+  (0, import_react12.useEffect)(() => {
     if (!isLast) {
       setIsCollapsed(true);
     }
   }, [isLast]);
-  const { preRouting, routingLine, postRouting } = (0, import_react11.useMemo)(() => {
+  const { preRouting, routingLine, postRouting } = (0, import_react12.useMemo)(() => {
     const text7 = message.text || "";
     const routingRegex = /^(Routing to .*?)(?:\.\.\.|…)?$/m;
     const match = text7.match(routingRegex);
@@ -79950,48 +80283,59 @@ var ProgressLogItem = ({ message, isLast, depth = 0 }) => {
     }
     return { preRouting: text7, routingLine: null, postRouting: null };
   }, [message.text]);
-  const collapsedPreview = (0, import_react11.useMemo)(() => {
+  const collapsedPreview = (0, import_react12.useMemo)(() => {
     if (routingLine) return routingLine;
-    const headerMatch = message.text.match(/^\[.*?\] Thinking\.\.\./);
+    const text7 = message.text || "";
+    const orchThinkRegex = /^(?:>\s*)?\[(OrchestratorAgent|Orchestrator|Agent)\](?:\s*Thinking\.\.\.|\s*Thinking Process).*$/i;
+    const orchMatch = text7.match(orchThinkRegex);
+    if (orchMatch) return `[${orchMatch[1]}] Thinking...`;
+    const headerMatch = text7.match(/^\[.*?\] Thinking\.\.\./);
     if (headerMatch) return headerMatch[0];
-    const clean = message.text.replace(/<\/?thinking>/g, "").replace(/^>\s*/gm, "");
+    const clean = text7.replace(/<\/?thinking>/g, "").replace(/^>\s*/gm, "");
     return clean.split("\n")[0].substring(0, 100) + (clean.length > 100 ? "..." : "");
   }, [message.text, routingLine]);
   const formatBlock = (content3) => {
-    return content3.replace(/<thinking>/g, "\n> ").replace(/<\/thinking>/g, "\n");
+    return content3.split("\n").map((line) => line.trimEnd() + "  ").join("\n").replace(/<thinking>/g, "\n> ").replace(/<\/thinking>/g, "\n").replace(/^\s*\[(OrchestratorAgent|Orchestrator|Agent)\]\s*(?:Thinking\.\.\.|\s*Thinking Process)(?:\s*Thinking Process\s*\([^)]*\))?/gim, "[$1] Thinking...");
   };
   const formatLogContent = (content3) => {
-    if (content3.includes("[MCP]") && content3.includes("with args:")) {
-      const match = content3.match(/\[MCP\] Executing Tool: (.*?) with args: (.*)/);
+    if (content3.includes("[MCP]") && content3.includes("Executing Tool:")) {
+      const match = content3.match(/\[MCP\] Executing Tool: (.*?)(?: with args: (.*))?$/);
       if (match) {
         const tool = match[1];
-        let args = match[2].trim();
-        if (args.startsWith("{") && args.endsWith("}")) {
-          args = args.substring(1, args.length - 1).trim();
-        }
-        return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { children: [
-            "[MCP] Executing Tool: ",
-            tool
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { style: { paddingLeft: "8px", opacity: 0.8, whiteSpace: "pre-wrap", fontSize: "12px", marginTop: "2px" }, children: args })
+        return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { children: [
+          "[MCP] Executing Tool: ",
+          tool
         ] });
       }
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    if (content3.includes("failed: MCP error")) {
+      const match = content3.match(/(.*failed: MCP error)(.*)/s);
+      if (match) {
+        const header = match[1].trim();
+        const detail = match[2].trim();
+        return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("details", { style: { cursor: "pointer" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("summary", { style: { listStyle: "none", fontWeight: 500, color: "var(--vscode-errorForeground, #f14c4c)" }, children: header }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { paddingLeft: "12px", marginTop: "4px", opacity: 0.8, fontSize: "12px", whiteSpace: "pre-wrap", borderLeft: "2px solid var(--vscode-errorForeground)" }, children: detail })
+        ] });
+      }
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       Markdown,
       {
         children: formatBlock(content3),
         remarkPlugins: [remarkGfm],
         components: {
           ...markdownComponents,
-          p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { style: { margin: "0 0 4px 0" }, ...props })
+          p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { style: { margin: "0 0 4px 0" }, ...props }),
+          ul: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("ul", { style: { paddingLeft: "28px", margin: "6px 0" }, ...props }),
+          ol: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("ol", { style: { paddingLeft: "28px", margin: "6px 0" }, ...props }),
+          li: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("li", { style: { marginBottom: "4px" }, ...props })
         }
       }
     );
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "progress-log-container", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "progress-log-container", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
       "div",
       {
         className: "progress-log-item",
@@ -80002,8 +80346,8 @@ var ProgressLogItem = ({ message, isLast, depth = 0 }) => {
         },
         style: {
           padding: "2px 0 2px 8px",
-          margin: depth > 0 ? `4px 0 4px ${depth * 14}px` : "0",
-          // Recursive indentation
+          margin: depth > 0 ? `4px 0 4px ${depth * 7}px` : "0",
+          // Halved indentation
           fontSize: "14px",
           color: "var(--vscode-descriptionForeground)",
           fontFamily: "var(--vscode-font-family)",
@@ -80014,21 +80358,21 @@ var ProgressLogItem = ({ message, isLast, depth = 0 }) => {
           opacity: 0.95
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: {
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: {
             position: "absolute",
             left: isCollapsed ? "0px" : "-1px",
             top: "4px",
             color: "var(--vscode-editorGuide-activeBackground)",
             fontWeight: "normal"
-          }, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("i", { className: `codicon codicon-chevron-${isCollapsed ? "right" : "down"}`, style: { fontSize: "14px" } }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "progress-log-text", style: {
+          }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("i", { className: `codicon codicon-chevron-${isCollapsed ? "right" : "down"}`, style: { fontSize: "14px" } }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "progress-log-text", style: {
             paddingLeft: "16px",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: isCollapsed ? "nowrap" : "normal"
-          }, children: isCollapsed ? collapsedPreview : /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "progress-log-expanded", children: [
+          }, children: isCollapsed ? collapsedPreview : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "progress-log-expanded", children: [
             formatLogContent(preRouting),
-            routingLine && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { style: {
+            routingLine && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: {
               margin: "8px 0",
               fontStyle: "italic",
               color: "var(--vscode-textLink-foreground)"
@@ -80037,9 +80381,9 @@ var ProgressLogItem = ({ message, isLast, depth = 0 }) => {
         ]
       }
     ),
-    !isCollapsed && postRouting && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "progress-log-nested", style: {
-      marginLeft: `${(depth + 1) * 14}px`,
-      // Indent further relative to current depth
+    !isCollapsed && postRouting && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "progress-log-nested", style: {
+      marginLeft: `${(depth + 1) * 7}px`,
+      // Halved indentation
       paddingLeft: "8px",
       borderLeft: "none",
       marginTop: "4px",
@@ -80049,32 +80393,33 @@ var ProgressLogItem = ({ message, isLast, depth = 0 }) => {
   ] });
 };
 var ProgressGroupItem = ({ group, hasSubsequentUserMessage }) => {
-  const [isCollapsed, setIsCollapsed] = (0, import_react11.useState)(!!hasSubsequentUserMessage);
-  const [userInteracted, setUserInteracted] = (0, import_react11.useState)(false);
-  (0, import_react11.useEffect)(() => {
+  const [isCollapsed, setIsCollapsed] = (0, import_react12.useState)(!!hasSubsequentUserMessage);
+  const [userInteracted, setUserInteracted] = (0, import_react12.useState)(false);
+  (0, import_react12.useEffect)(() => {
     if (!userInteracted && hasSubsequentUserMessage) {
       setIsCollapsed(true);
     }
   }, [hasSubsequentUserMessage, userInteracted]);
   const allLogs = group.messages || [];
-  const THINKING_ONLY_RE = /^\[.*?\]\s*Thinking\.\.\.?\s*$/;
   const SYSTEM_NOISE_RE = /^\[System\]/i;
-  const hasAnyContentLog = allLogs.some((log) => {
-    const t = (log.text || "").trim();
-    return !THINKING_ONLY_RE.test(t) && !SYSTEM_NOISE_RE.test(t);
-  });
   const logs = allLogs.filter((log) => {
     const text7 = (log.text || "").trim();
     if (SYSTEM_NOISE_RE.test(text7)) return false;
-    if (THINKING_ONLY_RE.test(text7) && hasAnyContentLog) return false;
+    const orchHeaderPattern = /^(?:>\s*)?\[(OrchestratorAgent|Orchestrator|Agent)\](?:\s*Thinking\.\.\.|\s*Thinking Process).*$/i;
+    const mechanicalThinkingRE = /^Thinking\.\.\.?\s*$/i;
+    if (mechanicalThinkingRE.test(text7)) return false;
+    if (orchHeaderPattern.test(text7)) {
+      const contentAfterHeader = text7.replace(orchHeaderPattern, "").trim();
+      if (!contentAfterHeader) return false;
+    }
     return true;
   });
   const lastLog = logs[logs.length - 1];
   const logCount = logs.length;
   const stripEmojis = (text7) => text7.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{238C}\u{2B06}\u{2B07}\u{2B05}\u{27A1}\u{2194}-\u{21AA}\u{2934}\u{2935}\u{25AA}\u{25AB}\u{25FE}\u{25FD}\u{25FC}\u{25FB}\u{25FA}\u{221A}\u{2714}\u{2705}\u{274C}\u{274E}\u{2716}\u{2795}\u{2796}\u{2797}\u{27B0}\u{27BF}\u{1F191}-\u{1F19A}]/gu, "");
   const cleanSummary = lastLog ? stripEmojis(lastLog.text.replace(/^>\s*/gm, "")) : "";
-  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "progress-group", style: { marginBottom: 4 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "progress-group", style: { marginBottom: 4 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
       "div",
       {
         className: "progress-group-header",
@@ -80092,12 +80437,12 @@ var ProgressGroupItem = ({ group, hasSubsequentUserMessage }) => {
           marginBottom: "4px"
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: `codicon ${isCollapsed ? "codicon-chevron-right" : "codicon-chevron-down"}`, style: { fontSize: "14px", flexShrink: 0 } }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { style: { fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: `codicon ${isCollapsed ? "codicon-chevron-right" : "codicon-chevron-down"}`, style: { fontSize: "14px", flexShrink: 0 } }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { style: { fontWeight: "normal", whiteSpace: "nowrap", flexShrink: 0 }, children: [
             logCount,
             " steps"
           ] }),
-          isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: {
+          isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: {
             opacity: 0.7,
             whiteSpace: "nowrap",
             overflow: "hidden",
@@ -80107,52 +80452,61 @@ var ProgressGroupItem = ({ group, hasSubsequentUserMessage }) => {
         ]
       }
     ),
-    !isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "progress-group-content", style: { marginTop: "2px" }, children: (() => {
-      const depths = [];
-      const rootAgent = logs[0]?.senderName || "OrchestratorAgent";
-      const stack = [rootAgent];
-      logs.forEach((log) => {
-        const text7 = log.text || "";
-        const agentMatch = text7.match(/^\[(.*?)\]/);
-        if (agentMatch) {
-          const speaker = agentMatch[1].trim();
-          const stackIdx = stack.indexOf(speaker);
-          if (stackIdx !== -1) {
-            stack.splice(stackIdx + 1);
-          } else {
+    !isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "progress-group-content", style: { marginTop: "2px" }, children: [
+      (() => {
+        const depths = [];
+        const rootAgent = logs[0]?.senderName || "OrchestratorAgent";
+        const stack = [rootAgent];
+        logs.forEach((log) => {
+          const text7 = log.text || "";
+          const agentMatch = text7.match(/^\[(.*?)\]/);
+          if (agentMatch) {
+            const speaker = agentMatch[1].trim();
+            const stackIdx = stack.indexOf(speaker);
+            if (stackIdx !== -1) stack.splice(stackIdx + 1);
           }
-        }
-        depths.push(Math.max(0, stack.length - 1));
-        const routingMatch = text7.match(/Routing to (.*?)(?:\.\.\.|…|$)/i);
-        if (routingMatch) {
-          const targetAgent = routingMatch[1].trim();
-          stack.push(targetAgent);
-        }
-      });
-      return logs.map((log, idx) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-        ProgressLogItem,
-        {
-          message: log,
-          isLast: idx === logs.length - 1,
-          depth: depths[idx]
-        },
-        idx
-      ));
-    })() })
+          depths.push(Math.max(0, stack.length - 1));
+          const routingMatch = text7.match(/Routing to (.*?)(?:\.\.\.|…|$)/i);
+          if (routingMatch) stack.push(routingMatch[1].trim());
+        });
+        return logs.map((log, idx) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          ProgressLogItem,
+          {
+            message: log,
+            isLast: idx === logs.length - 1,
+            depth: depths[idx]
+          },
+          idx
+        ));
+      })(),
+      (group.terminalMessages || []).map((tm, idx) => {
+        const payload = tm.payload || {};
+        return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { marginTop: 6 }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          TerminalOutput,
+          {
+            command: payload.command || tm.text,
+            cwd: payload.cwd,
+            output: payload.output,
+            exitCode: payload.exitCode,
+            toolName: payload.toolName || tm.senderName
+          }
+        ) }, `terminal-${idx}`);
+      })
+    ] })
   ] });
 };
 var AgentGroupItem = ({ group, hasSubsequentUserMessage, onAction, onRollback, isLast, isThinking }) => {
-  const [isCollapsed, setIsCollapsed] = (0, import_react11.useState)(!!hasSubsequentUserMessage);
-  const [userInteracted, setUserInteracted] = (0, import_react11.useState)(false);
-  (0, import_react11.useEffect)(() => {
+  const [isCollapsed, setIsCollapsed] = (0, import_react12.useState)(!!hasSubsequentUserMessage);
+  const [userInteracted, setUserInteracted] = (0, import_react12.useState)(false);
+  (0, import_react12.useEffect)(() => {
     if (!userInteracted && hasSubsequentUserMessage) {
       setIsCollapsed(true);
     }
   }, [hasSubsequentUserMessage, userInteracted]);
   const messages = group.messages || [];
   const agentName = messages[0]?.senderName || "Agent";
-  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "agent-group", style: { marginBottom: 8 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "agent-group", style: { marginBottom: 4 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
       "div",
       {
         className: "agent-group-header",
@@ -80172,12 +80526,12 @@ var AgentGroupItem = ({ group, hasSubsequentUserMessage, onAction, onRollback, i
           background: "rgba(0, 0, 0, 0.03)",
           border: "1px solid var(--vscode-widget-border)",
           borderRadius: "6px",
-          marginBottom: isCollapsed ? 0 : "10px"
+          marginBottom: isCollapsed ? 0 : "4px"
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: `codicon ${isCollapsed ? "codicon-chevron-right" : "codicon-chevron-down"}`, style: { fontSize: "14px" } }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "codicon codicon-robot", style: { fontSize: "14px" } }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: `codicon ${isCollapsed ? "codicon-chevron-right" : "codicon-chevron-down"}`, style: { fontSize: "14px" } }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-robot", style: { fontSize: "14px" } }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { children: [
             agentName,
             " Discussing (",
             messages.length,
@@ -80186,7 +80540,14 @@ var AgentGroupItem = ({ group, hasSubsequentUserMessage, onAction, onRollback, i
         ]
       }
     ),
-    !isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "agent-group-content", style: { display: "flex", flexDirection: "column", gap: 0 }, children: messages.map((msg, idx) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    !isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "agent-group-content", style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 0,
+      paddingLeft: 12,
+      borderLeft: "2px solid var(--vscode-widget-border)",
+      marginLeft: 6
+    }, children: messages.map((msg, idx) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       MessageItem,
       {
         message: msg,
@@ -80200,19 +80561,19 @@ var AgentGroupItem = ({ group, hasSubsequentUserMessage, onAction, onRollback, i
   ] });
 };
 var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubsequentUserMessage }) => {
-  const [showThought, setShowThought] = (0, import_react11.useState)(false);
+  const [showThought, setShowThought] = (0, import_react12.useState)(false);
   const isModel = message.sender === "ai";
   const isOrchestrator = !message.senderName || (message.senderName || "").trim() === "OrchestratorAgent";
-  const [showAgentBubble, setShowAgentBubble] = (0, import_react11.useState)(true);
-  const [chipsOpen, setChipsOpen] = (0, import_react11.useState)(false);
-  const prevDiffRef = (0, import_react11.useRef)(message.diff);
-  (0, import_react11.useEffect)(() => {
+  const [showAgentBubble, setShowAgentBubble] = (0, import_react12.useState)(true);
+  const [chipsOpen, setChipsOpen] = (0, import_react12.useState)(false);
+  const prevDiffRef = (0, import_react12.useRef)(message.diff);
+  (0, import_react12.useEffect)(() => {
     if (prevDiffRef.current && !message.diff) {
       setShowAgentBubble(false);
     }
     prevDiffRef.current = message.diff;
   }, [message.diff]);
-  (0, import_react11.useEffect)(() => {
+  (0, import_react12.useEffect)(() => {
     if (isModel && !isOrchestrator) {
       if (message.requiresUserInput && !showAgentBubble) {
         setShowAgentBubble(true);
@@ -80225,47 +80586,106 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
     }
   };
   if (message.kind === "progressGroup") {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(ProgressGroupItem, { group: message, hasSubsequentUserMessage });
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(ProgressGroupItem, { group: message, hasSubsequentUserMessage });
   }
   if (message.kind === "agentGroup") {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(AgentGroupItem, { group: message, hasSubsequentUserMessage, onAction, onRollback, isLast, isThinking });
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(AgentGroupItem, { group: message, hasSubsequentUserMessage, onAction, onRollback, isLast, isThinking });
   }
   if (message.kind === "progress") {
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(ProgressLogItem, { message, isLast: !!isLast });
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(ProgressLogItem, { message, isLast: !!isLast });
+  }
+  if (message.kind === "terminal") {
+    const payload = message.payload || {};
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "message-group", style: { marginBottom: 4, width: "100%" }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+      TerminalOutput,
+      {
+        command: payload.command || message.text,
+        cwd: payload.cwd,
+        output: payload.output,
+        exitCode: payload.exitCode,
+        toolName: payload.toolName || (message.senderName === "Terminal" ? "terminal_run" : message.senderName)
+      }
+    ) });
   }
   if (message.kind === "task") {
     const tasks = message.tasks || [];
-    const parsedTasks = tasks.length > 0 ? tasks : (message.content?.[0]?.text || "").split("\n").filter((l) => /^\s*(?:-|\d+\.|\[ \]|\[x\])\s+/.test(l));
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "message-group", style: { marginBottom: 8, width: "100%" }, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "message model-message", style: { padding: "12px", background: "var(--vscode-editor-background)", border: "1px solid var(--vscode-widget-border)", borderRadius: 6, width: "100%" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "codicon codicon-checklist" }),
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { children: "Task List" })
+    const isNaturalFlow = message.senderName === "TaskDecompositionAgent" || message.senderName === "TaskDecomposition";
+    const parsedTasks = tasks.length > 0 ? tasks : (message.content?.[0]?.text || "").split("\n").filter((l) => /^\s*(?:-|\d+\.|\[ \]|\[x\]|\[\/\])\s+/.test(l));
+    if (isNaturalFlow) {
+      const total = parsedTasks.length;
+      const completed = parsedTasks.filter((t) => /\[x\]/i.test(t) || t.includes("\u2705") && !t.includes("\u274C")).length;
+      const percent = total > 0 ? completed / total * 100 : 0;
+      return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "message-group", style: { marginBottom: 12, width: "100%" }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "message model-message", style: { padding: "10px 14px", background: "var(--vscode-editor-background)", border: "1px solid var(--vscode-widget-border)", borderRadius: 12, borderBottomLeftRadius: 2 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { fontSize: "12px", color: "var(--vscode-descriptionForeground)", marginBottom: 8, display: "flex", justifyContent: "space-between" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Progress" }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { children: [
+            completed,
+            "/",
+            total
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "task-progress-bar", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "task-progress-fill", style: { width: `${percent}%` } }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "task-natural-container", style: { background: "transparent", padding: 0, margin: 0, borderLeft: "none" }, children: parsedTasks.map((task, idx) => {
+          const isCompleted = /\[x\]/i.test(task) || task.includes("\u2705") && !task.includes("\u274C");
+          const isInProgress = !isCompleted && (/\[\/\]/i.test(task) || task.includes("\u{1F504}"));
+          const cleanText = task.replace(/^\s*(?:\d+\.\s+|-\s+)?(?:\[(?:x|\/| )\]\s+)/i, "").replace(/^\s*[-*]\s+/, "").replace(/✅|🔄|❌/g, "").trim();
+          const iconColor = isCompleted ? "var(--vscode-testing-iconPassed)" : isInProgress ? "var(--vscode-charts-blue)" : "var(--vscode-descriptionForeground)";
+          return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: `task-natural-item ${isCompleted ? "completed" : ""}`, style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "task-icon", style: {
+              flexShrink: 0,
+              width: "18px",
+              display: "flex",
+              justifyContent: "center",
+              fontSize: "14px",
+              color: iconColor
+            }, children: isCompleted ? "\u2713" : isInProgress ? "\u25CF" : "\u25CB" }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "task-text", style: { flex: 1, textDecoration: isCompleted ? "line-through" : "none", opacity: isCompleted ? 0.6 : 1 }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+              Markdown,
+              {
+                children: cleanText,
+                remarkPlugins: [remarkGfm],
+                components: {
+                  ...markdownComponents,
+                  p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: { margin: 0, display: "inline" }, ...props })
+                }
+              }
+            ) })
+          ] }, idx);
+        }) })
+      ] }) });
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "message-group", style: { marginBottom: 8, width: "100%" }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "message model-message", style: { padding: "12px", background: "var(--vscode-editor-background)", border: "1px solid var(--vscode-widget-border)", borderRadius: 6, width: "100%" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-checklist" }),
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Task List" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "task-list", style: { display: "flex", flexDirection: "column", gap: 4 }, children: parsedTasks.map((task, idx) => {
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "task-list", style: { display: "flex", flexDirection: "column", gap: 4 }, children: parsedTasks.map((task, idx) => {
         const isCompleted = /\[x\]/i.test(task) || task.includes("\u2705") && !task.includes("\u274C");
-        const cleanText = task.replace(/^\s*(?:-|\d+\.|\[ \]|\[x\])\s*/, "").replace(/✅/g, "").trim();
-        return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: {
+        const cleanText = task.replace(/^\s*(?:-|\d+\.|\[ \]|\[x\]|\[\/\])\s*/i, "").replace(/✅/g, "").trim();
+        return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: {
           display: "flex",
-          alignItems: "start",
+          alignItems: "center",
           gap: 8,
           opacity: isCompleted ? 0.6 : 1,
-          textDecoration: isCompleted ? "line-through" : "none"
+          textDecoration: isCompleted ? "line-through" : "none",
+          marginBottom: "4px"
         }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-            "span",
-            {
-              className: `codicon ${isCompleted ? "codicon-pass" : "codicon-circle-outline"}`,
-              style: { marginTop: 3, color: isCompleted ? "var(--vscode-testing-iconPassed)" : "var(--vscode-descriptionForeground)" }
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "markdown-content task-content", style: { flex: 1 }, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: {
+            flexShrink: 0,
+            width: "18px",
+            display: "flex",
+            justifyContent: "center",
+            fontSize: "14px",
+            color: isCompleted ? "var(--vscode-testing-iconPassed)" : "var(--vscode-descriptionForeground)"
+          }, children: isCompleted ? "\u2713" : "\u25CB" }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "markdown-content task-content", style: { flex: 1 }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
             Markdown,
             {
               children: cleanText,
               remarkPlugins: [remarkGfm],
               components: {
                 ...markdownComponents,
-                p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { style: { margin: 0 }, ...props })
+                p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: { margin: 0, display: "inline" }, ...props })
               }
             }
           ) })
@@ -80281,7 +80701,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
     const lintSummary = message.lintSummary;
     const hasLintErrors = lintSummary && !lintSummary.includes("0 lint");
     const leftStatusText = lintSummary;
-    const diffStats = (0, import_react11.useMemo)(() => {
+    const diffStats = (0, import_react12.useMemo)(() => {
       if (!message.diff || !message.diff.originalCode || !message.diff.modifiedCode) return null;
       try {
         const changes = diffLines(message.diff.originalCode, message.diff.modifiedCode);
@@ -80296,7 +80716,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
         return null;
       }
     }, [message.diff]);
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "message-group", style: { marginBottom: 8, width: "100%" }, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "message model-message", style: {
+    return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "message-group", style: { marginBottom: 8, width: "100%" }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "message model-message", style: {
       padding: 0,
       overflow: "hidden",
       background: "transparent",
@@ -80305,7 +80725,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
       maxWidth: "none",
       width: "100%",
       alignSelf: "stretch"
-    }, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: {
+    }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: {
       display: "flex",
       flexDirection: "column",
       padding: "10px 12px",
@@ -80314,10 +80734,10 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
       borderRadius: 6,
       position: "relative"
     }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "codicon codicon-file-code", style: { fontSize: 16, color: "var(--vscode-textLink-foreground)", flexShrink: 0 } }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-file-code", style: { fontSize: 16, color: "var(--vscode-textLink-foreground)", flexShrink: 0 } }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
             "span",
             {
               onClick: handleFileNameClick,
@@ -80337,7 +80757,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
             }
           )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: {
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: {
           fontSize: "11px",
           color: "var(--vscode-descriptionForeground)",
           marginLeft: 8,
@@ -80348,49 +80768,49 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
           maxWidth: "50%"
         }, children: relativePath })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
-          hasLintErrors && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "codicon codicon-warning", style: { fontSize: 14, color: "var(--vscode-errorForeground)" } }),
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "markdown-content", style: { fontSize: "11px", color: "var(--vscode-errorForeground)" }, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+          hasLintErrors && /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-warning", style: { fontSize: 14, color: "var(--vscode-errorForeground)" } }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "markdown-content", style: { fontSize: "11px", color: "var(--vscode-errorForeground)" }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
               Markdown,
               {
                 children: leftStatusText || "",
                 remarkPlugins: [remarkGfm],
                 components: {
                   ...markdownComponents,
-                  p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { style: { margin: 0 }, ...props })
+                  p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { style: { margin: 0 }, ...props })
                 }
               }
             ) })
           ] }),
-          !hasLintErrors && leftStatusText && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "codicon codicon-check", style: { fontSize: 14, color: "var(--vscode-testing-iconPassed)" } }),
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "markdown-content", style: { fontSize: "11px", color: "var(--vscode-descriptionForeground)" }, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+          !hasLintErrors && leftStatusText && /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(import_jsx_runtime7.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-check", style: { fontSize: 14, color: "var(--vscode-testing-iconPassed)" } }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "markdown-content", style: { fontSize: "11px", color: "var(--vscode-descriptionForeground)" }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
               Markdown,
               {
                 children: leftStatusText,
                 remarkPlugins: [remarkGfm],
                 components: {
                   ...markdownComponents,
-                  p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("p", { style: { margin: 0 }, ...props })
+                  p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { style: { margin: 0 }, ...props })
                 }
               }
             ) })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
-          diffStats && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { fontSize: "11px", display: "flex", gap: 6 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { style: { color: "var(--vscode-gitDecoration-addedResourceForeground)" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+          diffStats && /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { fontSize: "11px", display: "flex", gap: 6 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { style: { color: "var(--vscode-gitDecoration-addedResourceForeground)" }, children: [
               "+",
               diffStats.added
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { style: { color: "var(--vscode-gitDecoration-deletedResourceForeground)" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { style: { color: "var(--vscode-gitDecoration-deletedResourceForeground)" }, children: [
               "-",
               diffStats.removed
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: {
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: {
             fontSize: "11px",
             color: "var(--vscode-descriptionForeground)",
             padding: "2px 6px",
@@ -80403,8 +80823,8 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
       ] })
     ] }) }) });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: `message-item ${isModel ? "ai" : "user"}`, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("style", { children: `
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: `message-item ${isModel ? "ai" : "user"}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("style", { children: `
                 .sender-info {
                     display: flex;
                     justify-content: space-between;
@@ -80466,7 +80886,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
                     font-size: 14px;
                 }
             ` }),
-    isModel && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+    isModel && /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
       "div",
       {
         className: `agent-toggle ${showAgentBubble ? "open" : ""}`,
@@ -80483,8 +80903,8 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
         title: showAgentBubble ? "Hide agent output" : "Show agent output",
         style: { marginLeft: 0 },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: `codicon ${showAgentBubble ? "codicon-chevron-down" : "codicon-chevron-right"}` }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: { color: "var(--vscode-descriptionForeground)", fontWeight: 600 }, children: (() => {
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: `codicon ${showAgentBubble ? "codicon-chevron-down" : "codicon-chevron-right"}` }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: { color: "var(--vscode-descriptionForeground)", fontWeight: "normal" }, children: (() => {
             const name2 = message.senderName || "";
             if (!name2 || name2.trim() === "" || name2 === "OrchestratorAgent") {
               return "[Orchestrator]";
@@ -80495,7 +80915,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
         ]
       }
     ),
-    isModel && message.thought && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    isModel && message.thought && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
       "div",
       {
         className: `thought-toggle ${showThought ? "open" : ""}`,
@@ -80511,12 +80931,12 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
         },
         title: showThought ? "Hide process" : "Show process",
         style: { marginLeft: 0, display: "flex" },
-        children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: `codicon ${showThought ? "codicon-chevron-down" : "codicon-chevron-right"}` })
+        children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: `codicon ${showThought ? "codicon-chevron-down" : "codicon-chevron-right"}` })
       }
     ),
-    isModel && message.thought && showThought && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("pre", { className: `thought-process open`, "aria-hidden": "false", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("code", { children: message.thought }) }),
-    !isModel && Array.isArray(message.attachments) && message.attachments.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-end", margin: "2px 0 4px 0" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+    isModel && message.thought && showThought && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("pre", { className: `thought-process open`, "aria-hidden": "false", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("code", { children: message.thought }) }),
+    !isModel && Array.isArray(message.attachments) && message.attachments.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-end", margin: "2px 0 4px 0" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
         "button",
         {
           onClick: () => setChipsOpen((v) => !v),
@@ -80533,8 +80953,8 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
           },
           title: "Attachments",
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: `codicon ${chipsOpen ? "codicon-chevron-down" : "codicon-chevron-right"}` }),
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: `codicon ${chipsOpen ? "codicon-chevron-down" : "codicon-chevron-right"}` }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { children: [
               "Attachments (",
               message.attachments.length,
               ")"
@@ -80542,9 +80962,9 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
           ]
         }
       ),
-      chipsOpen && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, marginLeft: 8, maxWidth: "70%" }, children: message.attachments.map((a, idx) => {
+      chipsOpen && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, marginLeft: 8, maxWidth: "70%" }, children: message.attachments.map((a, idx) => {
         const isImage = a.type === "file" && a.content && typeof a.content === "string" && (a.content.startsWith("data:image/") || (a.label || "").match(/\.(jpg|jpeg|png|gif|webp|svg)$/i));
-        return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { style: { marginBottom: 4 }, children: isImage && a.content ? /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { style: { marginTop: 4 }, children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+        return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { marginBottom: 4 }, children: isImage && a.content ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { marginTop: 4 }, children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
           "img",
           {
             src: a.content,
@@ -80565,7 +80985,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
               }
             }
           }
-        ) }) : /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
+        ) }) : /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
           "span",
           {
             title: a.uri || a.label,
@@ -80592,7 +81012,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
               }
             },
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: {
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: {
                 fontSize: 10,
                 textTransform: "uppercase",
                 color: "var(--vscode-descriptionForeground)",
@@ -80601,14 +81021,14 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
                 borderRadius: 6,
                 padding: "0 6px"
               }, children: a.type }),
-              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: { lineHeight: "16px", transform: "translateY(-1px)" }, children: a.label })
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: { lineHeight: "16px", transform: "translateY(-1px)" }, children: a.label })
             ]
           }
         ) }, (a.uri || a.label || "") + ":" + idx);
       }) })
     ] }),
-    (showAgentBubble || !isModel) && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: `message ${isModel ? "model-message" : "user-message"}`, style: { position: "relative" }, children: [
-      !isModel && onRollback && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
+    (showAgentBubble || !isModel) && /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: `message ${isModel ? "model-message" : "user-message"}`, style: { position: "relative" }, children: [
+      !isModel && onRollback && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
         "div",
         {
           className: "rollback-btn",
@@ -80635,222 +81055,226 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
           },
           onMouseEnter: (e) => e.currentTarget.style.opacity = "1",
           onMouseLeave: (e) => e.currentTarget.style.opacity = "0",
-          children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "codicon codicon-history", style: { fontSize: "12px" } })
+          children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-history", style: { fontSize: "12px" } })
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "sender-info", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "timestamp", children: formatTimestamp(message.timestamp) }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "message-content", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-          Markdown,
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { className: "sender-info", children: /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "timestamp", children: formatTimestamp(message.timestamp) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        Markdown,
+        {
+          children: (message.text || "").split("\n").map((l) => l.trimEnd() + "  ").join("\n"),
+          remarkPlugins: [remarkGfm],
+          components: {
+            ...markdownComponents,
+            p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("p", { style: { margin: "0 0 8px 0", whiteSpace: "pre-wrap" }, ...props }),
+            ul: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("ul", { style: { paddingLeft: "10px", margin: "4px 0" }, ...props }),
+            ol: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("ol", { style: { paddingLeft: "10px", margin: "4px 0" }, ...props }),
+            li: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("li", { style: { margin: "2px 0" }, ...props })
+          }
+        }
+      ),
+      isModel && Array.isArray(message.attachments) && message.attachments.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-start", margin: "4px 0 2px 0" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          "button",
           {
-            children: message.text,
-            remarkPlugins: [remarkGfm],
-            components: markdownComponents
+            onClick: () => setChipsOpen((v) => !v),
+            className: "chip-toggle",
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              color: "var(--vscode-foreground)",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 12
+            },
+            title: "Referenced files",
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: `codicon ${chipsOpen ? "codicon-chevron-down" : "codicon-chevron-right"}` }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("span", { children: [
+                "Referenced (",
+                message.attachments.length,
+                ")"
+              ] })
+            ]
           }
         ),
-        isModel && Array.isArray(message.attachments) && message.attachments.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-start", margin: "4px 0 2px 0" }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
-            "button",
-            {
-              onClick: () => setChipsOpen((v) => !v),
-              className: "chip-toggle",
-              style: {
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                color: "var(--vscode-foreground)",
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 12
-              },
-              title: "Referenced files",
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: `codicon ${chipsOpen ? "codicon-chevron-down" : "codicon-chevron-right"}` }),
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("span", { children: [
-                  "Referenced (",
-                  message.attachments.length,
-                  ")"
-                ] })
-              ]
-            }
-          ),
-          chipsOpen && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, marginLeft: 8, maxWidth: "70%" }, children: message.attachments.map((a, idx) => /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
-            "span",
-            {
-              title: a.uri || a.label,
-              style: {
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: "var(--vscode-badge-background)",
-                color: "var(--vscode-badge-foreground)",
+        chipsOpen && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, marginLeft: 8, maxWidth: "70%" }, children: message.attachments.map((a, idx) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+          "span",
+          {
+            title: a.uri || a.label,
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: "var(--vscode-badge-background)",
+              color: "var(--vscode-badge-foreground)",
+              border: "1px solid var(--vscode-editorWidget-border)",
+              borderRadius: 8,
+              padding: "2px 0",
+              paddingLeft: 4,
+              paddingRight: 3,
+              fontSize: 12,
+              cursor: a.uri ? "pointer" : "default"
+            },
+            onClick: () => {
+              try {
+                if (a.uri) {
+                  vscodeService.postMessage({ command: "openAttachment", payload: { uri: a.uri } });
+                }
+              } catch {
+              }
+            },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: {
+                fontSize: 10,
+                textTransform: "uppercase",
+                color: "var(--vscode-descriptionForeground)",
+                background: "var(--vscode-editor-inactiveSelectionBackground)",
                 border: "1px solid var(--vscode-editorWidget-border)",
-                borderRadius: 8,
-                padding: "2px 0",
-                paddingLeft: 4,
-                paddingRight: 3,
-                fontSize: 12,
-                cursor: a.uri ? "pointer" : "default"
-              },
-              onClick: () => {
-                try {
-                  if (a.uri) {
-                    vscodeService.postMessage({ command: "openAttachment", payload: { uri: a.uri } });
-                  }
-                } catch {
+                borderRadius: 6,
+                padding: "0 6px"
+              }, children: a.type }),
+              /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: { lineHeight: "16px", transform: "translateY(-1px)" }, children: a.label })
+            ]
+          },
+          (a.uri || a.label || "") + ":" + idx
+        )) })
+      ] }),
+      message.uroborosProposal && (() => {
+        const proposal = message.uroborosProposal;
+        return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { marginTop: "12px", padding: "12px", background: "var(--vscode-editor-inactiveSelectionBackground)", borderRadius: "6px", border: "1px solid var(--vscode-editorWidget-border)" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "action-buttons", style: { display: "flex", gap: "8px", flexWrap: "wrap" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+              "button",
+              {
+                style: { padding: "8px 16px", background: "var(--vscode-button-background)", color: "var(--vscode-button-foreground)", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" },
+                onClick: () => {
+                  vscodeService.postMessage({
+                    command: "acceptUroborosMode",
+                    payload: { userText: proposal.userText }
+                  });
+                  if (onAction) onAction();
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-check" }),
+                  "Approve"
+                ]
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
+              "button",
+              {
+                style: { padding: "8px 16px", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" },
+                onClick: () => {
+                  vscodeService.postMessage({
+                    command: "declineUroborosMode",
+                    payload: { userText: proposal.userText, suppressForSession: false }
+                  });
+                  if (onAction) onAction();
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-close" }),
+                  "Decline"
+                ]
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("label", { style: { display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", fontSize: "12px", color: "var(--vscode-descriptionForeground)", cursor: "pointer" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+              "input",
+              {
+                type: "checkbox",
+                onChange: () => {
+                  vscodeService.postMessage({
+                    command: "declineUroborosMode",
+                    payload: { userText: proposal.userText, suppressForSession: true }
+                  });
+                  if (onAction) onAction();
                 }
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: {
-                  fontSize: 10,
-                  textTransform: "uppercase",
-                  color: "var(--vscode-descriptionForeground)",
-                  background: "var(--vscode-editor-inactiveSelectionBackground)",
-                  border: "1px solid var(--vscode-editorWidget-border)",
-                  borderRadius: 6,
-                  padding: "0 6px"
-                }, children: a.type }),
-                /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: { lineHeight: "16px", transform: "translateY(-1px)" }, children: a.label })
-              ]
+              }
+            ),
+            "Don't ask again in this session"
+          ] })
+        ] });
+      })(),
+      message.buttons && message.buttons.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: { marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }, children: message.buttons.map((btn, idx) => {
+        const isSecondary = btn.style === "secondary";
+        const isDanger = btn.style === "danger";
+        return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+          "button",
+          {
+            onClick: () => {
+              vscodeService.postMessage({
+                command: btn.command,
+                payload: btn.payload
+              });
+              if (onAction) onAction();
             },
-            (a.uri || a.label || "") + ":" + idx
-          )) })
-        ] }),
-        message.uroborosProposal && (() => {
-          const proposal = message.uroborosProposal;
-          return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { style: { marginTop: "12px", padding: "12px", background: "var(--vscode-editor-inactiveSelectionBackground)", borderRadius: "6px", border: "1px solid var(--vscode-editorWidget-border)" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "action-buttons", style: { display: "flex", gap: "8px", flexWrap: "wrap" }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
-                "button",
-                {
-                  style: { padding: "8px 16px", background: "var(--vscode-button-background)", color: "var(--vscode-button-foreground)", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" },
-                  onClick: () => {
-                    vscodeService.postMessage({
-                      command: "acceptUroborosMode",
-                      payload: { userText: proposal.userText }
-                    });
-                    if (onAction) onAction();
-                  },
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "codicon codicon-check" }),
-                    "Approve"
-                  ]
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(
-                "button",
-                {
-                  style: { padding: "8px 16px", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" },
-                  onClick: () => {
-                    vscodeService.postMessage({
-                      command: "declineUroborosMode",
-                      payload: { userText: proposal.userText, suppressForSession: false }
-                    });
-                    if (onAction) onAction();
-                  },
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { className: "codicon codicon-close" }),
-                    "Decline"
-                  ]
-                }
-              )
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("label", { style: { display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", fontSize: "12px", color: "var(--vscode-descriptionForeground)", cursor: "pointer" }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-                "input",
-                {
-                  type: "checkbox",
-                  onChange: () => {
-                    vscodeService.postMessage({
-                      command: "declineUroborosMode",
-                      payload: { userText: proposal.userText, suppressForSession: true }
-                    });
-                    if (onAction) onAction();
-                  }
-                }
-              ),
-              "Don't ask again in this session"
-            ] })
-          ] });
-        })(),
-        message.buttons && message.buttons.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { style: { marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }, children: message.buttons.map((btn, idx) => {
-          const isSecondary = btn.style === "secondary";
-          const isDanger = btn.style === "danger";
-          return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-            "button",
-            {
-              onClick: () => {
-                vscodeService.postMessage({
-                  command: btn.command,
-                  payload: btn.payload
-                });
-                if (onAction) onAction();
-              },
-              style: {
-                padding: "8px 16px",
-                background: isDanger ? "var(--vscode-errorForeground)" : isSecondary ? "var(--vscode-button-secondaryBackground)" : "var(--vscode-button-background)",
-                color: isDanger ? "var(--vscode-button-foreground)" : isSecondary ? "var(--vscode-button-secondaryForeground)" : "var(--vscode-button-foreground)",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontWeight: 500,
-                display: "flex",
-                alignItems: "center",
-                gap: "6px"
-              },
-              children: btn.label
+            style: {
+              padding: "8px 16px",
+              background: isDanger ? "var(--vscode-errorForeground)" : isSecondary ? "var(--vscode-button-secondaryBackground)" : "var(--vscode-button-background)",
+              color: isDanger ? "var(--vscode-button-foreground)" : isSecondary ? "var(--vscode-button-secondaryForeground)" : "var(--vscode-button-foreground)",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: "6px"
             },
-            idx
-          );
-        }) }),
-        message.diff && /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "action-buttons", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { className: "action-btn edit-btn", onClick: () => {
-            if (!message.diff) return;
-            vscodeService.postMessage({
-              command: "showDiff",
-              originalCode: message.diff.originalCode,
-              modifiedCode: message.diff.modifiedCode,
-              title: message.diff.title || message.diff.filePath
-            });
-          }, children: "Edit" }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { className: "action-btn accept-btn", onClick: () => {
-            if (!message.diff) return;
-            vscodeService.postMessage({
-              command: "acceptChange",
-              filePath: message.diff.filePath,
-              originalCode: message.diff.originalCode,
-              modifiedCode: message.diff.modifiedCode,
-              suggestionType: message.diff.suggestionType
-            });
-          }, children: "Approve" }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { className: "action-btn decline-btn", onClick: () => {
-            if (!message.diff) return;
-            vscodeService.postMessage({
-              command: "declineChange",
-              filePath: message.diff.filePath
-            });
-          }, children: "Decline" }),
-          /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("button", { className: "action-btn accept-always-btn", onClick: () => {
-            if (!message.diff) return;
-            vscodeService.postMessage({
-              command: "acceptAlways",
-              filePath: message.diff.filePath,
-              originalCode: message.diff.originalCode,
-              modifiedCode: message.diff.modifiedCode,
-              suggestionType: message.diff.suggestionType
-            });
-          }, children: "Accept Always" })
-        ] }) })
-      ] })
+            children: btn.label
+          },
+          idx
+        );
+      }) }),
+      message.diff && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "action-buttons", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "action-btn edit-btn", onClick: () => {
+          if (!message.diff) return;
+          vscodeService.postMessage({
+            command: "showDiff",
+            originalCode: message.diff.originalCode,
+            modifiedCode: message.diff.modifiedCode,
+            title: message.diff.title || message.diff.filePath
+          });
+        }, children: "Edit" }),
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "action-btn accept-btn", onClick: () => {
+          if (!message.diff) return;
+          vscodeService.postMessage({
+            command: "acceptChange",
+            filePath: message.diff.filePath,
+            originalCode: message.diff.originalCode,
+            modifiedCode: message.diff.modifiedCode,
+            suggestionType: message.diff.suggestionType
+          });
+        }, children: "Approve" }),
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "action-btn decline-btn", onClick: () => {
+          if (!message.diff) return;
+          vscodeService.postMessage({
+            command: "declineChange",
+            filePath: message.diff.filePath
+          });
+        }, children: "Decline" }),
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "action-btn accept-always-btn", onClick: () => {
+          if (!message.diff) return;
+          vscodeService.postMessage({
+            command: "acceptAlways",
+            filePath: message.diff.filePath,
+            originalCode: message.diff.originalCode,
+            modifiedCode: message.diff.modifiedCode,
+            suggestionType: message.diff.suggestionType
+          });
+        }, children: "Accept Always" })
+      ] }) })
     ] })
   ] });
 };
 
 // src/vs/ai-partner/ui/MessageList.tsx
-var import_jsx_runtime7 = __toESM(require_jsx_runtime());
+var import_jsx_runtime8 = __toESM(require_jsx_runtime());
 var MessageList = ({ messages, isThinking, onAction, onRollback }) => {
-  const groupedMessages = (0, import_react12.useMemo)(() => {
+  const groupedMessages = (0, import_react13.useMemo)(() => {
     const result = [];
     let currentProgressGroup = null;
     let currentAgentGroup = null;
@@ -80899,8 +81323,8 @@ var MessageList = ({ messages, isThinking, onAction, onRollback }) => {
     });
     return result;
   }, [messages]);
-  return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "message-list", children: [
-    groupedMessages.map((msg, index2) => /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "message-list", children: [
+    groupedMessages.map((msg, index2) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
       MessageItem,
       {
         message: msg,
@@ -80912,38 +81336,38 @@ var MessageList = ({ messages, isThinking, onAction, onRollback }) => {
       },
       index2
     )),
-    isThinking && /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "typing-indicator progress-log-item", style: { display: "flex", alignItems: "center", gap: 8, color: "var(--vscode-descriptionForeground)", padding: "0 0 0 8px", margin: "0 0 4px 0", fontStyle: "italic" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-loading codicon-modifier-spin" }),
-      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { children: "Viper is thinking..." })
+    isThinking && /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "typing-indicator progress-log-item", style: { display: "flex", alignItems: "center", gap: 6, color: "var(--vscode-descriptionForeground)", padding: "0 0 0 0px", margin: "0 0 4px 0", fontStyle: "italic" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "codicon codicon-loading codicon-modifier-spin", style: { fontSize: "14px" } }),
+      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { style: { fontSize: "14px" }, children: "Viper is thinking..." })
     ] })
   ] });
 };
 
 // src/vs/ai-partner/ui/InputArea.tsx
-var import_react13 = __toESM(require_react());
-var import_jsx_runtime8 = __toESM(require_jsx_runtime());
+var import_react14 = __toESM(require_react());
+var import_jsx_runtime9 = __toESM(require_jsx_runtime());
 var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemoveAttachment, onClearAttachments, onStop }) => {
-  const [message, setMessage] = (0, import_react13.useState)("");
-  const textareaRef = (0, import_react13.useRef)(null);
-  const fileInputRef = (0, import_react13.useRef)(null);
-  const imageInputRef = (0, import_react13.useRef)(null);
-  const directoryInputRef = (0, import_react13.useRef)(null);
-  const [suggestions, setSuggestions] = (0, import_react13.useState)([]);
-  const [showSuggestions, setShowSuggestions] = (0, import_react13.useState)(false);
-  const [activeSuggestionIndex, setActiveSuggestionIndex] = (0, import_react13.useState)(0);
-  const [showAttachMenu, setShowAttachMenu] = (0, import_react13.useState)(false);
-  const attachMenuRef = (0, import_react13.useRef)(null);
-  const [showFilePicker, setShowFilePicker] = (0, import_react13.useState)(false);
-  const [showDirectoryPicker, setShowDirectoryPicker] = (0, import_react13.useState)(false);
-  const [fileList, setFileList] = (0, import_react13.useState)([]);
-  const [currentPath, setCurrentPath] = (0, import_react13.useState)("");
+  const [message, setMessage] = (0, import_react14.useState)("");
+  const textareaRef = (0, import_react14.useRef)(null);
+  const fileInputRef = (0, import_react14.useRef)(null);
+  const imageInputRef = (0, import_react14.useRef)(null);
+  const directoryInputRef = (0, import_react14.useRef)(null);
+  const [suggestions, setSuggestions] = (0, import_react14.useState)([]);
+  const [showSuggestions, setShowSuggestions] = (0, import_react14.useState)(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = (0, import_react14.useState)(0);
+  const [showAttachMenu, setShowAttachMenu] = (0, import_react14.useState)(false);
+  const attachMenuRef = (0, import_react14.useRef)(null);
+  const [showFilePicker, setShowFilePicker] = (0, import_react14.useState)(false);
+  const [showDirectoryPicker, setShowDirectoryPicker] = (0, import_react14.useState)(false);
+  const [fileList, setFileList] = (0, import_react14.useState)([]);
+  const [currentPath, setCurrentPath] = (0, import_react14.useState)("");
   const atCommandItems = [
     { command: "@file", description: "Attach file" },
     { command: "@folder", description: "Attach folder" },
     { command: "@mcp", description: "Attach MCP resource" },
     { command: "@browser", description: "Attach browser target/URL" }
   ];
-  const [isDragging, setIsDragging] = (0, import_react13.useState)(false);
+  const [isDragging, setIsDragging] = (0, import_react14.useState)(false);
   const handleSend = () => {
     if (message.trim() && !disabled) {
       onSendMessage(message);
@@ -81027,7 +81451,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       handleSend();
     }
   };
-  (0, import_react13.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     if (message.startsWith("/")) {
       const searchTerm = message.toLowerCase();
       const filteredCommands = commands.filter(
@@ -81037,7 +81461,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       setShowSuggestions(filteredCommands.length > 0);
     }
   }, [commands, message]);
-  (0, import_react13.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = "0px";
@@ -81046,13 +81470,13 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       textarea.style.height = `${newHeight}px`;
     }
   }, [message]);
-  (0, import_react13.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     const textarea = textareaRef.current;
     if (textarea && !message) {
       textarea.style.height = "28px";
     }
   }, []);
-  (0, import_react13.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     const handleClickOutside = (event) => {
       if (attachMenuRef.current && !attachMenuRef.current.contains(event.target)) {
         setShowAttachMenu(false);
@@ -81063,7 +81487,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [showAttachMenu]);
-  (0, import_react13.useEffect)(() => {
+  (0, import_react14.useEffect)(() => {
     if (!showFilePicker && !showDirectoryPicker) return;
     const handleMessage = (event) => {
       const message2 = event.data;
@@ -81089,8 +81513,8 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
     setShowSuggestions(false);
     textareaRef.current?.focus();
   };
-  return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "input-container", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "input-container", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
       "div",
       {
         className: `input-box-wrapper ${isDragging ? "dragging" : ""}`,
@@ -81123,9 +81547,9 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
           }
         },
         children: [
-          attachments.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "attachment-list", children: attachments.map((a) => {
+          attachments.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "attachment-list", children: attachments.map((a) => {
             const isImage = a.type === "file" && (a.content && a.content.startsWith("data:image") || /\.(jpg|jpeg|png|gif|webp)$/i.test(a.label));
-            return /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+            return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
               "div",
               {
                 title: a.uri || a.label,
@@ -81139,9 +81563,9 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                   }
                 },
                 children: [
-                  isImage && a.content ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("img", { src: a.content, className: "attachment-preview-img", alt: a.label }) : /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: `codicon ${a.type === "file" ? "codicon-file" : a.type === "folder" ? "codicon-folder" : a.type === "code" ? "codicon-code" : "codicon-link"}`, style: { fontSize: 14 } }),
-                  !isImage && /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { style: { lineHeight: "18px", fontWeight: 500 }, children: a.label }),
-                  /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+                  isImage && a.content ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("img", { src: a.content, className: "attachment-preview-img", alt: a.label }) : /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: `codicon ${a.type === "file" ? "codicon-file" : a.type === "folder" ? "codicon-folder" : a.type === "code" ? "codicon-code" : "codicon-link"}`, style: { fontSize: 14 } }),
+                  !isImage && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { style: { lineHeight: "18px", fontWeight: 500 }, children: a.label }),
+                  /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                     "button",
                     {
                       onClick: (e) => {
@@ -81169,21 +81593,21 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
               a.label
             );
           }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "input-area", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { style: { position: "relative" }, ref: attachMenuRef, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "input-area", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: { position: "relative" }, ref: attachMenuRef, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
                 "button",
                 {
                   onClick: () => setShowAttachMenu((v) => !v),
                   title: "Add context",
                   disabled,
                   className: "input-attach-btn",
-                  children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "codicon codicon-add" })
+                  children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-add" })
                 }
               ),
-              showAttachMenu && /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { className: "context-menu", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "context-menu-header", children: "Add context" }),
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+              showAttachMenu && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "context-menu", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "context-menu-header", children: "Add context" }),
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
                   "button",
                   {
                     onClick: () => {
@@ -81192,12 +81616,12 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                     },
                     className: "context-menu-item",
                     children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "codicon codicon-file-media" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { children: "Images" })
+                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-file-media" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "Images" })
                     ]
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
                   "button",
                   {
                     onClick: () => {
@@ -81207,12 +81631,12 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                     },
                     className: "context-menu-item",
                     children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "codicon codicon-mention" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { children: "Mentions" })
+                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-mention" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "Mentions" })
                     ]
                   }
                 ),
-                /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+                /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
                   "button",
                   {
                     onClick: () => {
@@ -81222,14 +81646,14 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                     },
                     className: "context-menu-item",
                     children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "codicon codicon-symbol-event" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { children: "Workflows" })
+                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-symbol-event" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "Workflows" })
                     ]
                   }
                 )
               ] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
               "input",
               {
                 ref: fileInputRef,
@@ -81253,7 +81677,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                 }
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
               "input",
               {
                 ref: imageInputRef,
@@ -81277,7 +81701,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                 }
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
               "input",
               {
                 ref: directoryInputRef,
@@ -81299,7 +81723,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                 }
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
               "textarea",
               {
                 ref: textareaRef,
@@ -81312,7 +81736,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                 disabled
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
               "button",
               {
                 onClick: handleSend,
@@ -81320,10 +81744,10 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                 disabled: disabled || !message.trim(),
                 style: { display: disabled && onStop ? "none" : "flex" },
                 className: "input-action-btn primary",
-                children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "codicon codicon-send" })
+                children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-send" })
               }
             ),
-            disabled && onStop && /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+            disabled && onStop && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
               "button",
               {
                 onClick: (e) => {
@@ -81332,14 +81756,14 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                 },
                 title: "Stop Generating",
                 className: "input-action-btn stop",
-                children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "codicon codicon-debug-stop" })
+                children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-debug-stop" })
               }
             )
           ] })
         ]
       }
     ),
-    showSuggestions && suggestions.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { className: "suggestions-popup", children: suggestions.map((s, index2) => /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+    showSuggestions && suggestions.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "suggestions-popup", children: suggestions.map((s, index2) => /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
       "div",
       {
         className: `suggestion-item ${index2 === activeSuggestionIndex ? "active" : ""}`,
@@ -81347,13 +81771,13 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
           handlePickSuggestion(s.command);
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "suggestion-command", children: s.command }),
-          /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "suggestion-description", children: s.description })
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "suggestion-command", children: s.command }),
+          /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "suggestion-description", children: s.description })
         ]
       },
       s.command
     )) }),
-    (showFilePicker || showDirectoryPicker) && /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { style: {
+    (showFilePicker || showDirectoryPicker) && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: {
       position: "fixed",
       top: 0,
       left: 0,
@@ -81369,7 +81793,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       setShowDirectoryPicker(false);
       setFileList([]);
       setCurrentPath("");
-    }, children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { style: {
+    }, children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: {
       background: "var(--vscode-editorWidget-background)",
       border: "1px solid var(--vscode-editorWidget-border)",
       borderRadius: 8,
@@ -81381,12 +81805,12 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       flexDirection: "column",
       boxShadow: "0 4px 16px rgba(0, 0, 0, 0.3)"
     }, onClick: (e) => e.stopPropagation(), children: [
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("h3", { style: { margin: 0 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("h3", { style: { margin: 0 }, children: [
           "Select ",
           showFilePicker ? "File" : "Directory"
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
           "button",
           {
             onClick: () => {
@@ -81407,8 +81831,8 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
           }
         )
       ] }),
-      currentPath && /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)("div", { style: { marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+      currentPath && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: { marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
           "button",
           {
             onClick: () => {
@@ -81429,14 +81853,14 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
               fontSize: "12px"
             },
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: "codicon codicon-arrow-up" }),
+              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-arrow-up" }),
               " Up"
             ]
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { style: { fontSize: "12px", color: "var(--vscode-descriptionForeground)" }, children: currentPath || "/" })
+        /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { style: { fontSize: "12px", color: "var(--vscode-descriptionForeground)" }, children: currentPath || "/" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { style: {
+      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: {
         flex: 1,
         overflowY: "auto",
         border: "1px solid var(--vscode-editorWidget-border)",
@@ -81444,7 +81868,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
         padding: "8px",
         minHeight: "300px",
         maxHeight: "400px"
-      }, children: fileList.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { style: { textAlign: "center", color: "var(--vscode-descriptionForeground)", padding: "20px" }, children: "Loading..." }) : /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("ul", { style: { listStyle: "none", padding: 0, margin: 0 }, children: fileList.map((item, idx) => /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("li", { children: /* @__PURE__ */ (0, import_jsx_runtime8.jsxs)(
+      }, children: fileList.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: { textAlign: "center", color: "var(--vscode-descriptionForeground)", padding: "20px" }, children: "Loading..." }) : /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("ul", { style: { listStyle: "none", padding: 0, margin: 0 }, children: fileList.map((item, idx) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("li", { children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
         "button",
         {
           onClick: () => {
@@ -81481,12 +81905,12 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
           onMouseEnter: (e) => e.currentTarget.style.background = "var(--vscode-list-hoverBackground)",
           onMouseLeave: (e) => e.currentTarget.style.background = "transparent",
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { className: `codicon ${item.type === "directory" ? "codicon-folder" : "codicon-file"}` }),
-            /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("span", { children: item.name })
+            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: `codicon ${item.type === "directory" ? "codicon-folder" : "codicon-file"}` }),
+            /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: item.name })
           ]
         }
       ) }, idx)) }) }),
-      showDirectoryPicker && /* @__PURE__ */ (0, import_jsx_runtime8.jsx)("div", { style: { marginTop: "12px", display: "flex", justifyContent: "flex-end" }, children: /* @__PURE__ */ (0, import_jsx_runtime8.jsx)(
+      showDirectoryPicker && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: { marginTop: "12px", display: "flex", justifyContent: "flex-end" }, children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
         "button",
         {
           onClick: () => {
@@ -81517,9 +81941,9 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
 };
 
 // src/vs/ai-partner/ui/ErrorDisplay.tsx
-var import_jsx_runtime9 = __toESM(require_jsx_runtime());
+var import_jsx_runtime10 = __toESM(require_jsx_runtime());
 var ErrorDisplay = ({ error }) => {
-  return /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "error-container", style: {
+  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "error-container", style: {
     border: "1px solid var(--vscode-errorForeground)",
     backgroundColor: "var(--vscode-inputValidation-errorBackground)",
     padding: "16px",
@@ -81529,38 +81953,37 @@ var ErrorDisplay = ({ error }) => {
     flexDirection: "column",
     gap: "8px"
   }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "8px", color: "var(--vscode-errorForeground)" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-error", style: { fontSize: "18px" } }),
-      /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("h3", { style: { margin: 0, fontSize: "14px", fontWeight: 600 }, children: error.title })
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "8px", color: "var(--vscode-errorForeground)" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "codicon codicon-error", style: { fontSize: "18px" } }),
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("h3", { style: { margin: 0, fontSize: "14px", fontWeight: 600 }, children: error.title })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("p", { style: { margin: 0, lineHeight: "1.4" }, children: error.message }),
-    error.action && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: { marginTop: "8px" }, children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(VSCodeButton, { onClick: error.action.onClick, appearance: "secondary", children: error.action.label }) })
+    /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { style: { margin: 0, lineHeight: "1.4" }, children: error.message }),
+    error.action && /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { style: { marginTop: "8px" }, children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(VSCodeButton, { onClick: error.action.onClick, appearance: "secondary", children: error.action.label }) })
   ] });
 };
 
 // src/vs/ai-partner/ui/PlanView.tsx
-var import_react15 = __toESM(require_react());
-var import_jsx_runtime10 = __toESM(require_jsx_runtime());
+var import_react16 = __toESM(require_react());
+var import_jsx_runtime11 = __toESM(require_jsx_runtime());
 var getStatusIcon = (status) => {
   switch (status) {
     case "completed":
-      return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { style: { color: "var(--vscode-testing-iconPassed)" }, children: "\u2713" });
+      return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { style: { color: "var(--vscode-testing-iconPassed)", fontSize: 14 }, children: "\u2713" });
     case "in-progress":
-      return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { style: { color: "var(--vscode-descriptionForeground)" }, children: "\u25CF" });
+      return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { style: { color: "var(--vscode-charts-blue)", fontSize: 14 }, children: "\u25CF" });
     case "error":
-      return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { style: { color: "var(--vscode-testing-iconFailed)" }, children: "\u2717" });
+      return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { style: { color: "var(--vscode-testing-iconFailed)", fontSize: 14 }, children: "\u2717" });
     case "pending":
     default:
-      return /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { style: { color: "var(--vscode-descriptionForeground)" }, children: "\u25CF" });
+      return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { style: { color: "var(--vscode-descriptionForeground)", fontSize: 14 }, children: "\u25CB" });
   }
 };
-var PlanView = ({ plan, isAutonomousMode }) => {
+var PlanView = ({ plan, isAutonomousMode, isCollapsed, onToggleCollapse }) => {
   if (!plan || plan.length === 0) {
     return null;
   }
-  const [editing, setEditing] = (0, import_react15.useState)(false);
-  const [collapsed, setCollapsed] = (0, import_react15.useState)(true);
-  const [draft, setDraft] = (0, import_react15.useState)(plan.map((p) => p.description));
+  const [editing, setEditing] = (0, import_react16.useState)(false);
+  const [draft, setDraft] = (0, import_react16.useState)(plan.map((p) => p.description));
   const handleApprove = () => {
     vscodeService.postMessage({ command: "userQuery", query: "yes" });
   };
@@ -81581,39 +82004,48 @@ var PlanView = ({ plan, isAutonomousMode }) => {
     vscodeService.postMessage({ command: "updatePlanFromUI", payload: { steps } });
     setEditing(false);
   };
-  const visiblePlan = collapsed ? plan.filter((s) => s.status === "in-progress") : plan;
-  return /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "plan-view-container plan-view", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("h4", { style: { margin: 0 }, children: [
-        "Execution Plan ",
-        plan.length > 0 ? `(${plan.filter((s) => s.status === "completed").length}/${plan.length})` : ""
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
-        "button",
-        {
-          onClick: () => setCollapsed(!collapsed),
-          style: {
-            background: "transparent",
-            border: "none",
-            color: "var(--vscode-foreground)",
-            cursor: "pointer",
-            padding: "4px 8px",
-            display: "flex",
-            alignItems: "center",
-            gap: 4
-          },
-          title: collapsed ? "Expand" : "Collapse",
-          children: [
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: `codicon ${collapsed ? "codicon-chevron-down" : "codicon-chevron-up"}` }),
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { style: { fontSize: "12px" }, children: collapsed ? "Show All" : "Minimize" })
-          ]
-        }
-      )
-    ] }),
-    editing ? /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("ul", { className: "plan-steps", children: draft.map((text7, i) => /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("li", { className: `plan-step editing`, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "plan-step-icon", children: getStatusIcon("pending") }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+  const completedCount = plan.filter((s) => s.status === "completed").length;
+  const visiblePlan = isCollapsed ? plan.filter((s) => s.status === "in-progress") : plan;
+  return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "plan-view-container plan-view", style: {
+    border: "1px solid var(--vscode-widget-border)",
+    borderRadius: 8,
+    overflow: "hidden",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.25)"
+  }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(
+      "div",
+      {
+        onClick: onToggleCollapse,
+        style: {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "8px 12px",
+          background: "var(--vscode-titleBar-activeBackground)",
+          cursor: "pointer",
+          userSelect: "none",
+          borderBottom: isCollapsed ? "none" : "1px solid var(--vscode-widget-border)"
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8, fontWeight: 600, fontSize: 13 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: `codicon ${isCollapsed ? "codicon-chevron-right" : "codicon-chevron-down"}`, style: { fontSize: 12 } }),
+            /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { children: "Execution Plan" }),
+            /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("span", { style: { fontSize: 11, opacity: 0.7, fontWeight: "normal" }, children: [
+              "(",
+              completedCount,
+              "/",
+              plan.length,
+              ")"
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { style: { fontSize: 11, opacity: 0.6 }, children: isCollapsed ? "Show All" : "Minimize" })
+        ]
+      }
+    ),
+    !isCollapsed && /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { style: { padding: "8px 12px" }, children: editing ? /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("ul", { className: "plan-steps", style: { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "8px" }, children: draft.map((text7, i) => /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("li", { className: "plan-step editing", style: { display: "flex", alignItems: "center", gap: "8px", paddingLeft: 8 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "plan-step-icon", style: { flexShrink: 0 }, children: getStatusIcon("pending") }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
           "input",
           {
             value: text7,
@@ -81622,16 +82054,17 @@ var PlanView = ({ plan, isAutonomousMode }) => {
           }
         )
       ] }, i)) }),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { onClick: () => setDraft((d) => [...d, ""]), style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Add Step" }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { onClick: handleSaveEdit, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-background)", color: "var(--vscode-button-foreground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Save" }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { onClick: handleCancelEdit, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Cancel" })
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: () => setDraft((d) => [...d, ""]), style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Add Step" }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: handleSaveEdit, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-background)", color: "var(--vscode-button-foreground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Save" }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: handleCancelEdit, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Cancel" })
       ] })
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(import_jsx_runtime10.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("ul", { className: "plan-steps", style: { maxHeight: "200px", overflowY: "auto" }, children: visiblePlan.map((step, index2) => /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(import_jsx_runtime11.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("ul", { className: "plan-steps", style: { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "8px", maxHeight: "240px", overflowY: "auto", paddingLeft: 4 }, children: visiblePlan.map((step, index2) => /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(
         "li",
         {
           className: `plan-step ${step.status}`,
+          style: { display: "flex", cursor: isAutonomousMode && step.status === "pending" ? "grab" : "default", alignItems: "flex-start", gap: "8px" },
           draggable: isAutonomousMode && step.status === "pending",
           onDragStart: (e) => {
             e.dataTransfer.setData("text/plain", index2.toString());
@@ -81649,46 +82082,37 @@ var PlanView = ({ plan, isAutonomousMode }) => {
             const newPlan = [...plan];
             const [movedItem] = newPlan.splice(fromIndex, 1);
             newPlan.splice(toIndex, 0, movedItem);
-            const steps = newPlan.map((s) => s.description);
-            vscodeService.postMessage({ command: "updatePlanFromUI", payload: { steps } });
-          },
-          style: {
-            cursor: isAutonomousMode && step.status === "pending" ? "grab" : "default"
+            vscodeService.postMessage({ command: "updatePlanFromUI", payload: { steps: newPlan.map((s) => s.description) } });
           },
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "plan-step-icon", children: getStatusIcon(step.status) }),
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "plan-step-text", style: { textDecoration: step.status === "completed" ? "line-through" : "none", color: step.status === "error" ? "var(--vscode-errorForeground)" : "inherit" }, children: step.description })
+            /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "plan-step-icon", style: { marginTop: 2, flexShrink: 0 }, children: getStatusIcon(step.status) }),
+            /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "plan-step-text markdown-content", style: {
+              textDecoration: step.status === "completed" ? "line-through" : "none",
+              color: step.status === "error" ? "var(--vscode-errorForeground)" : "inherit",
+              flex: 1,
+              opacity: step.status === "completed" ? 0.6 : 1,
+              wordWrap: "break-word",
+              overflowWrap: "anywhere"
+            }, children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+              Markdown,
+              {
+                children: step.description,
+                remarkPlugins: [remarkGfm],
+                components: {
+                  p: ({ node: node2, ...props }) => /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { style: { margin: 0, display: "inline" }, ...props })
+                }
+              }
+            ) })
           ]
         },
         index2
       )) }),
-      isAutonomousMode && isPending && /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "plan-actions", style: { display: "flex", gap: "10px" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { onClick: handleApprove, style: {
-          border: "1px solid var(--vscode-button-border)",
-          background: "var(--vscode-button-background)",
-          color: "var(--vscode-button-foreground)",
-          padding: "4px 12px",
-          cursor: "pointer",
-          borderRadius: "4px"
-        }, children: "Approve" }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { onClick: handleDecline, style: {
-          border: "1px solid var(--vscode-button-border)",
-          background: "var(--vscode-button-secondaryBackground)",
-          color: "var(--vscode-button-secondaryForeground)",
-          padding: "4px 12px",
-          cursor: "pointer",
-          borderRadius: "4px"
-        }, children: "Decline" }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("button", { onClick: handleEdit, style: {
-          border: "1px solid var(--vscode-button-border)",
-          background: "var(--vscode-button-secondaryBackground)",
-          color: "var(--vscode-button-secondaryForeground)",
-          padding: "4px 12px",
-          cursor: "pointer",
-          borderRadius: "4px"
-        }, children: "Edit" })
+      isAutonomousMode && isPending && /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "plan-actions", style: { display: "flex", gap: "8px", marginTop: 8 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: handleApprove, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-background)", color: "var(--vscode-button-foreground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Approve" }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: handleDecline, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Decline" }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: handleEdit, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Edit" })
       ] })
-    ] })
+    ] }) })
   ] });
 };
 
@@ -81990,6 +82414,62 @@ function createMessageHandlerRegistry(context) {
         });
       }
     },
+    terminal_stream: (payload) => {
+      if (payload && payload.text) {
+        context.setMessages((prev) => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg?.kind === "progressGroup") {
+            const newMessages = [...prev];
+            const terminals = lastMsg.terminalMessages || [];
+            if (terminals.length > 0) {
+              const updatedTerminals = [...terminals];
+              updatedTerminals[0] = {
+                ...updatedTerminals[0],
+                payload: { ...updatedTerminals[0].payload, output: (updatedTerminals[0].payload?.output || "") + payload.text }
+              };
+              newMessages[newMessages.length - 1] = { ...lastMsg, terminalMessages: updatedTerminals };
+            } else {
+              const newTerminal = {
+                sender: "ai",
+                kind: "terminal",
+                senderName: "Terminal",
+                timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+                payload: {
+                  toolName: "run_command",
+                  command: payload.command || "Running command...",
+                  output: payload.text
+                }
+              };
+              newMessages[newMessages.length - 1] = { ...lastMsg, terminalMessages: [newTerminal] };
+            }
+            return newMessages;
+          }
+          if (lastMsg?.kind === "terminal" && lastMsg.payload?.toolName === "run_command") {
+            const newMessages = [...prev];
+            newMessages[newMessages.length - 1] = {
+              ...lastMsg,
+              payload: { ...lastMsg.payload, output: (lastMsg.payload?.output || "") + payload.text }
+            };
+            return newMessages;
+          } else {
+            return [
+              ...prev,
+              {
+                sender: "ai",
+                kind: "terminal",
+                senderName: "Terminal",
+                timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+                payload: {
+                  toolName: "run_command",
+                  command: payload.command || "Running command...",
+                  output: payload.text
+                }
+              }
+            ];
+          }
+        });
+      }
+    },
     progressLogChunk: (payload) => {
       if (payload && payload.text) {
         context.setMessages((prev) => {
@@ -82200,8 +82680,8 @@ function createMessageHandlerRegistry(context) {
 }
 
 // src/vs/ai-partner/ui/MainView.tsx
-var import_jsx_runtime11 = __toESM(require_jsx_runtime());
-var ErrorBoundary = class extends import_react16.default.Component {
+var import_jsx_runtime12 = __toESM(require_jsx_runtime());
+var ErrorBoundary = class extends import_react17.default.Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -82216,7 +82696,7 @@ ${errorInfo.componentStack}` });
   }
   render() {
     if (this.state.hasError) {
-      return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { style: {
+      return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { style: {
         padding: "16px",
         margin: "16px",
         color: "var(--vscode-errorForeground)",
@@ -82227,17 +82707,17 @@ ${errorInfo.componentStack}` });
         flexDirection: "column",
         gap: "12px"
       }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "codicon codicon-error" }),
-          /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { children: "Something went wrong" })
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "codicon codicon-error" }),
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { children: "Something went wrong" })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { style: {
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { style: {
           fontSize: "12px",
           fontFamily: "var(--vscode-editor-font-family)",
           whiteSpace: "pre-wrap",
           opacity: 0.9
         }, children: this.state.error?.message }),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
           "button",
           {
             onClick: () => this.setState({ hasError: false }),
@@ -82262,43 +82742,45 @@ ${errorInfo.componentStack}` });
   }
 };
 var MainView = () => {
-  return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(ErrorBoundary, { children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(MainViewContent, {}) });
+  return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(ErrorBoundary, { children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(MainViewContent, {}) });
 };
 var MainViewContent = () => {
-  const [view, setView] = (0, import_react16.useState)("welcome");
-  const viewRef = (0, import_react16.useRef)("welcome");
-  const [sessions, setSessions] = (0, import_react16.useState)([]);
-  const [activeSessionId, setActiveSessionId] = (0, import_react16.useState)("");
-  const [messages, setMessages] = (0, import_react16.useState)([]);
-  const [plan, setPlan] = (0, import_react16.useState)([]);
-  const [error, setError] = (0, import_react16.useState)(null);
-  const [showHistoryPanel, setShowHistoryPanel] = (0, import_react16.useState)(false);
-  const [isAutonomousMode, setAutonomousMode] = (0, import_react16.useState)(false);
-  const [statusText, setStatusText] = (0, import_react16.useState)(null);
-  const [slashCommands, setSlashCommands] = (0, import_react16.useState)([]);
-  const [currentProvider, setCurrentProvider] = (0, import_react16.useState)(void 0);
-  const [availableModels, setAvailableModels] = (0, import_react16.useState)([]);
-  const [currentModel, setCurrentModel] = (0, import_react16.useState)(void 0);
-  const [profiles, setProfiles] = (0, import_react16.useState)([]);
-  const [activeProfileId, setActiveProfileId] = (0, import_react16.useState)(null);
-  const [loadingStatus, setLoadingStatus] = (0, import_react16.useState)({
+  const [view, setView] = (0, import_react17.useState)("welcome");
+  const viewRef = (0, import_react17.useRef)("welcome");
+  const [sessions, setSessions] = (0, import_react17.useState)([]);
+  const [activeSessionId, setActiveSessionId] = (0, import_react17.useState)("");
+  const [messages, setMessages] = (0, import_react17.useState)([]);
+  const [plan, setPlan] = (0, import_react17.useState)([]);
+  const [error, setError] = (0, import_react17.useState)(null);
+  const [showHistoryPanel, setShowHistoryPanel] = (0, import_react17.useState)(false);
+  const [isAutonomousMode, setAutonomousMode] = (0, import_react17.useState)(false);
+  const [statusText, setStatusText] = (0, import_react17.useState)(null);
+  const [slashCommands, setSlashCommands] = (0, import_react17.useState)([]);
+  const [currentProvider, setCurrentProvider] = (0, import_react17.useState)(void 0);
+  const [availableModels, setAvailableModels] = (0, import_react17.useState)([]);
+  const [currentModel, setCurrentModel] = (0, import_react17.useState)(void 0);
+  const [profiles, setProfiles] = (0, import_react17.useState)([]);
+  const [activeProfileId, setActiveProfileId] = (0, import_react17.useState)(null);
+  const [loadingStatus, setLoadingStatus] = (0, import_react17.useState)({
     llmSettings: true,
     models: true,
     profiles: true,
     slashCommands: true
   });
-  const [isThinking, setIsThinking] = (0, import_react16.useState)(false);
-  const [uroborosProposal, setUroborosProposal] = (0, import_react16.useState)(null);
-  const mainViewRef = (0, import_react16.useRef)(null);
-  const [pendingDiffs, setPendingDiffs] = (0, import_react16.useState)([]);
-  const [showDiffSummary, setShowDiffSummary] = (0, import_react16.useState)(false);
-  const diffSummaryRef = (0, import_react16.useRef)(null);
-  const [attachments, setAttachments] = (0, import_react16.useState)([]);
-  const [showAttachmentMenu, setShowAttachmentMenu] = (0, import_react16.useState)(false);
-  const lastUserAttachmentsRef = (0, import_react16.useRef)([]);
-  const dropIncomingRef = (0, import_react16.useRef)(false);
-  const welcomeLockRef = (0, import_react16.useRef)(true);
-  (0, import_react16.useEffect)(() => {
+  const [isThinking, setIsThinking] = (0, import_react17.useState)(false);
+  const [uroborosProposal, setUroborosProposal] = (0, import_react17.useState)(null);
+  const mainViewRef = (0, import_react17.useRef)(null);
+  const [pendingDiffs, setPendingDiffs] = (0, import_react17.useState)([]);
+  const [showDiffSummary, setShowDiffSummary] = (0, import_react17.useState)(false);
+  const [isPlanVisible, setIsPlanVisible] = (0, import_react17.useState)(true);
+  const [isPlanCollapsed, setIsPlanCollapsed] = (0, import_react17.useState)(true);
+  const diffSummaryRef = (0, import_react17.useRef)(null);
+  const [attachments, setAttachments] = (0, import_react17.useState)([]);
+  const [showAttachmentMenu, setShowAttachmentMenu] = (0, import_react17.useState)(false);
+  const lastUserAttachmentsRef = (0, import_react17.useRef)([]);
+  const dropIncomingRef = (0, import_react17.useRef)(false);
+  const welcomeLockRef = (0, import_react17.useRef)(true);
+  (0, import_react17.useEffect)(() => {
     const diffsFromMessages = messages.filter((m) => m.kind === "codeEditFile" && m.diff).map((m) => m.diff);
     setPendingDiffs((prev) => {
       const merged = [...diffsFromMessages];
@@ -82310,7 +82792,7 @@ var MainViewContent = () => {
       return merged;
     });
   }, [messages]);
-  (0, import_react16.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     viewRef.current = view;
   }, [view]);
   const mapHistoryToDisplayMessages = (history) => {
@@ -82370,8 +82852,8 @@ var MainViewContent = () => {
   const generateId = () => {
     return "msg-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9);
   };
-  const messageHandlerRegistryRef = (0, import_react16.useRef)(createMessageHandlerRegistry(handlerContext));
-  (0, import_react16.useEffect)(() => {
+  const messageHandlerRegistryRef = (0, import_react17.useRef)(createMessageHandlerRegistry(handlerContext));
+  (0, import_react17.useEffect)(() => {
     messageHandlerRegistryRef.current = createMessageHandlerRegistry(handlerContext);
   }, [
     setSlashCommands,
@@ -82390,7 +82872,7 @@ var MainViewContent = () => {
     setShowDiffSummary,
     setUroborosProposal
   ]);
-  const handleExtensionMessage = (0, import_react16.useCallback)((event) => {
+  const handleExtensionMessage = (0, import_react17.useCallback)((event) => {
     const message = event.data;
     console.log("Received message from extension:", message);
     if (!message || typeof message.command !== "string") {
@@ -82431,11 +82913,11 @@ var MainViewContent = () => {
       console.warn(`[MainView] No handler registered for command: ${message.command}`);
     }
   }, [handlerContext]);
-  (0, import_react16.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     window.addEventListener("message", handleExtensionMessage);
     return () => window.removeEventListener("message", handleExtensionMessage);
   }, [handleExtensionMessage]);
-  (0, import_react16.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     vscodeService.postMessage({ command: "requestInitialData" });
     vscodeService.postMessage({ command: "requestHistory" });
     vscodeService.postMessage({ command: "getSlashCommands" });
@@ -82447,13 +82929,111 @@ var MainViewContent = () => {
     }, 5e3);
     return () => clearTimeout(loadingTimeout);
   }, []);
-  (0, import_react16.useEffect)(() => {
+  (0, import_react17.useEffect)(() => {
     const container = mainViewRef.current;
     if (container) {
       container.scrollTop = container.scrollHeight;
     }
   }, [messages, pendingDiffs]);
   const handleSendMessage = (messageText) => {
+    if (messageText.trim() === "/debug-terminal") {
+      const terminalCommand = "ping localhost -n 5";
+      const streamChunks = [
+        "\nPinging localhost [127.0.0.1] with 32 bytes of data:\n",
+        "Reply from 127.0.0.1: bytes=32 time<1ms TTL=128\n",
+        "Reply from 127.0.0.1: bytes=32 time<1ms TTL=128\n",
+        "Reply from 127.0.0.1: bytes=32 time<1ms TTL=128\n",
+        "Reply from 127.0.0.1: bytes=32 time<1ms TTL=128\n",
+        "Reply from 127.0.0.1: bytes=32 time<1ms TTL=128\n",
+        "\nPing statistics for 127.0.0.1:\n",
+        "    Packets: Sent = 5, Received = 5, Lost = 0 (0% loss)\n",
+        "Approximate round trip times in milli-seconds:\n",
+        "    Minimum = 0ms, Maximum = 0ms, Average = 0ms\n"
+      ];
+      const terminalMsg = {
+        sender: "ai",
+        kind: "terminal",
+        senderName: "Terminal",
+        text: terminalCommand,
+        payload: {
+          toolName: "run_command",
+          command: terminalCommand,
+          output: ""
+        },
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      setMessages((prev) => [
+        ...prev,
+        { sender: "user", text: "/debug-terminal", timestamp: (/* @__PURE__ */ new Date()).toISOString() },
+        {
+          sender: "ai",
+          kind: "progressGroup",
+          messages: [{
+            sender: "ai",
+            kind: "progress",
+            text: "Executing tool: terminal_run",
+            senderName: "OrchestratorAgent",
+            timestamp: (/* @__PURE__ */ new Date()).toISOString()
+          }],
+          terminalMessages: [terminalMsg],
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      ]);
+      let i = 0;
+      const intervalId = setInterval(() => {
+        if (i >= streamChunks.length) {
+          clearInterval(intervalId);
+          return;
+        }
+        const chunk = streamChunks[i++];
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          const lastMsg = newMessages[newMessages.length - 1];
+          if (lastMsg?.kind === "progressGroup" && lastMsg.terminalMessages?.length > 0) {
+            const updatedTerminals = [...lastMsg.terminalMessages];
+            updatedTerminals[0] = {
+              ...updatedTerminals[0],
+              payload: { ...updatedTerminals[0].payload, output: (updatedTerminals[0].payload?.output || "") + chunk }
+            };
+            newMessages[newMessages.length - 1] = { ...lastMsg, terminalMessages: updatedTerminals };
+          }
+          return newMessages;
+        });
+      }, 400);
+      return;
+    }
+    if (messageText.trim() === "/debug-task") {
+      setMessages((prev) => [
+        ...prev,
+        { sender: "user", text: "/debug-task", timestamp: (/* @__PURE__ */ new Date()).toISOString() },
+        {
+          sender: "ai",
+          senderName: "TaskDecompositionAgent",
+          kind: "task",
+          text: "Here are some tasks to verify the natural flow UI:",
+          tasks: [
+            "- [x] Research existing infrastructure \u2705",
+            "- [/] Implement Terminal component...",
+            "- [ ] Verify Plan pop-up logic"
+          ],
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      ]);
+      return;
+    }
+    if (messageText.trim() === "/debug-plan") {
+      setMessages((prev) => [
+        ...prev,
+        { sender: "user", text: "/debug-plan", timestamp: (/* @__PURE__ */ new Date()).toISOString() }
+      ]);
+      setPlan([
+        { description: "Implement TerminalOutput component", status: "completed" },
+        { description: "Refactor MessageItem for tasks", status: "in-progress" },
+        { description: "Test Plan pop-up with /debug-plan", status: "pending" }
+      ]);
+      setIsPlanVisible(true);
+      return;
+    }
     const sendingFromWelcome = view === "welcome";
     if (view !== "chat") setView("chat");
     welcomeLockRef.current = false;
@@ -82518,13 +83098,13 @@ var MainViewContent = () => {
   };
   const renderHistoryPanel = () => {
     if (!showHistoryPanel) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "history-panel", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "history-header", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { className: "chevron-btn", onClick: handleShowHistory, "aria-expanded": showHistoryPanel, title: showHistoryPanel ? "Collapse" : "Expand", children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: `codicon ${showHistoryPanel ? "codicon-chevron-down" : "codicon-chevron-right"}` }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "history-title", children: "Chat History" })
+    return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "history-panel", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "history-header", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "chevron-btn", onClick: handleShowHistory, "aria-expanded": showHistoryPanel, title: showHistoryPanel ? "Collapse" : "Expand", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: `codicon ${showHistoryPanel ? "codicon-chevron-down" : "codicon-chevron-right"}` }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "history-title", children: "Chat History" })
       ] }),
-      sessions.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "history-empty", children: "No chat history" }) : /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("ul", { style: { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }, children: sessions.map((s) => /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("li", { style: { position: "relative", display: "flex", alignItems: "center" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(
+      sessions.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "history-empty", children: "No chat history" }) : /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("ul", { style: { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }, children: sessions.map((s) => /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("li", { style: { position: "relative", display: "flex", alignItems: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(
           "button",
           {
             onClick: () => handleSelectSession(s.id),
@@ -82543,8 +83123,8 @@ var MainViewContent = () => {
             },
             title: s.title,
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { children: s.title }),
-              /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { style: { float: "right", color: "var(--vscode-descriptionForeground)" }, children: (() => {
+              /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { children: s.title }),
+              /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { style: { float: "right", color: "var(--vscode-descriptionForeground)" }, children: (() => {
                 try {
                   return new Date(s.createdAt).toLocaleString([], { year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
                 } catch {
@@ -82554,7 +83134,7 @@ var MainViewContent = () => {
             ]
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
           "button",
           {
             onClick: () => handleDeleteSession(s.id),
@@ -82584,13 +83164,13 @@ var MainViewContent = () => {
     ] });
   };
   const renderCentralContent = () => {
-    if (view === "settings") return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(SettingsPage, {});
-    if (error) return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(ErrorDisplay, { error });
+    if (view === "settings") return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(SettingsPage, {});
+    if (error) return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(ErrorDisplay, { error });
     if (view === "welcome") {
       const recent = [...sessions].reverse().slice(0, 2);
-      return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(WelcomeScreen, { onSendMessage: handleSendMessage, recentSessions: recent, onPickSession: handleSelectSession });
+      return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(WelcomeScreen, { onSendMessage: handleSendMessage, recentSessions: recent, onPickSession: handleSelectSession });
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
       MessageList,
       {
         messages,
@@ -82607,59 +83187,59 @@ var MainViewContent = () => {
   };
   const renderDiffSummaryBar = () => {
     if (pendingDiffs.length === 0) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "diff-summary-bar", ref: diffSummaryRef, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "diff-summary-header", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { className: "chevron-btn", onClick: () => setShowDiffSummary((v) => !v), "aria-expanded": showDiffSummary, title: showDiffSummary ? "Collapse" : "Expand", children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: `codicon ${showDiffSummary ? "codicon-chevron-down" : "codicon-chevron-right"}` }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("span", { className: "diff-summary-title", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "diff-summary-bar", ref: diffSummaryRef, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "diff-summary-header", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "chevron-btn", onClick: () => setShowDiffSummary((v) => !v), "aria-expanded": showDiffSummary, title: showDiffSummary ? "Collapse" : "Expand", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: `codicon ${showDiffSummary ? "codicon-chevron-down" : "codicon-chevron-right"}` }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("span", { className: "diff-summary-title", children: [
           pendingDiffs.length,
           " Files"
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "diff-summary-actions", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { className: "diff-summary-btn", onClick: () => {
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "diff-summary-actions", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "diff-summary-btn", onClick: () => {
             vscodeService.postMessage({ command: "acceptAllChanges", payload: pendingDiffs.map((d) => ({ filePath: d.filePath, originalCode: d.originalCode, modifiedCode: d.modifiedCode, suggestionType: d.suggestionType })) });
           }, children: "Accept All" }),
-          /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { className: "diff-summary-btn secondary", onClick: () => {
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "diff-summary-btn secondary", onClick: () => {
             vscodeService.postMessage({ command: "declineAllChanges", payload: pendingDiffs.map((d) => ({ filePath: d.filePath })) });
             setPendingDiffs([]);
             setShowDiffSummary(false);
           }, children: "Reject All" })
         ] })
       ] }),
-      showDiffSummary && /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("ul", { className: "diff-file-list", children: pendingDiffs.map((d) => {
+      showDiffSummary && /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("ul", { className: "diff-file-list", children: pendingDiffs.map((d) => {
         const baseName = d.filePath && d.filePath.split(/[\\/]/).pop() || "";
         const displayName = baseName || d.title || d.filePath;
-        return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("li", { className: "diff-file-item", title: d.title, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("span", { className: "file-title", onClick: () => {
+        return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("li", { className: "diff-file-item", title: d.title, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("span", { className: "file-title", onClick: () => {
             vscodeService.postMessage({ command: "showDiff", originalCode: d.originalCode, modifiedCode: d.modifiedCode, title: d.title || d.filePath });
           }, style: { display: "flex", alignItems: "center", gap: 6 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "codicon codicon-file-code" }),
+            /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "codicon codicon-file-code" }),
             displayName
           ] }),
-          typeof d.addedLines === "number" && typeof d.removedLines === "number" && /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("span", { className: "file-stats", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("span", { className: "file-stats-added", children: [
+          typeof d.addedLines === "number" && typeof d.removedLines === "number" && /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("span", { className: "file-stats", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("span", { className: "file-stats-added", children: [
               "+",
               d.addedLines
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("span", { className: "file-stats-removed", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("span", { className: "file-stats-removed", children: [
               "-",
               d.removedLines
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "file-actions", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { className: "file-action-btn accept", title: "Accept", onClick: () => {
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "file-actions", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "file-action-btn accept", title: "Accept", onClick: () => {
               vscodeService.postMessage({ command: "acceptChange", filePath: d.filePath, originalCode: d.originalCode, modifiedCode: d.modifiedCode, suggestionType: d.suggestionType });
               setPendingDiffs((prev) => prev.filter((x) => x.filePath !== d.filePath));
-            }, children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "codicon codicon-check" }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { className: "file-action-btn reject", title: "Reject", onClick: () => {
+            }, children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "codicon codicon-check" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "file-action-btn reject", title: "Reject", onClick: () => {
               vscodeService.postMessage({ command: "declineChange", filePath: d.filePath });
               setPendingDiffs((prev) => prev.filter((x) => x.filePath !== d.filePath));
-            }, children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: "codicon codicon-close" }) })
+            }, children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "codicon codicon-close" }) })
           ] })
         ] }, d.filePath);
       }) })
     ] });
   };
-  const [ctxMenu, setCtxMenu] = (0, import_react16.useState)({ visible: false, x: 0, y: 0 });
+  const [ctxMenu, setCtxMenu] = (0, import_react17.useState)({ visible: false, x: 0, y: 0 });
   const onMainViewContextMenu = (e) => {
     e.preventDefault();
     setCtxMenu({ visible: true, x: e.clientX, y: e.clientY });
@@ -82689,8 +83269,8 @@ var MainViewContent = () => {
     return profileLabel ? `${profileLabel}: ${baseName}` : baseName;
   })();
   const isLoading = loadingStatus.llmSettings || loadingStatus.models || loadingStatus.profiles || loadingStatus.slashCommands;
-  return /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "app-container", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "app-container", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
       Header,
       {
         onNewChat: handleNewChat,
@@ -82700,7 +83280,6 @@ var MainViewContent = () => {
             if (prev === "settings") {
               return activeSessionId ? "chat" : "welcome";
             }
-            setPlan([]);
             return "settings";
           });
         },
@@ -82724,7 +83303,7 @@ var MainViewContent = () => {
       }
     ),
     renderHistoryPanel(),
-    isLoading && /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { style: {
+    isLoading && /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { style: {
       position: "fixed",
       top: 0,
       left: 0,
@@ -82738,7 +83317,7 @@ var MainViewContent = () => {
       zIndex: 1e3,
       gap: 16
     }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { style: {
+      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { style: {
         width: 32,
         height: 32,
         border: "2px solid var(--vscode-progressBar-background)",
@@ -82746,27 +83325,35 @@ var MainViewContent = () => {
         borderRadius: "50%",
         animation: "spin 1s linear infinite"
       } }),
-      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { style: { color: "var(--vscode-foreground)" }, children: "Loading..." }),
-      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("style", { children: `
+      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { style: { color: "var(--vscode-foreground)" }, children: "Loading..." }),
+      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("style", { children: `
                             @keyframes spin {
                                 0% { transform: rotate(0deg); }
                                 100% { transform: rotate(360deg); }
                             }
                         ` })
     ] }),
-    view === "chat" && /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(PlanView, { plan, isAutonomousMode }),
-    view !== "settings" && !!statusText && !isThinking && /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "agent-activity", style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--vscode-panel-border)" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { className: `codicon codicon-info` }),
-      /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { children: statusText })
+    view === "chat" && plan.length > 0 && isPlanVisible && /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "plan-popup-overlay", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "plan-popup-content", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
+      PlanView,
+      {
+        plan,
+        isAutonomousMode,
+        isCollapsed: isPlanCollapsed,
+        onToggleCollapse: () => setIsPlanCollapsed(!isPlanCollapsed)
+      }
+    ) }) }),
+    view !== "settings" && !!statusText && !isThinking && /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "agent-activity", style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderBottom: "1px solid var(--vscode-panel-border)" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: `codicon codicon-info` }),
+      /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { children: statusText })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "main-view", ref: mainViewRef, onContextMenu: onMainViewContextMenu, onClick: hideCtxMenu, style: { overflowY: view === "welcome" || view === "chat" && messages.length === 0 ? "hidden" : "auto" }, children: renderCentralContent() }),
-    ctxMenu.visible && /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "vb-context-menu", style: { position: "fixed", top: ctxMenu.y, left: ctxMenu.x, zIndex: 1e3 }, onClick: hideCtxMenu, children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { className: "vb-context-item", onClick: () => {
+    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "main-view", ref: mainViewRef, onContextMenu: onMainViewContextMenu, onClick: hideCtxMenu, style: { overflowY: view === "welcome" || view === "chat" && messages.length === 0 ? "hidden" : "auto" }, children: renderCentralContent() }),
+    ctxMenu.visible && /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "vb-context-menu", style: { position: "fixed", top: ctxMenu.y, left: ctxMenu.x, zIndex: 1e3 }, onClick: hideCtxMenu, children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "vb-context-item", onClick: () => {
       vscodeService.postMessage({ command: "requestPick", payload: { kind: "file" } });
       hideCtxMenu();
     }, children: "Send File to Viper" }) }),
-    view !== "settings" && /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(import_jsx_runtime11.Fragment, { children: [
+    view !== "settings" && /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(import_jsx_runtime12.Fragment, { children: [
       renderDiffSummaryBar(),
-      /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "input-area-container", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "input-area-container", children: [
         (() => {
           if (view !== "welcome" && (messages || []).length > 0) return null;
           let list4 = sessions || [];
@@ -82775,7 +83362,7 @@ var MainViewContent = () => {
           }
           list4 = list4.slice(-2).reverse();
           if (list4.length === 0) return null;
-          return /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("div", { style: { margin: "0 0 6px 0" }, children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("ul", { style: { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }, children: list4.map((s) => /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("li", { style: { width: "100%" }, children: /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(
+          return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { style: { margin: "0 0 6px 0" }, children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("ul", { style: { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }, children: list4.map((s) => /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("li", { style: { width: "100%" }, children: /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(
             "button",
             {
               onClick: () => handleSelectSession(s.id),
@@ -82794,13 +83381,13 @@ var MainViewContent = () => {
               },
               title: s.title,
               children: [
-                /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 8 }, children: s.title }),
-                /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("span", { style: { color: "var(--vscode-descriptionForeground)", flexShrink: 0, fontSize: "0.9em" }, children: new Date(s.createdAt).toLocaleString([], { year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) })
+                /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: 8 }, children: s.title }),
+                /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { style: { color: "var(--vscode-descriptionForeground)", flexShrink: 0, fontSize: "0.9em" }, children: new Date(s.createdAt).toLocaleString([], { year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }) })
               ]
             }
           ) }, s.id)) }) });
         })(),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
           InputArea,
           {
             onSendMessage: handleSendMessage,
@@ -82821,11 +83408,11 @@ var MainViewContent = () => {
 };
 
 // src/vs/ai-partner/ui/index.tsx
-var import_jsx_runtime12 = __toESM(require_jsx_runtime());
+var import_jsx_runtime13 = __toESM(require_jsx_runtime());
 var rootElement = document.getElementById("root");
 if (rootElement) {
   import_client.default.createRoot(rootElement).render(
-    /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(import_react17.default.StrictMode, { children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(MainView, {}) })
+    /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_react18.default.StrictMode, { children: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(MainView, {}) })
   );
 } else {
   console.error("Failed to find the root element to mount the React app.");

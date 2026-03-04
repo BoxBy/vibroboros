@@ -85,9 +85,9 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isThinking, 
                 />
             ))}
             {isThinking && (
-                <div className="typing-indicator progress-log-item" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--vscode-descriptionForeground)', padding: '0 0 0 8px', margin: '0 0 4px 0', fontStyle: 'italic' }}>
-                    <span className="codicon codicon-loading codicon-modifier-spin" />
-                    <span>Viper is thinking...</span>
+                <div className="typing-indicator progress-log-item" style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--vscode-descriptionForeground)', padding: '0 0 0 0px', margin: '0 0 4px 0', fontStyle: 'italic' }}>
+                    <span className="codicon codicon-loading codicon-modifier-spin" style={{ fontSize: '14px' }} />
+                    <span style={{ fontSize: '14px' }}>Viper is thinking...</span>
                 </div>
             )}
         </div>

@@ -1735,7 +1735,7 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         const agentMessage: ChatMessage = {
             author: 'agent',
             content: [{ type: 'text', text: userFacingText || responseText }],
-            // thought: thought, // Moved to progress log to avoid duplication in bubble
+            thought: thought || undefined, // Capture thought for session persistence (UI toggles this manually)
             senderName: OrchestratorAgent.AGENT_ID,
             timestamp: new Date().toISOString()
         };
@@ -2042,139 +2042,6 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         return html;
     }
 
-    private async addMessageToHistory(message: ChatMessage): Promise<void> {
-        // Deduplicate based on messageId if available
-        if (message.messageId) {
-            // Check session manager state directly
-            const state = this.sessionManager.getState();
-            if (state) {
-                const exists = state.messages.some(m => m.messageId === message.messageId);
-                if (exists) {
-                    console.log(`[OrchestratorAgent] Skipping duplicate message with ID ${message.messageId}`);
-                    return;
-                }
-            }
-        }
-        
-        // Prevent adjacent duplicate user messages (content check fallback)
-        const currentMessages = this.sessionManager.getState()?.messages || [];
-        if (message.author === 'user' && currentMessages.length > 0) {
-            const lastMsg = currentMessages[currentMessages.length - 1];
-            if (lastMsg.author === 'user') {
-                 const lastText = Array.isArray(lastMsg.content) 
-                    ? lastMsg.content.map(c => (c as any).text).join('') 
-                    : (lastMsg as any).text || '';
-                 const newText = Array.isArray(message.content) 
-                    ? message.content.map(c => (c as any).text).join('') 
-                    : (message as any).text || '';
-                 if (lastText === newText) {
-                     console.log('[OrchestratorAgent] Skipping adjacent duplicate user message (content match)');
-                     return;
-                 }
-            }
-        }
-        
-        // Use SessionManager to add message
-        await this.sessionManager.addMessage(message);
-
-        // Notify UI to render user message bubble (important for programmatic injection like HLE evaluation)
-        if (message.author === 'user') {
-            try {
-                const text = Array.isArray(message.content)
-                    ? message.content.map((c: any) => typeof c === 'string' ? c : (c?.text ?? '')).filter(Boolean).join(' ')
-                    : (typeof (message as any).text === 'string' ? (message as any).text : '');
-                
-                this._onDidPostMessage.fire({
-                    command: 'addUserMessage',
-                    payload: {
-                        text,
-                        attachments: (message as any).attachments || [],
-                        messageId: message.messageId
-                    }
-                });
-            } catch (e) {
-                console.warn('[OrchestratorAgent] Failed to notify UI of user message:', e);
-            }
-        }
-
-        // SDK Standard: Sync LLM History
-        try {
-            if (message.author === 'user') {
-                const text = Array.isArray(message.content)
-                    ? message.content.map((c: any) => typeof c === 'string' ? c : (c?.text ?? '')).filter(Boolean).join(' ')
-                    : (typeof (message as any).text === 'string' ? (message as any).text : '');
-                
-                // Orchestrator manages llmConversationHistory in memory, so we update it
-                if (text && !this.llmConversationHistory.some(m => m.role === 'user' && m.content === text)) {
-                    this.llmConversationHistory.push({ role: 'user', content: text });
-                    // Sync to SessionManager
-                    await this.sessionManager.updateLlmHistory(this.llmConversationHistory);
-                }
-            } else if (message.author === 'agent') {
-                // EXCLUSION: Do not add progress logs or code edits to LLM context
-                // 'tool_trace' IS allowed because it contains actual tool outputs/errors needed for self-correction
-                if (message.kind === 'progress' || message.kind === 'codeEditFile') {
-                    return;
-                }
-
-                const text = Array.isArray(message.content)
-                    ? message.content.map((c: any) => typeof c === 'string' ? c : (c?.text ?? '')).filter(Boolean).join(' ')
-                    : (typeof (message as any).text === 'string' ? (message as any).text : '');
-                if (text) {
-                    const lastMsg = this.llmConversationHistory[this.llmConversationHistory.length - 1];
-                    if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.content !== text) {
-                        this.llmConversationHistory.push({ role: 'assistant', content: text });
-                        this.pruneLlmHistoryIfNeeded();
-                        await this.sessionManager.updateLlmHistory(this.llmConversationHistory);
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('[OrchestratorAgent] Failed to sync message to llmConversationHistory:', e);
-        }
-
-        // Opportunistically refresh session title
-        // Current logic in Orchestrator relies on state directly. Refactor to use SessionManager logic or keep local calc.
-        // We'll keep local calc but use sessionManager.updateSessionTitle
-        try {
-            const activeId = this.sessionManager.getActiveSessionId();
-            if (activeId) {
-                let shouldDeriveTitle = false;
-                // Only derive if message count is low or if it's the first message?
-                // Old logic: "if message.author === 'user' { ... } else if agent ... "
-                // Realistically, title should be derived from first user message.
-                // Or we call `updateSessionTitleSummary` which uses LLM.
-                // The old logic also had a simple heuristic title setter.
-                
-                // Let's call the AI summarizer
-                (async () => { try { await this.updateSessionTitleSummary(); } catch {} })();
-                
-                // Simple heuristic title fallback if title is default?
-                // We'll leave it to updateSessionTitleSummary for now or existing simple logic.
-                // The old code had simple logic inside addMessageToHistory. 
-                // Let's preserve the simple logic:
-                if (message.author === 'user' || message.author === 'agent') {
-                    // Only update if it's roughly the first message or so?
-                    // The old logic just updated it every time? No, it seemed to just set it.
-                    // Actually, it updated it locally in 'sessions' array then saved.
-                    // We'll skip the simple heuristic and rely on updateSessionTitleSummary (AI) or assume SessionManager handles default.
-                    // Or replicate simple logic:
-                    let text = '';
-                    if (Array.isArray(message.content)) {
-                         text = message.content.map((c: any) => typeof c === 'string' ? c : (c?.text ?? '')).filter(Boolean).join(' ');
-                    } else if (typeof (message as any).text === 'string') {
-                         text = (message as any).text;
-                    }
-                    const firstLine = (text || '').split(/\r?\n/)[0].trim();
-                    if (firstLine && currentMessages.length <= 1) { // Only first message
-                         const maxLen = 60;
-                         const summary = firstLine.length > maxLen ? firstLine.slice(0, maxLen - 1) + '…' : firstLine;
-                         await this.sessionManager.updateSessionTitle(activeId, summary);
-                    }
-                }
-            }
-        } catch {}
-    }
 
     /**
      * Prunes old system messages from llmConversationHistory if the context gets too long.
@@ -2327,12 +2194,12 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
 			return { thought, userFacingText };
 	}
 
-	private parseAndSendFinalResponse(rawContent: string | null): void {
+	private parseAndSendFinalResponse(rawContent: string | null, sessionId?: string): void {
 		console.log(`[${OrchestratorAgent.AGENT_ID}] Raw LLM response content for final processing:`, rawContent);
 
 		if (!rawContent) {
 			this.developerLogService.log("Received null or empty content from LLM for final processing.");
-            this._onDidPostMessage.fire({ command: 'responseEnd', payload: {} });
+            this._onDidPostMessage.fire({ command: 'responseEnd', payload: {}, sessionId: sessionId });
 			return;
 		}
 
@@ -2351,14 +2218,15 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         const historyMessage: ChatMessage = {
             author: 'agent',
             content: [{ type: 'text', text: textToDisplay }],
+            thought: thought || undefined, // Critical: capture thought for session reloads
             senderName: OrchestratorAgent.AGENT_ID,
             timestamp: new Date().toISOString()
         };
-        this.addMessageToHistory(historyMessage);
+        this.addMessageToHistory(historyMessage, sessionId);
 
-        this._onDidPostMessage.fire({
-            command: 'response',
-            payload: { thought: thought, text: textToDisplay }
+        this.postMessageToSession(sessionId || '', 'response', { 
+            thought: thought || undefined, 
+            text: textToDisplay 
         });
     }
 
@@ -2756,8 +2624,29 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
     // kept postMessageToSession as it was missing in middle
 
     private postMessageToSession(sessionId: string, command: string, payload: any): void {
-        if (sessionId === this.activeSessionId) {
-            this._onDidPostMessage.fire({ command, payload });
+        this._onDidPostMessage.fire({ 
+            command, 
+            payload,
+            sessionId: sessionId || this.activeSessionId 
+        });
+    }
+
+    private async addMessageToHistory(message: ChatMessage, sessionId?: string): Promise<void> {
+        const targetId = sessionId || this.activeSessionId;
+        if (!targetId) {
+            this.developerLogService.log(`[OrchestratorAgent] Warning: Attempted to add message to history with no active session.`);
+            return;
+        }
+
+        try {
+            await this.sessionManager.addMessageToSession(targetId, message);
+            
+            // If it's the active session, sync local state
+            if (targetId === this.activeSessionId) {
+                this.chatHistory = this.sessionManager.getState()?.messages || [];
+            }
+        } catch (e: any) {
+            this.developerLogService.log(`[OrchestratorAgent] addMessageToHistory failed: ${e?.message || e}`);
         }
     }
     

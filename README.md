@@ -5,7 +5,7 @@
 </p>
 
 <div align="center">
-  <a href="LICENSE.txt"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3"></a>
   <a href="https://marketplace.visualstudio.com/items?itemName=Viper.viper"><img src="https://img.shields.io/visual-studio-marketplace/v/Viper.viper.svg?color=blue&label=VS%20Marketplace" alt="VS Marketplace"></a>
 </div>
 
@@ -19,6 +19,7 @@ Viper is a sophisticated multi-agent AI coding partner integrated into VS Code. 
 *   **A2A Communication**: All inter-agent communication is handled via a standard, HTTP-based Agent-to-Agent protocol, making the system modular and extensible.
 *   **Dynamic Task Planning**: The `OrchestratorAgent` dynamically creates execution plans based on user goals and delegates tasks to the appropriate specialist agents.
 *   **Proactive & Background Tasks**: Agents like `CodeWatcherAgent` and `SecurityAnalysisAgent` work in the background to find issues and keep your project indexed.
+*   **Security & Automation Settings**: Highly granular controls for `Strict Mode`, `Review Policy`, `Terminal Auto-Execution`, and `File Access Policy` to ensure safe autonomous operations.
 *   **Extensible Tooling**: The system uses the Model Context Protocol (MCP) standard, allowing agents to use tools like file I/O, terminal execution, and web search.
 
 ## Architecture
@@ -47,8 +48,8 @@ Detailed documentation about the project's architecture and philosophy can be fo
 
 ## Contributing
 
-Contributions are welcome! Please see the [Contributing Guidelines](./CONTRIBUTING.md) for more details on how to get started.
+Contributions are welcome!
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.txt](./LICENSE.txt) file for details.
+This project is licensed under the GNU Affero General Public License v3.0 - see the [LICENSE](./LICENSE) file for details.

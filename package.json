@@ -323,6 +323,40 @@
             "type": "number",
             "description": "Manually override the maximum context window size (tokens). Leave empty to use auto-detection.",
             "scope": "application"
+          },
+          "viper.security.strictMode": {
+            "type": "boolean",
+            "default": false,
+            "description": "When enabled, enforces settings that prevent the agent from autonomously running targeted exploits and requires human review for all agent actions.",
+            "scope": "application"
+          },
+          "viper.artifact.reviewPolicy": {
+            "type": "string",
+            "enum": [
+              "always",
+              "agent-decides",
+              "never"
+            ],
+            "default": "agent-decides",
+            "description": "Specifies Agent's behavior when asking for review on artifacts.",
+            "scope": "application"
+          },
+          "viper.terminal.autoExecution": {
+            "type": "boolean",
+            "default": false,
+            "description": "Allow agent to run terminal commands without asking (Disabled if Strict Mode is on).",
+            "scope": "application"
+          },
+          "viper.fileAccess.policy": {
+            "type": "string",
+            "enum": [
+              "allow-all",
+              "request-each",
+              "read-only"
+            ],
+            "default": "request-each",
+            "description": "Controls how the agent can interact with your files.",
+            "scope": "application"
           }
         }
       }

@@ -273,6 +273,20 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                         const maxContextOverride = this.configService.getMaxContextOverride();
                         const useVSCodeThinkingLang = this.configService.getUseVSCodeThinkingLang();
                         const useVSCodeUserLang = this.configService.getUseVSCodeUserLang();
+                        
+                        // New Global settings
+                        const globalRequestTimeout = this.configService.getGlobalRequestTimeout();
+                        const globalTemperature = this.configService.getGlobalTemperature();
+                        const safetyBufferRatio = this.configService.getSafetyBufferRatio();
+                        const reasoningBudgets = this.configService.getReasoningBudgets();
+                        const globalReasoningEffort = this.configService.getGlobalReasoningEffort();
+
+                        // Security & Automation settings
+                        const strictMode = this.configService.getStrictMode();
+                        const reviewPolicy = this.configService.getReviewPolicy();
+                        const terminalAutoExecution = this.configService.getTerminalAutoExecution();
+                        const fileAccessPolicy = this.configService.getFileAccessPolicy();
+
                         this.postMessage({ 
                             command: 'featureToggles', 
                             payload: { 
@@ -284,7 +298,16 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                                 userLanguage,
                                 maxContextOverride,
                                 useVSCodeThinkingLang,
-                                useVSCodeUserLang
+                                useVSCodeUserLang,
+                                globalRequestTimeout,
+                                globalTemperature,
+                                safetyBufferRatio,
+                                reasoningBudgets,
+                                globalReasoningEffort,
+                                strictMode,
+                                reviewPolicy,
+                                terminalAutoExecution,
+                                fileAccessPolicy
                             } 
                         });
                     } catch (e: any) {
@@ -298,10 +321,69 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                                 thinkingLanguage: 'English',
                                 userLanguage: 'English',
                                 useVSCodeThinkingLang: false,
-                                useVSCodeUserLang: false
+                                useVSCodeUserLang: false,
+                                globalRequestTimeout: 60000,
+                                globalTemperature: 0.1,
+                                safetyBufferRatio: 0.9,
+                                reasoningBudgets: { low: 0.2, medium: 0.5, high: 0.8 },
+                                globalReasoningEffort: 'medium',
+                                strictMode: false,
+                                reviewPolicy: 'agent-decides',
+                                terminalAutoExecution: false,
+                                fileAccessPolicy: 'request-each'
                             } 
                         });
                     }
+                    break;
+                }
+                case 'setGlobalRequestTimeout': {
+                    try {
+                        const { timeout } = message.payload;
+                        if (typeof timeout === 'number') {
+                            await this.configService.setGlobalRequestTimeout(timeout);
+                            this.postMessage({ command: 'featureToggles', payload: { globalRequestTimeout: timeout } });
+                        }
+                    } catch (e) { console.error('setGlobalRequestTimeout failed', e); }
+                    break;
+                }
+                case 'setGlobalTemperature': {
+                    try {
+                        const { temperature } = message.payload;
+                        if (typeof temperature === 'number') {
+                            await this.configService.setGlobalTemperature(temperature);
+                            this.postMessage({ command: 'featureToggles', payload: { globalTemperature: temperature } });
+                        }
+                    } catch (e) { console.error('setGlobalTemperature failed', e); }
+                    break;
+                }
+                case 'setSafetyBufferRatio': {
+                    try {
+                        const { ratio } = message.payload;
+                        if (typeof ratio === 'number') {
+                            await this.configService.setSafetyBufferRatio(ratio);
+                            this.postMessage({ command: 'featureToggles', payload: { safetyBufferRatio: ratio } });
+                        }
+                    } catch (e) { console.error('setSafetyBufferRatio failed', e); }
+                    break;
+                }
+                case 'setReasoningBudgets': {
+                    try {
+                        const budgets = message.payload;
+                        if (budgets && typeof budgets === 'object') {
+                            await this.configService.setReasoningBudgets(budgets);
+                            this.postMessage({ command: 'featureToggles', payload: { reasoningBudgets: budgets } });
+                        }
+                    } catch (e) { console.error('setReasoningBudgets failed', e); }
+                    break;
+                }
+                case 'setGlobalReasoningEffort': {
+                    try {
+                        const { effort } = message.payload;
+                        if (effort === 'low' || effort === 'medium' || effort === 'high') {
+                            await this.configService.setGlobalReasoningEffort(effort);
+                            this.postMessage({ command: 'featureToggles', payload: { globalReasoningEffort: effort } });
+                        }
+                    } catch (e) { console.error('setGlobalReasoningEffort failed', e); }
                     break;
                 }
                 case 'setSummarizeTokenLimit': {
@@ -376,6 +458,54 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                         }
                     } catch (e) {
                         console.error('setUserLanguage failed', e);
+                    }
+                    break;
+                }
+                case 'setStrictMode': {
+                    try {
+                        const { enabled } = message.payload;
+                        if (typeof enabled === 'boolean') {
+                            await this.configService.setStrictMode(enabled);
+                            this.postMessage({ command: 'featureToggles', payload: { strictMode: enabled } });
+                        }
+                    } catch (e) {
+                        console.error('setStrictMode failed', e);
+                    }
+                    break;
+                }
+                case 'setReviewPolicy': {
+                    try {
+                        const { policy } = message.payload;
+                        if (typeof policy === 'string') {
+                            await this.configService.setReviewPolicy(policy as any);
+                            this.postMessage({ command: 'featureToggles', payload: { reviewPolicy: policy } });
+                        }
+                    } catch (e) {
+                        console.error('setReviewPolicy failed', e);
+                    }
+                    break;
+                }
+                case 'setTerminalAutoExecution': {
+                    try {
+                        const { enabled } = message.payload;
+                        if (typeof enabled === 'boolean') {
+                            await this.configService.setTerminalAutoExecution(enabled);
+                            this.postMessage({ command: 'featureToggles', payload: { terminalAutoExecution: enabled } });
+                        }
+                    } catch (e) {
+                        console.error('setTerminalAutoExecution failed', e);
+                    }
+                    break;
+                }
+                case 'setFileAccessPolicy': {
+                    try {
+                        const { policy } = message.payload;
+                        if (typeof policy === 'string') {
+                            await this.configService.setFileAccessPolicy(policy as any);
+                            this.postMessage({ command: 'featureToggles', payload: { fileAccessPolicy: policy } });
+                        }
+                    } catch (e) {
+                        console.error('setFileAccessPolicy failed', e);
                     }
                     break;
                 }
@@ -742,7 +872,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
 
                         // Fetch API keys for each profile for UI editing
                         const profiles = await Promise.all(rawProfiles.map(async p => {
-                            const apiKey = await this.configService.getProfileApiKey(p.id);
+                            const apiKey = await this.configService.getProfileApiKey(p.id!);
                             return { ...p, apiKey };
                         }));
                         const activeProfileId = this.configService.getActiveProfileId();
