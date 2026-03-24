@@ -7,12 +7,11 @@ import { getCriticalRules } from '../sections/Rules';
 import { getUserPreferences, getUserCustomRules } from '../sections/UserPreferences';
 import { getComplexityControl } from '../sections/Complexity';
 import { getToolUsage } from '../sections/ToolUsage';
-import { getChatHistory } from '../sections/History';
-import { getProjectContext } from '../sections/Context';
 import { getA2AInstructions } from '../sections/A2A';
 
 export const getBrainstormSystemPrompt = (options: AgentSystemPromptOptions): string => {
-    const { projectContext = '', userInput = '', userPrefs, complexity = 50, creationTime, thinkingLang, userLang } = options;
+    const { userPrefs, complexity = 50, thinkingLang, userLang } = options;
+
     const agentName = 'BrainstormAgent';
 
     const builder = new PromptBuilder();
@@ -23,8 +22,10 @@ export const getBrainstormSystemPrompt = (options: AgentSystemPromptOptions): st
         roleTitle: 'Solutions Architect & Tech Lead',
         coreFunction: 'Provide high-level architectural decisions, tech stack comparisons, and research.',
         mindset: '**Exploratory & Evaluative**. Weigh pros/cons. Cite sources (official docs) via `web_search`.',
-        creationTime
+        // Use a coarse timestamp (day-level) or removed for caching
+        creationTime: new Date().toISOString().split('T')[0]
     }));
+
 
     // 2. Principles
     builder.addSection(getCorePrinciples([
@@ -65,14 +66,12 @@ export const getBrainstormSystemPrompt = (options: AgentSystemPromptOptions): st
     }));
     builder.addSection(getExamples());
 
-    // 8. Context & History
-    builder.addSection(`ASSIGNED TASK:
-${userInput || 'N/A'}`);
-    builder.addSection(getProjectContext(projectContext || ''));
-    builder.addSection(getChatHistory());
+    // 7. Context & History (Tier 5 - Handled by runtime, adding placeholders for builder consistency)
+    // builder.addSection(getChatHistory()); // Removed from system prompt to protect cache
 
     return builder.build();
 };
+
 
 function getExamples(): string {
     return `<examples>

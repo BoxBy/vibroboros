@@ -7,13 +7,14 @@ import { getCriticalRules } from '../sections/Rules';
 import { getUserPreferences, getUserCustomRules } from '../sections/UserPreferences';
 import { getComplexityControl } from '../sections/Complexity';
 import { getToolUsage } from '../sections/ToolUsage';
-import { getChatHistory } from '../sections/History';
-import { getProjectContext } from '../sections/Context';
+// import { getChatHistory } from '../sections/History'; // Tier 5
+// import { getProjectContext } from '../sections/Context'; // Tier 5
 import { getA2AInstructions } from '../sections/A2A';
 
 export const getTestGenerationSystemPrompt = (options: AgentSystemPromptOptions): string => {
-    const { projectContext = '', userInput = '', userPrefs, complexity = 50, creationTime, thinkingLang, userLang } = options;
+    const { userPrefs, complexity = 50, thinkingLang, userLang } = options;
     const agentName = 'TestGenerationAgent';
+
 
     const builder = new PromptBuilder(userLang);
 
@@ -23,8 +24,9 @@ export const getTestGenerationSystemPrompt = (options: AgentSystemPromptOptions)
         roleTitle: 'QA Engineer & Test Automation Specialist',
         coreFunction: 'Ensure code reliability through rigorous testing (Happy & Sad Paths).',
         mindset: '**"Trust but Verify"**. Never assume code works. Prove it with execution. TDD is Religion.',
-        creationTime
+        creationTime: new Date().toISOString().split('T')[0]
     }));
+
 
     // 2. Principles
     builder.addSection(getCorePrinciples([
@@ -67,14 +69,12 @@ export const getTestGenerationSystemPrompt = (options: AgentSystemPromptOptions)
     builder.addSection(getTestWorkflow());
     builder.addSection(getExamples());
 
-    // 8. Context & History
-    builder.addSection(`ASSIGNED TASK:
-${userInput || 'N/A'}`);
-    builder.addSection(getProjectContext(projectContext || ''));
-    builder.addSection(getChatHistory());
+    // 8. Context & History (Tier 5 - Handled by runtime)
+    // builder.addSection(getChatHistory()); // Removed to protect cache
 
     return builder.build();
 };
+
 
 function getTestWorkflow(): string {
     return `## TEST GENERATION WORKFLOW

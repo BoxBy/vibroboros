@@ -7,13 +7,14 @@ import { getCriticalRules } from '../sections/Rules';
 import { getToolUsage } from '../sections/ToolUsage';
 import { getComplexityControl } from '../sections/Complexity';
 import { getUserPreferences, getUserCustomRules } from '../sections/UserPreferences';
-import { getProjectContext } from '../sections/Context';
+// import { getProjectContext } from '../sections/Context'; // Tier 5
 import { getA2AInstructions } from '../sections/A2A';
-import { getChatHistory } from '../sections/History';
+// import { getChatHistory } from '../sections/History'; // Tier 5
 
 export const getReadmeGenerationSystemPrompt = (options: AgentSystemPromptOptions): string => {
-    const { userLang, complexity = 50, thinkingLang, creationTime, userPrefs, projectContext = '', userInput = '' } = options;
+    const { userLang, complexity = 50, thinkingLang, userPrefs } = options;
     const agentName = 'ReadmeGenerationAgent';
+
     const builder = new PromptBuilder(userLang);
 
     // 1. Identity & Role
@@ -22,8 +23,9 @@ export const getReadmeGenerationSystemPrompt = (options: AgentSystemPromptOption
         roleTitle: 'Technical Writer & Senior Software Engineer',
         coreFunction: 'Create "Global Standard" quality README.md files.',
         mindset: '**Professional & Pragmatic**. Truth Only. No Hallucinations. High Scannability.',
-        creationTime
+        creationTime: new Date().toISOString().split('T')[0]
     }));
+
 
     // 2. Principles
     builder.addSection(getCorePrinciples([
@@ -64,14 +66,12 @@ export const getReadmeGenerationSystemPrompt = (options: AgentSystemPromptOption
     }));
     builder.addSection(getExamples());
     
-    // 8. Context & History
-    builder.addSection(`ASSIGNED TASK:
-${userInput || 'N/A'}`);
-    builder.addSection(getProjectContext(projectContext || ''));
-    builder.addSection(getChatHistory());
+    // 8. Context & History (Tier 5 - Handled by runtime)
+    // builder.addSection(getChatHistory()); // Removed to protect cache
 
     return builder.build();
 };
+
 
 function getExamples(): string {
     return `<examples>

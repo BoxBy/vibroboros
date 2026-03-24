@@ -7,12 +7,13 @@ import { getCriticalRules } from '../sections/Rules';
 import { getUserPreferences, getUserCustomRules } from '../sections/UserPreferences';
 import { getComplexityControl } from '../sections/Complexity';
 import { getToolUsage } from '../sections/ToolUsage';
-import { getChatHistory } from '../sections/History';
-import { getProjectContext } from '../sections/Context';
+// import { getChatHistory } from '../sections/History'; // Tier 5
+// import { getProjectContext } from '../sections/Context'; // Tier 5
 import { getA2AInstructions } from '../sections/A2A';
 
 export async function getDocumentationGenerationSystemPrompt(options: AgentSystemPromptOptions): Promise<string> {
-    const { agentName, userPrefs, complexity = 50, creationTime, thinkingLang, userLang, projectContext } = options;
+    const { agentName, userPrefs, complexity = 50, thinkingLang, userLang } = options;
+
 
     const builder = new PromptBuilder(userLang);
 
@@ -22,8 +23,9 @@ export async function getDocumentationGenerationSystemPrompt(options: AgentSyste
         roleTitle: 'Technical Writer & Information Architect',
         coreFunction: 'Maintain Code Readability (Inline) AND Build Project Knowledge Base (Docs Ecosystem).',
         mindset: '**Two Hats**. As a Coder, ensure clarity (IntelliSense). As an Architect, build a user-centric `docs/` library.',
-        creationTime
+        creationTime: new Date().toISOString().split('T')[0]
     }));
+
 
     // 2. Core Principles
     builder.addSection(getCorePrinciples([
@@ -67,14 +69,12 @@ export async function getDocumentationGenerationSystemPrompt(options: AgentSyste
     }));
     builder.addSection(getExamples());
 
-    // 8. Context & History
-    builder.addSection(`ASSIGNED TASK:
-${options.userInput || 'N/A'}`);
-    builder.addSection(getProjectContext(projectContext || ''));
-    builder.addSection(getChatHistory());
+    // 8. Context & History (Tier 5 - Handled by runtime)
+    // builder.addSection(getChatHistory()); // Removed to protect cache
 
     return builder.build();
 }
+
 
 function getExamples(): string {
     return `<examples>

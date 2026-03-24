@@ -248,10 +248,10 @@ export class OrchestratorAgent extends BaseAgent {
     }
 
     // --- Prompt Generation ---
-    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext, seniorIntuition?: string): Promise<string> {
         console.log('[OrchestratorAgent] getSystemPrompt: Starting...');
         // Use SystemPromptFactory with 'router' role (injected via BaseAgent).
-        let prompt = await this.systemPromptFactory.generate('router', OrchestratorAgent.AGENT_ID, 3, userInput); // Default complexity 3 (Caution)
+        let prompt = await this.systemPromptFactory.generate('router', OrchestratorAgent.AGENT_ID, 3, userInput, undefined, seniorIntuition); // Default complexity 3 (Caution)
         console.log(`[OrchestratorAgent] getSystemPrompt: userInput length=${userInput?.length}, preview=${userInput?.slice(0, 50)}`);
         
         console.log('[OrchestratorAgent] getSystemPrompt: SystemPromptFactory returned.');
@@ -1282,9 +1282,7 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                 apiKeys[0] || '',
                 endpoint,
                 [],
-                model,
-                undefined,
-                10000 // Short timeout for UI responsiveness
+                model
             );
             const content = (response.choices?.[0]?.message?.content ?? (response as any).choices?.[0]?.text ?? '').toString().trim();
             
@@ -1325,9 +1323,17 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
         const sessionId = this.activeSessionId; // Capture session ID at start
         if (!userText) { return; }
 
-    // Handle slash commands
-    if (userText.startsWith('/')) {
-        const cmd = userText.trim();
+        // Phase 2: Dynamic Discovery (Tier 5) - Inject Skeleton Map if needed
+        try {
+            await this.injectSkeletonMap(sessionId);
+        } catch (e) {
+            this.developerLogService.log(`[OrchestratorAgent] Skeleton Injection failed: ${e}`);
+        }
+
+        // Handle slash commands
+        if (userText.startsWith('/')) {
+            const cmd = userText.trim();
+
         if (cmd === '/clear') {
              this.llmConversationHistory = [];
              // Clear session messages via sessionManager effectively?
@@ -1467,8 +1473,8 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                      const filePath = event.data.uri;
 
                      // Create A2A standard file-edit message
-                     const a2aMessage: A2AMessage = {
-                         kind: 'message',
+                     const a2aMessage: any = {
+                         type: 'message',
                          messageId: this.generateMessageId(),
                          role: 'agent',
                          parts: [{
@@ -1486,6 +1492,7 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                          }],
                          contextId: this.activeSessionId
                      };
+
 
                      // Also create history message for persistence
                      const historyMsg: ChatMessage = {
@@ -2699,8 +2706,8 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                     const action = message.payload.action || "create";
 
                     // Create A2A standard file-edit message
-                    const a2aMessage: A2AMessage = {
-                        kind: 'message',
+                    const a2aMessage: any = {
+                        type: 'message',
                         messageId: this.generateMessageId(),
                         role: 'agent',
                         parts: [{
@@ -2716,6 +2723,7 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
                         }],
                         contextId: this.activeSessionId
                     };
+
 
                     // Also create history message for persistence
                     const historyMsg: any = {
@@ -2803,7 +2811,62 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
     }
 
     // --- Validation Override ---
+    /**
+     * Phase 2: Dynamic Discovery (Tier 5)
+     * Injects a lightweight directory structure (Skeleton) into the conversation history.
+     */
+    private async injectSkeletonMap(sessionId: string): Promise<void> {
+        const state = this.sessionManager.getState(sessionId);
+        if (!state) return;
+
+        // Only inject once per session or if history is empty
+        const hasMap = (state.messages || []).some(m => m.kind === 'system' && m.content?.[0]?.text?.includes('WORKSPACE STRUCTURE'));
+        if (hasMap) return;
+
+        this.developerLogService.log(`[OrchestratorAgent] Injecting Skeleton Map for session ${sessionId}...`);
+        
+        try {
+            const mcpClient = getMcpClient();
+            // Fetch top-level directory structure (depth 1-2)
+            const listResult = await mcpClient.callTool({ 
+                name: 'list_dir', 
+                arguments: { directoryPath: '.' } 
+            } as any);
+
+            const entries: any[] = (listResult as any)?.content || [];
+            // Format a lightweight skeleton
+            const skeleton = entries
+                .slice(0, 50) // Limit to avoid token explosion
+                .map(e => `${e.type === 'directory' ? '📁' : '📄'} ${e.path}`)
+                .join('\n');
+
+            const mapText = `## WORKSPACE STRUCTURE (Skeleton)\n\`\`\`\n${skeleton}\n\`\`\`\n\nUse this map to find packages or files. For precise file contents or deep searches, use tools like list_dir, grep_search, or get_definition.`;
+
+            const mapMsg: ChatMessage = {
+                author: 'agent',
+                senderName: 'System Memory',
+                kind: 'system' as any, // Use system/hidden kind if available in UI, or just 'normal' for now
+                content: [{ type: 'text', text: mapText }],
+                timestamp: new Date().toISOString(),
+                hidden: true // Mark as hidden if UI supports it
+            } as any;
+
+            await this.addMessageToHistory(mapMsg, sessionId);
+            // Also inject into LLM history for current turn
+            this.llmConversationHistory.push({ role: 'system', content: mapText });
+            
+            this.developerLogService.log(`[OrchestratorAgent] Skeleton Map injected successfully.`);
+        } catch (e) {
+            throw e;
+        }
+    }
+
+    private generateMessageId(): string {
+        return uuidv4();
+    }
+
     protected validateA2AResponse(text: string): { valid: boolean; error?: string } {
+
         const baseValidation = super.validateA2AResponse(text);
         if (!baseValidation.valid) {
             return baseValidation;

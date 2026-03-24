@@ -59,6 +59,12 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    /* OS consistency fixes */
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    box-sizing: border-box;
+    font-family: inherit;
 }
 
 .icon-button:hover {
@@ -269,12 +275,17 @@ body {
     width: 28px;
     height: 28px;
     padding: 0;
-    border: none;
+    border: 1px solid transparent; /* Explicit border for consistency */
     border-radius: 4px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    /* OS consistency fixes */
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    box-sizing: border-box;
 }
 
 .input-action-btn.primary {

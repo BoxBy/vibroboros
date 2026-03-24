@@ -3,7 +3,7 @@
  * Generates system prompts for different agent roles
  */
 
-export type AgentRole = 'router' | 'pm' | 'planner' | 'worker' | 'debugger' | 'CodeEditAgent' | 'BugFixAgent' | 'BrainstormAgent' | 'ReadmeGenerationAgent' | 'ContextManagementAgent' | 'TaskDecompositionAgent' | 'TestGenerationAgent' | 'DocumentationGenerationAgent';
+export type AgentRole = 'router' | 'pm' | 'planner' | 'worker' | 'debugger' | 'CodeEditAgent' | 'BugFixAgent' | 'BrainstormAgent' | 'ReadmeGenerationAgent' | 'ContextManagementAgent' | 'TaskDecompositionAgent' | 'TestGenerationAgent' | 'DocumentationGenerationAgent' | 'PromptGenerationAgent' | 'RefactoringSuggestionAgent';
 
 export interface ContextOptions {
     includeDirectoryStructure?: boolean;
@@ -23,13 +23,14 @@ export interface GenerateOptions {
     complexity?: number;
     userInput?: string;
     contextOptions?: ContextOptions;
+    seniorIntuition?: string;
 }
 
 export interface ISystemPromptFactory {
     /**
      * Generate a system prompt for the specified agent role
      */
-    generate(role: AgentRole, agentName: string, complexity?: number, userInput?: string, contextOptions?: ContextOptions): Promise<string>;
+    generate(role: AgentRole, agentName: string, complexity?: number, userInput?: string, contextOptions?: ContextOptions, seniorIntuition?: string): Promise<string>;
 
     /**
      * Generate a system prompt with full options
@@ -40,14 +41,4 @@ export interface ISystemPromptFactory {
      * Get descriptions of all available agents
      */
     getAgentDescriptions(): string;
-
-    /**
-     * Get the project directory structure
-     */
-    getDirectoryStructure(): string;
-
-    /**
-     * Get smart context for a target file
-     */
-    getSmartContext(targetFile: string, relatedFiles: string[]): string;
 }

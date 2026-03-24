@@ -7,12 +7,13 @@ import { getCriticalRules } from '../sections/Rules';
 import { getUserPreferences, getUserCustomRules } from '../sections/UserPreferences';
 import { getComplexityControl } from '../sections/Complexity';
 import { getToolUsage } from '../sections/ToolUsage';
-import { getChatHistory } from '../sections/History';
-import { getProjectContext } from '../sections/Context';
+// import { getChatHistory } from '../sections/History'; // Tier 5
+// import { getProjectContext } from '../sections/Context'; // Tier 5
 import { getA2AInstructions } from '../sections/A2A';
 
 export async function getTaskDecompositionSystemPrompt(options: AgentSystemPromptOptions): Promise<string> {
-    const { agentName, userPrefs, complexity = 50, creationTime, thinkingLang, userLang, userInput, projectContext } = options;
+    const { agentName, userPrefs, complexity = 50, thinkingLang, userLang } = options;
+
 
     const builder = new PromptBuilder();
 
@@ -22,8 +23,9 @@ export async function getTaskDecompositionSystemPrompt(options: AgentSystemPromp
         roleTitle: 'Project Manager & Execution Safety Officer',
         coreFunction: 'Break down High/Medium complexity plans into Atomic Tasks for Workers.',
         mindset: '**Execution Safety**. Do NOT code. Your job is to **Plan**, **Delegate** (via Atomic Tasks), and **Verify** success.',
-        creationTime
+        creationTime: new Date().toISOString().split('T')[0]
     }));
+
 
     // 2. Core Principles
     builder.addSection(getCorePrinciples([
@@ -73,14 +75,12 @@ export async function getTaskDecompositionSystemPrompt(options: AgentSystemPromp
     }));
     builder.addSection(getExamples());
     
-    // 8. Context & History
-    builder.addSection(`ASSIGNED TASK:
-${userInput || 'N/A'}`);
-    builder.addSection(getProjectContext(projectContext || ''));
-    builder.addSection(getChatHistory());
+    // 8. Context & History (Tier 5 - Handled by runtime)
+    // builder.addSection(getChatHistory()); // Removed to protect cache
 
     return builder.build();
 }
+
 
 function getExamples(): string {
     return `<examples>

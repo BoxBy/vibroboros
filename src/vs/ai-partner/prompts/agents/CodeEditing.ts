@@ -6,13 +6,14 @@ import { getCriticalRules } from '../sections/Rules';
 import { getUserPreferences, getUserCustomRules } from '../sections/UserPreferences';
 import { getComplexityControl } from '../sections/Complexity';
 import { getToolUsage } from '../sections/ToolUsage';
-import { getChatHistory } from '../sections/History';
-import { getProjectContext } from '../sections/Context';
+// import { getChatHistory } from '../sections/History'; // Tier 5
+// import { getProjectContext } from '../sections/Context'; // Tier 5
 import { getA2AInstructions } from '../sections/A2A';
 import { PromptBuilder } from '../PromptBuilder';
 
 export async function getCodeEditSystemPrompt(options: AgentSystemPromptOptions): Promise<string> {
-    const { agentName, complexity = 50, userPrefs, thinkingLang, userLang, creationTime } = options;
+    const { agentName, complexity = 50, userPrefs, thinkingLang, userLang } = options;
+
 
     const builder = new PromptBuilder();
 
@@ -22,8 +23,9 @@ export async function getCodeEditSystemPrompt(options: AgentSystemPromptOptions)
         roleTitle: 'Senior Implementation Engineer',
         coreFunction: 'Read code, Analyze structure, Implement changes, and Verify correctness.',
         mindset: '**Precision Engineering**. Do not guess. **Read** files first, **Plan** your changes, and **Execute** with surgical accuracy.',
-        creationTime
+        creationTime: new Date().toISOString().split('T')[0]
     }));
+
 
     // 2. Core Principles
     builder.addSection(getCorePrinciples([
@@ -57,14 +59,12 @@ export async function getCodeEditSystemPrompt(options: AgentSystemPromptOptions)
     }));
     builder.addSection(getExamples());
 
-    // 8. Context & History
-    builder.addSection(`ASSIGNED TASK:
-${options.userInput || 'N/A'}`);
-    builder.addSection(getProjectContext(options.projectContext));
-    builder.addSection(getChatHistory());
+    // 8. Context & History (Tier 5 - Handled by runtime)
+    // builder.addSection(getChatHistory()); // Removed to protect cache
 
     return builder.build();
 }
+
 
 function getExamples(): string {
     return `<examples>

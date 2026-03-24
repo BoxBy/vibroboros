@@ -10,8 +10,9 @@ import { DeveloperLogService } from '../../services/DeveloperLogService';
 import { getMcpClient } from "../../mcp_client_provider";
 import * as mcpClientModule from "@modelcontextprotocol/sdk/client";
 import { runAgenticLoop } from '../utils/agentHelpers';
-import { SemanticModelService } from '../../services/SemanticModelService';
 import { CompositionRoot, ServiceIdentifiers } from '../../di/CompositionRoot';
+import { IEpisodicMemoryService } from '../../di/interfaces/IEpisodicMemoryService';
+import { SymbolicSearchService } from '../../services/SymbolicSearchService';
 
 /**
  * Abstract base class for all agents in the Viper system.
@@ -22,14 +23,12 @@ export abstract class BaseAgent implements AgentExecutor {
     protected configService: ConfigService;
     protected mcpClient: mcpClientModule.Client;
     protected logger: DeveloperLogService;
-    protected worldModel: SemanticModelService;
 
     constructor(protected card: AgentCard) {
         this.llmService = CompositionRoot.resolve<LLMService>(ServiceIdentifiers.LLMService);
         this.configService = CompositionRoot.resolve<ConfigService>(ServiceIdentifiers.ConfigService);
         this.mcpClient = getMcpClient();
         this.logger = CompositionRoot.resolve<DeveloperLogService>(ServiceIdentifiers.Logger);
-        this.worldModel = CompositionRoot.resolve<SemanticModelService>(ServiceIdentifiers.SemanticModelService);
     }
 
     protected readonly endpoint: string = '';
@@ -199,25 +198,80 @@ export abstract class BaseAgent implements AgentExecutor {
         }
         this.cancellationTokenSource = new vscode.CancellationTokenSource();
 
-        try {
-            const userInput = this.extractUserInput(requestContext);
-            const correlationId = this.extractCorrelationId(requestContext);
+        let userInput = "";
+        let loopResult: any = null;
+        let modifiedFiles = new Set<string>();
 
-            // [User Request] Removed redundant log
-            // this.logProgress(eventBus, `[${this.card.name}] Received request from ${sender}`, requestContext);
+        try {
+            userInput = this.extractUserInput(requestContext);
+            const correlationId = this.extractCorrelationId(requestContext);
 
             // 1. Prepare Configuration (Prompt & Tools)
             this.log(`[Execute Debug] Getting System Prompt...`);
-            const systemPrompt = await this.getSystemPrompt(userInput, requestContext);
+            
+            // [Tier 5] Senior Intuition Injection (Automatic)
+            let seniorIntuition = "";
+            let currentAstSignatures: string[] = [];
+            
+            try {
+                const targetFiles = this.extractTargetFiles(requestContext, userInput);
+                if (targetFiles.length > 0) {
+                    const searchService = SymbolicSearchService.getInstance();
+                    const bounds = await searchService.getSymbolBoundsForFiles(targetFiles);
+                    currentAstSignatures = [...new Set(bounds.flatMap(b => b.symbols.map(s => s.name)))];
+                }
+                
+                const memory = CompositionRoot.resolve<IEpisodicMemoryService>(ServiceIdentifiers.EpisodicMemoryService);
+                seniorIntuition = await memory.getBlendedContext(5, this.card.name, userInput, currentAstSignatures);
+            } catch (e) {
+                this.log(`[BaseAgent] Failed to fetch Senior Intuition: ${e}`);
+            }
+
+            const systemPrompt = await this.getSystemPrompt(userInput, requestContext, seniorIntuition);
             this.log(`[Execute Debug] System Prompt retrieved. Getting Tools...`);
             const tools = await this.getTools(userInput, requestContext);
             this.log(`[Execute Debug] Tools retrieved. Getting LLM Config...`);
             const { model, apiKey, endpoint, provider } = await this.getLLMConfig();
-            this.log(`[Execute Debug] LLM Config retrieved. Model: ${model}, Provider: ${provider}, Key present: ${!!apiKey}`);
+            this.log(`[Execute Debug] LLM Config retrieved.`);
 
             // 2. Run Standard Agentic Loop
             this.log(`Starting Agentic Loop for task...`);
-            const loopResult = await runAgenticLoop({
+            
+            const proxyMcpClient = {
+                callTool: async (params: any) => {
+                    const result = await this.mcpClient.callTool(params);
+                    const name = params.name;
+                    const args = params.arguments;
+                    const isFileTool = ['create_file', 'write_to_file', 'edit_file', 'put_file', 'write_file', 'replace_file_content', 'multi_replace_file_content', 'delete_file'].includes(name);
+                    
+                    if (isFileTool) {
+                        const filePath = args.file_path || args.targetFile || args.TargetFile || args.path || args.filePath;
+                        const content = args.content || args.code || args.CodeContent || args.data || args.ReplacementContent || "";
+                        
+                        if (filePath) {
+                            const wsPath = this.configService.getWorkspacePath() || '';
+                            const absPath = path.isAbsolute(filePath) ? filePath : path.join(wsPath, filePath);
+                            modifiedFiles.add(absPath);
+                            
+                            const action = name.includes('delete') ? 'delete' : (name.includes('edit') || name.includes('update') || name.includes('replace') || name.includes('put') ? 'update' : 'create');
+
+                            eventBus.publish({
+                                type: 'resource-action',
+                                data: {
+                                    action: action,
+                                    uri: absPath,
+                                    content: content,
+                                    timestamp: new Date().toISOString()
+                                }
+                            } as any);
+                        }
+                    }
+                    return result;
+                },
+                listTools: async () => this.mcpClient.listTools(),
+            };
+
+            loopResult = await runAgenticLoop({
                 llmService: this.llmService,
                 provider: provider,
                 messages: [
@@ -229,46 +283,11 @@ export abstract class BaseAgent implements AgentExecutor {
                 tools: tools,
                 model: model,
                 agentName: this.card.name,
-                // Proxy MCP Client to intercept tool calls for UI events
-                mcpClient: {
-                    callTool: async (params: any) => {
-                        const result = await this.mcpClient.callTool(params);
-                        
-                        // Intercept file tools for UI
-                         const name = params.name;
-                         const args = params.arguments;
-                         const isFileTool = ['create_file', 'write_to_file', 'edit_file', 'put_file', 'write_file', 'replace_file_content', 'delete_file'].includes(name);
-                         
-                         if (isFileTool) {
-                             const filePath = args.file_path || args.targetFile || args.TargetFile || args.path || args.filePath || args.TargetFile;
-                             const content = args.content || args.code || args.CodeContent || args.data || args.ReplacementContent || "";
-                             
-                             if (filePath) {
-                                 const wsPath = this.configService.getWorkspacePath() || '';
-                                 const absPath = path.isAbsolute(filePath) ? filePath : path.join(wsPath, filePath);
-                                 const action = name.includes('delete') ? 'delete' : (name.includes('edit') || name.includes('update') || name.includes('replace') || name.includes('put') ? 'update' : 'create');
-
-                                 eventBus.publish({
-                                     type: 'resource-action',
-                                     data: {
-                                         action: action,
-                                         uri: absPath,
-                                         content: content,
-                                         timestamp: new Date().toISOString()
-                                     }
-                                 } as any);
-                             }
-                        }
-                        return result;
-                    },
-                    listTools: async () => this.mcpClient.listTools(),
-                    // Pass other methods if necessary, but loop mainly uses callTool
-                },
+                mcpClient: proxyMcpClient,
                 maxTurns: 100, // Increased limit per user request
                 logger: this.logger,
                 requireToolUse: false, 
                 validator: this.outputFormat === 'json' ? (text) => this.validateA2AResponse(text) : undefined,
-                // [BaseAgent] Update to support streaming flag
                 onProgress: (msg: string, isStreaming?: boolean) => this.logProgress(eventBus, msg, requestContext, isStreaming),
                 toolHandler: async (name, args) => {
                     // 1. Try Custom Tool Handler (Child Override)
@@ -278,15 +297,14 @@ export abstract class BaseAgent implements AgentExecutor {
                     }
 
                     // 2. Try Standard Core Tools (Internal implementation)
-                    const coreResult = await this.handleCoreTools(name, args, requestContext, eventBus);
+                    const coreResult = await this.handleCoreTools(name, args, requestContext, eventBus, modifiedFiles);
                     if (coreResult !== undefined) {
                         return coreResult;
                     }
                     
                     // 3. Fallback to MCP (Proxy handles event emission)
                     try {
-                        // The proxy passed in runAgenticLoop options will handle the resource-action event
-                        return await this.mcpClient.callTool({ name, arguments: args }); 
+                        return await proxyMcpClient.callTool({ name, arguments: args }); 
                     } catch (error: any) {
                         return `Error executing tool ${name}: ${error.message}`;
                     }
@@ -302,6 +320,49 @@ export abstract class BaseAgent implements AgentExecutor {
 
         } catch (error: any) {
              this.publishA2AError(eventBus, error, requestContext?.contextId);
+             if (!loopResult) {
+                 loopResult = { messages: [], result: `[ERROR] ${error.message}` };
+             } else {
+                 loopResult.result = `[ERROR] ${error.message}`;
+             }
+        } finally {
+            // 5. Record Episode for Senior Intuition
+            try {
+                if (userInput && loopResult) {
+                    const searchService = SymbolicSearchService.getInstance();
+                    const bounds = await searchService.getSymbolBoundsForFiles(Array.from(modifiedFiles));
+                    const affectedAstSignatures = [...new Set(bounds.flatMap(b => b.symbols.map(s => s.name)))];
+                    
+                    const memory = CompositionRoot.resolve<IEpisodicMemoryService>(ServiceIdentifiers.EpisodicMemoryService);
+                    
+                    let summary = loopResult.result && String(loopResult.result).startsWith('[ERROR]') 
+                        ? String(loopResult.result)
+                        : `Completed task with ${loopResult.messages?.length || 0} LLM turns.`;
+                        
+                    if (!summary.startsWith('[ERROR]') && loopResult.result && this.outputFormat === 'json') {
+                        try {
+                            const parsed = JSON.parse(loopResult.result);
+                            if (parsed.summary) summary = parsed.summary;
+                            else if (parsed.message) summary = parsed.message;
+                        } catch (e) {
+                             summary = String(loopResult.result).substring(0, 200);
+                        }
+                    }
+
+                    await memory.recordEpisode({
+                        agentName: this.card.name,
+                        contextId: requestContext.contextId,
+                        taskId: requestContext.taskId,
+                        userInput: userInput,
+                        summary: summary,
+                        rawLog: JSON.stringify(loopResult.messages || []),
+                        affectedAstSignatures: affectedAstSignatures
+                    });
+                    this.log(`Memory episode recorded with ${affectedAstSignatures.length} AST signatures.`);
+                }
+            } catch (e) {
+                this.log(`[BaseAgent] Failed to record memory episode: ${e}`);
+            }
         }
     }
 
@@ -326,10 +387,8 @@ export abstract class BaseAgent implements AgentExecutor {
      * Handle Standard Core Tools (Create File, Notify User)
      * These are available to ALL agents.
      */
-    protected async handleCoreTools(name: string, args: any, requestContext: RequestContext, eventBus: ExecutionEventBus): Promise<any | undefined> {
+    protected async handleCoreTools(name: string, args: any, requestContext: RequestContext, eventBus: ExecutionEventBus, modifiedFiles?: Set<string>): Promise<any | undefined> {
         // uuidv4 imported at top level
-        // [Debug] Check tool name interception
-        // console.log(`[BaseAgent] handleCoreTools: checking interception for '${name}'`);
 
         if (name === 'create_file' || name === 'write_to_file') { // Alias for safety
             const filePath = args.file_path || args.targetFile || args.TargetFile;
@@ -342,6 +401,10 @@ export abstract class BaseAgent implements AgentExecutor {
             const wsPath = this.configService.getWorkspacePath() || '';
             const absPath = path.isAbsolute(filePath) ? filePath : path.join(wsPath, filePath);
             
+            if (modifiedFiles) {
+                modifiedFiles.add(absPath);
+            }
+
             try {
                 await vscode.workspace.fs.writeFile(vscode.Uri.file(absPath), Buffer.from(content, 'utf-8'));
                 
@@ -431,8 +494,9 @@ export abstract class BaseAgent implements AgentExecutor {
      * Required: Provide the system prompt for the agent's persona.
      * @param userInput The extracted natural language intent from the user.
      * @param requestContext The full request context (for accessing data parts, correlation, etc.).
+     * @param seniorIntuition Optional Tier 5 historical intuition data.
      */
-    protected abstract getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string>;
+    protected abstract getSystemPrompt(userInput: string, requestContext: RequestContext, seniorIntuition?: string): Promise<string>;
 
     /**
      * Required: Provide the tools available to this agent.
@@ -566,6 +630,42 @@ export abstract class BaseAgent implements AgentExecutor {
         }
         
         return content;
+    }
+
+    protected extractTargetFiles(ctx: RequestContext, textContent: string): string[] {
+        const files: string[] = [];
+        const anyCtx = ctx as any;
+        const incoming = anyCtx?.message || anyCtx?.request?.message || anyCtx?.request || anyCtx;
+        
+        try {
+            const parts = Array.isArray(incoming?.parts) ? incoming.parts : (Array.isArray(anyCtx?.parts) ? anyCtx.parts : []);
+            const dataPart = parts.find((p: any) => p?.kind === 'data');
+            const payload = dataPart?.data?.payload || dataPart?.data || incoming?.payload || {};
+
+            const targetFile = payload.targetFile || payload.target_file;
+            const relatedFiles = payload.relatedFiles || payload.related_files;
+
+            const wsPath = this.configService.getWorkspacePath() || '';
+            const toAbs = (p: string) => path.isAbsolute(p) ? p : path.join(wsPath, p);
+
+            if (targetFile) files.push(toAbs(targetFile));
+            if (Array.isArray(relatedFiles)) {
+                files.push(...relatedFiles.map(toAbs));
+            }
+            
+            // Extract trailing paths from text as heuristic since prompt texts often inject related files
+            const pathRegex = /(?:\/|[a-zA-Z]:\\)(?:[^\s"'<>|]+)/g;
+            const matches = textContent.match(pathRegex);
+            if (matches) {
+                matches.forEach(m => {
+                    if (m.includes('.') && !m.endsWith('.')) {
+                        files.push(path.isAbsolute(m) ? m : path.join(wsPath, m));
+                    }
+                });
+            }
+        } catch (e) {}
+
+        return [...new Set(files)];
     }
 
     protected extractSender(ctx: RequestContext): string {

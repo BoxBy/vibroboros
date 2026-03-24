@@ -1,4 +1,5 @@
-import { SystemPromptFactory } from '../services/SystemPromptFactory';
+import { CompositionRoot, ServiceIdentifiers } from '../di/CompositionRoot';
+import { ISystemPromptFactory } from '../di/interfaces/ISystemPromptFactory';
 import * as vscode from 'vscode';
 import { AgentCard, Message } from "@a2a-js/sdk";
 import { RequestContext, ExecutionEventBus } from "@a2a-js/sdk/server";
@@ -11,11 +12,13 @@ export class PromptGenerationAgent extends BaseAgent {
         super(card);
     }
 
-    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
-        return SystemPromptFactory.generateWithOptions({
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext, seniorIntuition?: string): Promise<string> {
+        const promptFactory = CompositionRoot.resolve<ISystemPromptFactory>(ServiceIdentifiers.SystemPromptFactory);
+        return promptFactory.generateWithOptions({
             role: 'PromptGenerationAgent',
             agentName: 'PromptGenerationAgent',
-            userInput
+            userInput,
+            seniorIntuition
         });
     }
 

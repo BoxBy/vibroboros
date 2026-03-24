@@ -67,6 +67,7 @@ export const ServiceIdentifiers = {
     MemoryService: Symbol('IMemoryService'),
     CheckpointService: Symbol('ICheckpointService'),
     TokenUsageService: Symbol('ITokenUsageService'),
+    EpisodicMemoryService: Symbol('IEpisodicMemoryService'),
 
     // ========================================================================
     // Agent Services

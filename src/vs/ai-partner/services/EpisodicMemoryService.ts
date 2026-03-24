@@ -90,7 +90,7 @@ export class EpisodicMemoryService implements IEpisodicMemoryService {
         }
     }
 
-    public async getRecentEpisodes(limit: number): Promise<MemoryEpisode[]> {
+    public async getRecentEpisodes(limit: number, agentName?: string): Promise<MemoryEpisode[]> {
         try {
             const files = await fs.readdir(this.memoryDir);
             const jsonFiles = files.filter((f: string) => f.endsWith('.json'));
@@ -100,7 +100,13 @@ export class EpisodicMemoryService implements IEpisodicMemoryService {
                 return JSON.parse(content) as MemoryEpisode;
             });
 
-            const episodes = await Promise.all(episodePromises);
+            let episodes = await Promise.all(episodePromises);
+            
+            if (agentName) {
+                // Prioritize episodes from the requested agent
+                episodes = episodes.filter(ep => ep.agentName === agentName);
+            }
+
             return episodes
                 .sort((a: MemoryEpisode, b: MemoryEpisode) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                 .slice(0, limit);
@@ -109,7 +115,10 @@ export class EpisodicMemoryService implements IEpisodicMemoryService {
         }
     }
 
-    public extractUncertainty(rawLog: string): UncertaintyTrace[] {
+    public extractUncertainty(rawLog: string | undefined): UncertaintyTrace[] {
+        if (!rawLog) {
+            return [];
+        }
         const traces: UncertaintyTrace[] = [];
         const patterns = [
             { marker: "not sure", regex: /not sure (about|if|whether) (.*?)\./gi, score: 0.8 },
@@ -133,27 +142,103 @@ export class EpisodicMemoryService implements IEpisodicMemoryService {
         return traces;
     }
 
-    public async getBlendedContext(limit: number): Promise<string> {
-        const episodes = await this.getRecentEpisodes(limit);
+    private calculateJaccardSimilarity(textA: string, textB: string): number {
+        if (!textA || !textB) {
+            return 0;
+        }
+        const tokenize = (t: string) => [...new Set(t.toLowerCase().match(/\w+/g) || [])];
+        const setA = new Set(tokenize(textA));
+        const setB = new Set(tokenize(textB));
+        if (setA.size === 0 && setB.size === 0) {
+            return 0;
+        }
+        
+        let intersection = 0;
+        for (const word of setA) {
+            if (setB.has(word)) intersection++;
+        }
+        const union = setA.size + setB.size - intersection;
+        return union === 0 ? 0 : intersection / union;
+    }
+
+    private calculateAstOverlapScore(pastAsts: string[], currentAsts: string[]): number {
+        if (!pastAsts || !currentAsts || pastAsts.length === 0 || currentAsts.length === 0) {
+            return 0;
+        }
+        const setA = new Set(pastAsts);
+        const setB = new Set(currentAsts);
+        
+        let intersection = 0;
+        for (const ast of setB) {
+            if (setA.has(ast)) {
+                intersection++;
+            }
+        }
+        const union = setA.size + setB.size - intersection;
+        return union === 0 ? 0 : intersection / union;
+    }
+
+    public async getBlendedContext(limit: number, agentName?: string, currentUserInput?: string, currentAstSignatures?: string[]): Promise<string> {
+        // Fetch up to 100 recent episodes for scoring pool
+        let episodes = await this.getRecentEpisodes(100, agentName);
         if (episodes.length === 0) {
             return "";
         }
 
-        let context = "\n\n<ExperientialMemory>\n";
-        context += "The following are historical execution patterns and results. Use these as 'Senior Intuition' to avoid past mistakes.\n\n";
+        // Apply scoring if filtering params exist
+        if (currentUserInput || (currentAstSignatures && currentAstSignatures.length > 0)) {
+            const scoredEpisodes = episodes.map(ep => {
+                const epText = `${ep.userInput || ''} ${ep.summary || ''}`;
+                const lexicalScore = currentUserInput ? this.calculateJaccardSimilarity(currentUserInput, epText) : 0;
+                
+                const astScore = (currentAstSignatures && ep.affectedAstSignatures)
+                    ? this.calculateAstOverlapScore(ep.affectedAstSignatures, currentAstSignatures)
+                    : 0;
+                
+                // Weighting: slightly favor structural match if both are available
+                let totalScore = 0;
+                if (currentUserInput && currentAstSignatures && currentAstSignatures.length > 0) {
+                    totalScore = (lexicalScore * 0.4) + (astScore * 0.6);
+                } else if (currentUserInput) {
+                    totalScore = lexicalScore;
+                } else {
+                    totalScore = astScore;
+                }
+
+                return { episode: ep, score: totalScore };
+            });
+
+            const threshold = 0.05; // Low threshold just to clear complete noise
+            const relevant = scoredEpisodes
+                .filter(se => se.score > threshold)
+                .sort((a, b) => b.score - a.score);
+            
+            episodes = relevant.slice(0, limit).map(se => se.episode);
+            
+            if (episodes.length === 0) {
+                return ""; // No relevant past experience
+            }
+        } else {
+            episodes = episodes.slice(0, limit);
+        }
+
+        let context = "\n\n<SeniorIntuition>\n";
+        context += `The following are highly relevant historical experiences for ${agentName || 'the system'} based on your current task context. Use these to avoid past mistakes.\n\n`;
 
         for (const ep of episodes) {
             context += `[Episode] Agent: ${ep.agentName}\n`;
-            if (ep.summary) {
-                context += `Outcome: ${ep.summary}\n`;
-            }
             if (ep.userInput) {
-                context += `Context: ${this.truncateLog(ep.userInput, 100)}\n`;
+                context += `Task: ${this.truncateLog(ep.userInput, 100)}\n`;
+            }
+            if (ep.summary) {
+                context += `Outcome/Lessons: ${ep.summary}\n`;
+            }
+            if (ep.affectedAstSignatures && ep.affectedAstSignatures.length > 0) {
+                context += `Affected ASTs: ${ep.affectedAstSignatures.join(', ')}\n`;
             }
             
-            // Only include rawLog for error episodes (Sentinel Intuition data)
             if (ep.rawLog && ep.uncertaintyTraces && ep.uncertaintyTraces.length > 0) {
-                context += `Triggering Patterns:\n${this.truncateLog(ep.rawLog, 300)}\n`;
+                context += `Triggering Error/Log:\n${this.truncateLog(ep.rawLog, 300)}\n`;
             }
 
             if (ep.uncertaintyTraces && ep.uncertaintyTraces.length > 0) {
@@ -165,7 +250,7 @@ export class EpisodicMemoryService implements IEpisodicMemoryService {
             context += "---\n";
         }
 
-        context += "</ExperientialMemory>";
+        context += "</SeniorIntuition>";
         return context;
     }
 

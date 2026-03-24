@@ -196,6 +196,16 @@ export function createServiceBindings(): ServiceBinding[] {
         lifetime: ServiceLifetime.SINGLETON,
         description: 'Conversation memory service'
     });
+ 
+    bindings.push({
+        identifier: ServiceIdentifiers.EpisodicMemoryService,
+        factory: (container) => {
+            const { EpisodicMemoryService } = require('../services/EpisodicMemoryService');
+            return new EpisodicMemoryService();
+        },
+        lifetime: ServiceLifetime.SINGLETON,
+        description: 'Episodic memory and Senior Intuition service'
+    });
 
     bindings.push({
         identifier: ServiceIdentifiers.CheckpointService,

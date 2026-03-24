@@ -127,7 +127,7 @@ export function getCoreLLMTools(_provider?: LLMProvider) {
             type: 'function',
             function: {
                 name: 'querySemanticGraph',
-                description: 'Retrieve context from the Semantic Graph. Use this to find file dependencies, symbol definitions (with precise line ranges using LSP), or search the codebase.',
+                description: '[DEPRECATED] Retrieve context from the Semantic Graph. Prefer using list_dir, read_file, get_definition, and get_references for dynamic discovery.',
                 parameters: {
                     type: 'object',
                     properties: {

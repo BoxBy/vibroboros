@@ -1,4 +1,5 @@
-import { SystemPromptFactory } from '../services/SystemPromptFactory';
+import { CompositionRoot, ServiceIdentifiers } from '../di/CompositionRoot';
+import { ISystemPromptFactory } from '../di/interfaces/ISystemPromptFactory';
 import * as vscode from 'vscode';
 import { AgentCard, Message } from "@a2a-js/sdk";
 import { RequestContext, ExecutionEventBus } from "@a2a-js/sdk/server";
@@ -21,15 +22,17 @@ export class DynamicSpecialistAgent extends BaseAgent {
         this.dynamicParams = dynamicParams;
     }
 
-    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext, seniorIntuition?: string): Promise<string> {
+        const promptFactory = CompositionRoot.resolve<ISystemPromptFactory>(ServiceIdentifiers.SystemPromptFactory);
         // Evaluate dynamic complexity (handled within SystemPromptFactory if userInput provided)
-        const basePrompt = await SystemPromptFactory.generateWithOptions({
+        const basePrompt = await promptFactory.generateWithOptions({
             role: 'worker', 
             agentName: this.dynamicParams.roleName, 
             userInput: userInput,
             contextOptions: {
                 dynamicRules: [this.dynamicParams.roleInstruction]
-            }
+            },
+            seniorIntuition
         });
 
         // The factory handles appending context, memory, tools and other strict framework guidelines

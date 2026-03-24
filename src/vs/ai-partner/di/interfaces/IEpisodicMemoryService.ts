@@ -10,8 +10,9 @@ export interface MemoryEpisode {
     contextId: string;
     taskId: string;
     userInput?: string; // What the user originally requested
-    rawLog: string; // The experiential trace
+    rawLog?: string; // The experiential trace (optional now)
     summary?: string; // The synthetic summary
+    affectedAstSignatures?: string[]; // AST symbol names modified or referenced
     uncertaintyTraces: UncertaintyTrace[];
 }
 
@@ -39,6 +40,10 @@ export interface IEpisodicMemoryService {
 
     /**
      * Generates a blended context (Raw + Summary) for prompt injection.
+     * @param limit Maximum number of episodes to return.
+     * @param agentName Filter by agent name (optional).
+     * @param currentUserInput The current user prompt, used for Jaccard semantic matching.
+     * @param currentAstSignatures The AST signatures relevant to the current task, used for structural matching.
      */
-    getBlendedContext(limit: number): Promise<string>;
+    getBlendedContext(limit: number, agentName?: string, currentUserInput?: string, currentAstSignatures?: string[]): Promise<string>;
 }

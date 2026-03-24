@@ -1,7 +1,5 @@
 import type { IConfigService } from '../di/interfaces/IConfigService';
-import type { ISemanticModelService } from '../di/interfaces/ISemanticModelService';
-import type { ILLMService } from '../di/interfaces/ILLMService';
-import type { ISystemPromptFactory } from '../di/interfaces/ISystemPromptFactory';
+import type { ISystemPromptFactory, AgentRole, GenerateOptions } from '../di/interfaces/ISystemPromptFactory';
 import { ServiceLocator } from '../di/ServiceLocator';
 import { getBrainstormSystemPrompt } from '../prompts/agents/Brainstorm';
 import { getBugFixSystemPrompt } from '../prompts/agents/BugFix';
@@ -12,11 +10,8 @@ import { getContextManagementSystemPrompt } from '../prompts/agents/ContextManag
 import { getTaskDecompositionSystemPrompt } from '../prompts/agents/TaskDecomposition';
 import { getTestGenerationSystemPrompt } from '../prompts/agents/TestGeneration';
 import { getDocumentationGenerationSystemPrompt } from '../prompts/agents/DocumentationGeneration';
+import { getRefactoringSuggestionSystemPrompt } from '../prompts/agents/RefactoringSuggestion';
 import { MemoryService } from './MemoryService';
-import * as vscode from 'vscode';
-import * as path from 'path';
-
-export type AgentRole = 'router' | 'pm' | 'planner' | 'worker' | 'debugger' | 'CodeEditAgent' | 'BugFixAgent' | 'BrainstormAgent' | 'ReadmeGenerationAgent' | 'ContextManagementAgent' | 'TaskDecompositionAgent' | 'TestGenerationAgent' | 'DocumentationGenerationAgent';
 
 /**
  * System Prompt Factory
@@ -26,20 +21,13 @@ export type AgentRole = 'router' | 'pm' | 'planner' | 'worker' | 'debugger' | 'C
  */
 export class SystemPromptFactory implements ISystemPromptFactory {
     private static instance: SystemPromptFactory;
-    private static readonly PROJECT_CONTEXT_LIMIT = 20000; // 20k Token Limit
 
     private configService: IConfigService;
-    private semanticModelService: ISemanticModelService;
-    private llmService: ILLMService;
 
     constructor(
-        configService?: IConfigService,
-        semanticModelService?: ISemanticModelService,
-        llmService?: ILLMService
+        configService?: IConfigService
     ) {
         this.configService = configService || ServiceLocator.getConfigService();
-        this.semanticModelService = semanticModelService || ServiceLocator.getSemanticModelService();
-        this.llmService = llmService || ServiceLocator.getLLMService();
     }
 
     /**
@@ -65,28 +53,14 @@ export class SystemPromptFactory implements ISystemPromptFactory {
     // Public Methods (implement ISystemPromptFactory)
     // ========================================================================
 
-    public async generate(
-        role: AgentRole,
-        agentName: string,
-        complexity: number = 3,
-        userInput: string = '',
-        contextOptions?: { targetFile?: string; relatedFiles?: string[], excludeHistory?: boolean, targetContent?: string, dynamicRules?: string[], examples?: string }
-    ): Promise<string> {
-        return this.generateWithOptions({ role, agentName, complexity, userInput, contextOptions });
+    public async generate(role: AgentRole, agentName: string, complexity: number = 3, userInput: string = '', contextOptions?: any, seniorIntuition?: string): Promise<string> {
+        return this.generateWithOptions({ role, agentName, complexity, userInput, contextOptions, seniorIntuition });
     }
 
-    public async generateWithOptions(options: {
-        role: AgentRole;
-        agentName: string;
-        complexity?: number;
-        userInput?: string;
-        contextOptions?: { targetFile?: string; relatedFiles?: string[], excludeHistory?: boolean, targetContent?: string, dynamicRules?: string[], examples?: string };
-    }): Promise<string> {
-        const { role, agentName, complexity = 3, userInput = '', contextOptions } = options;
+    public async generateWithOptions(options: GenerateOptions): Promise<string> {
+        const { role, agentName, complexity = 3, contextOptions, seniorIntuition } = options;
 
-        const worldModel = this.semanticModelService;
         const memory = MemoryService.getInstance(); // Will be migrated separately
-
         const userPrefs = await memory.getPreferences();
 
         // Dynamic Language Detection
@@ -94,64 +68,15 @@ export class SystemPromptFactory implements ISystemPromptFactory {
         const thinkingLang = this.configService.getThinkingLanguage();
         const cwd = this.configService.getWorkspacePath();
 
-        console.log(`[SystemPromptFactory] Lang Detection - Target: ${targetLanguage}, Thinking: ${thinkingLang}, CWD: ${cwd}`);
+        console.log(`[SystemPromptFactory] Tiered Prompt Generation - Role: ${role}, Agent: ${agentName}`);
 
-        // Context Strategy
-        const isHighLevelAgent = ['router', 'planner', 'pm'].includes(role) || agentName === 'OrchestratorAgent';
-        let projectContext = '';
+        // [Tier 1: Global] - Standard Principles & Rules (Loaded via agents/prompts/*)
+        // [Tier 2: User] - Preferences
+        // [Tier 3: Project] - Guidelines (AGENT.md - handled within agent specific prompts for now)
+        // [Tier 4: Agent] - Identity & Tools
+        // [Tier 5: Dynamic] - History & Payload (Handled by the Agent Loop, NOT here)
 
-        if (isHighLevelAgent) {
-            console.log('[SystemPromptFactory] Step 1a: Getting Directory Structure');
-            projectContext = worldModel.getDirectoryStructureOnly();
-            console.log('[SystemPromptFactory] Step 1b: Directory Structure Retrieved');
-        } else {
-            console.log('[SystemPromptFactory] Step 2: Worker Context Strategy');
-            let targetFile = contextOptions?.targetFile || '';
-            let relatedFiles = contextOptions?.relatedFiles || [];
-
-            // Scan User Input if no explicit target
-            if (!targetFile && userInput) {
-                const words = userInput.split(/\s+/);
-                for (const word of words) {
-                    const potentialPath = word.replace(/['"`\[\](),]/g, '');
-                    if (potentialPath.includes('/') || potentialPath.includes('.')) {
-                        const relativePathCandidates = Object.keys((worldModel as any)['graph'].files);
-                        const match = relativePathCandidates.find((f: string) => f.endsWith(potentialPath) || potentialPath.endsWith(f));
-
-                        if (match) {
-                            targetFile = path.join((worldModel as any)['workspaceRoot'], match);
-                            console.log(`[SystemPromptFactory] Detected target file from prompt: ${match}`);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Fallback to Active Editor
-            if (!targetFile) {
-                targetFile = vscode.window.activeTextEditor?.document.uri.fsPath || '';
-            }
-
-            if (targetFile || relatedFiles.length > 0) {
-                const smartContext = worldModel.getSmartContext(targetFile, relatedFiles);
-                const smartCount = this.llmService.countTokens(smartContext);
-                if (smartCount <= SystemPromptFactory.PROJECT_CONTEXT_LIMIT) {
-                    projectContext = smartContext;
-                } else {
-                    projectContext = worldModel.getDirectoryStructureOnly() +
-                        `\n\n> [Info] Smart context too large (${smartCount}). Reverted to Tree Only.`;
-                }
-            } else {
-                const fullContext = worldModel.getContextForQuery('overview');
-                const tokenCount = this.llmService.countTokens(fullContext);
-
-                if (tokenCount <= SystemPromptFactory.PROJECT_CONTEXT_LIMIT) {
-                    projectContext = fullContext;
-                } else {
-                    projectContext = worldModel.getDirectoryStructureOnly();
-                }
-            }
-        }
+        const projectContext = ""; // Removed pre-injected map to protect cache.
 
         console.log('[SystemPromptFactory] Step 3: Preparing Base Prompt');
         const basePrompt = `You are ${agentName}, a specialized AI assistant in the Viper ecosystem.`;
@@ -177,11 +102,9 @@ export class SystemPromptFactory implements ISystemPromptFactory {
                     userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
                     thinkingLang,
                     userLang: targetLanguage,
-                    projectContext,
-                    creationTime: memory.getSessionStartTime(),
-                    userInput,
                     cwd
                 });
+
                 console.log('[SystemPromptFactory] Step 4c: Orchestrator Prompt Generated');
                 return p;
 
@@ -194,11 +117,9 @@ export class SystemPromptFactory implements ISystemPromptFactory {
                     userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
                     thinkingLang,
                     userLang: targetLanguage,
-                    projectContext,
-                    userInput,
-                    creationTime: memory.getSessionStartTime(),
                     cwd
                 });
+
 
             case 'planner': // Brainstorm
             case 'BrainstormAgent': {
@@ -210,12 +131,10 @@ export class SystemPromptFactory implements ISystemPromptFactory {
                     userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
                     thinkingLang,
                     userLang: targetLanguage,
-                    projectContext,
-                    userInput,
-                    creationTime: memory.getSessionStartTime(),
                     cwd
                 });
             }
+
 
             case 'CodeEditAgent': {
                 return getCodeEditSystemPrompt({
@@ -226,27 +145,22 @@ export class SystemPromptFactory implements ISystemPromptFactory {
                     userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
                     thinkingLang,
                     userLang: targetLanguage,
-                    projectContext,
-                    userInput,
-                    creationTime: memory.getSessionStartTime(),
                     cwd
                 });
+
             }
 
             case 'ReadmeGenerationAgent': {
                 return getReadmeGenerationSystemPrompt({
                     agentName,
                     agentList: this.configService.getInternalAgents().map((a: any) => a.name),
-                    agentDescriptions: this.getAgentDescriptions(),
                     userLang: targetLanguage,
                     complexity,
                     thinkingLang,
-                    creationTime: memory.getSessionStartTime(),
                     userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
-                    userInput,
-                    projectContext,
                     cwd
                 });
+
             }
 
             case 'BugFixAgent':
@@ -259,12 +173,10 @@ export class SystemPromptFactory implements ISystemPromptFactory {
                     userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
                     thinkingLang,
                     userLang: targetLanguage,
-                    projectContext,
-                    userInput,
-                    creationTime: memory.getSessionStartTime(),
                     cwd
                 });
             }
+
 
             case 'ContextManagementAgent': {
                 return getContextManagementSystemPrompt({
@@ -274,16 +186,14 @@ export class SystemPromptFactory implements ISystemPromptFactory {
                     userLang: targetLanguage,
                     complexity,
                     thinkingLang,
-                    creationTime: memory.getSessionStartTime(),
                     userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
-                    projectContext,
-                    userInput,
                     excludeHistory: contextOptions?.excludeHistory,
                     targetContent: contextOptions?.targetContent,
                     dynamicRules: contextOptions?.dynamicRules,
                     examples: contextOptions?.examples,
                     cwd
                 });
+
             }
 
             case 'TestGenerationAgent':
@@ -295,11 +205,9 @@ export class SystemPromptFactory implements ISystemPromptFactory {
                     userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
                     thinkingLang,
                     userLang: targetLanguage,
-                    creationTime: memory.getSessionStartTime(),
-                    projectContext,
-                    userInput,
                     cwd
                 });
+
 
             case 'DocumentationGenerationAgent':
                 return getDocumentationGenerationSystemPrompt({
@@ -310,11 +218,22 @@ export class SystemPromptFactory implements ISystemPromptFactory {
                     userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
                     thinkingLang,
                     userLang: targetLanguage,
-                    creationTime: memory.getSessionStartTime(),
-                    projectContext,
-                    userInput,
                     cwd
                 });
+
+
+            case 'RefactoringSuggestionAgent':
+                return getRefactoringSuggestionSystemPrompt({
+                    agentName,
+                    agentList: this.configService.getInternalAgents().map((a: any) => a.name),
+                    agentDescriptions: this.getAgentDescriptions(),
+                    complexity,
+                    userPrefs: userPrefs || { language: targetLanguage, codingStyle: 'Standard', preferredFrameworks: [] },
+                    thinkingLang,
+                    userLang: targetLanguage,
+                    cwd
+                });
+
 
             case 'worker': // CodeEdit, Test, Doc, Readme, ContextMgmt
                 roleInstruction = `
@@ -375,6 +294,7 @@ ${contextMeta}
             preferenceSection,
             complexitySection,
             contextSection,
+            seniorIntuition ? `## SENIOR INTUITION (Past Experiences)\n${seniorIntuition}` : '',
             collaborationInstruction
         ].filter(Boolean).join('\n\n');
     }
@@ -386,14 +306,6 @@ ${contextMeta}
     public getAgentDescriptions(): string {
         const internalAgents = this.configService.getInternalAgents();
         return internalAgents.map((a: any) => `- **${a.name}**: ${a.description}`).join('\n');
-    }
-
-    public getDirectoryStructure(): string {
-        return this.semanticModelService.getDirectoryStructureOnly();
-    }
-
-    public getSmartContext(targetFile: string, relatedFiles: string[]): string {
-        return this.semanticModelService.getSmartContext(targetFile, relatedFiles);
     }
 }
 

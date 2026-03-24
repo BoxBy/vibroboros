@@ -50,6 +50,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  font-family: inherit;
 }
 .icon-button:hover {
   background-color: var(--vscode-toolbar-hoverBackground);
@@ -223,12 +228,16 @@ body {
   width: 28px;
   height: 28px;
   padding: 0;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
 }
 .input-action-btn.primary {
   background: var(--vscode-button-background);

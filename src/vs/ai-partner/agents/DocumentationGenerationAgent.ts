@@ -1,4 +1,5 @@
-﻿import { SystemPromptFactory } from '../services/SystemPromptFactory';
+﻿import { CompositionRoot, ServiceIdentifiers } from '../di/CompositionRoot';
+import { ISystemPromptFactory } from '../di/interfaces/ISystemPromptFactory';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { AgentCard, Message } from "@a2a-js/sdk";
@@ -17,7 +18,7 @@ export class DocumentationGenerationAgent extends BaseAgent {
 
     // --- Unified Flow Implementation ---
 
-    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext, seniorIntuition?: string): Promise<string> {
         // 1. Extract Complexity from Dual-Channel Fallback (Text)
         const complexityMatch = userInput.match(/Complexity Level (\d+)/);
         const assignedComplexity = complexityMatch ? parseInt(complexityMatch[1], 10) : 2; // Default to 2
@@ -51,7 +52,8 @@ export class DocumentationGenerationAgent extends BaseAgent {
                  finalUserInput = JSON.stringify(payload, null, 2);
              }
         }
-        const baseSystem = await SystemPromptFactory.generate('DocumentationGenerationAgent', 'DocumentationGenerationAgent', assignedComplexity, finalUserInput, { targetFile: absolutePath });
+        const promptFactory = CompositionRoot.resolve<ISystemPromptFactory>(ServiceIdentifiers.SystemPromptFactory);
+        const baseSystem = await promptFactory.generate('DocumentationGenerationAgent', 'DocumentationGenerationAgent', assignedComplexity, finalUserInput, { targetFile: absolutePath }, seniorIntuition);
 
         if (!absolutePath) {
             return `${baseSystem}\n\n**Specific Instruction**: The user wants documentation but I cannot determine the target file. Ask the user to provide the file path.`;

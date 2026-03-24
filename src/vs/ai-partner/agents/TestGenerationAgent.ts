@@ -1,4 +1,5 @@
-﻿import { SystemPromptFactory } from '../services/SystemPromptFactory';
+﻿import { CompositionRoot, ServiceIdentifiers } from '../di/CompositionRoot';
+import { ISystemPromptFactory } from '../di/interfaces/ISystemPromptFactory';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { AgentCard, Message } from "@a2a-js/sdk";
@@ -19,7 +20,7 @@ export class TestGenerationAgent extends BaseAgent {
 
     // --- Unified Flow Implementation ---
 
-    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext, seniorIntuition?: string): Promise<string> {
         // 1. Extract Complexity from Dual-Channel Fallback (Text)
         const complexityMatch = userInput.match(/Complexity Level (\d+)/);
         const assignedComplexity = complexityMatch ? parseInt(complexityMatch[1], 10) : 2; // Default to 2
@@ -54,7 +55,8 @@ export class TestGenerationAgent extends BaseAgent {
              }
         }
 
-        const baseSystem = await SystemPromptFactory.generate('TestGenerationAgent', 'TestGenerationAgent', assignedComplexity, finalUserInput, { targetFile: absolutePath });
+        const promptFactory = CompositionRoot.resolve<ISystemPromptFactory>(ServiceIdentifiers.SystemPromptFactory);
+        const baseSystem = await promptFactory.generate('TestGenerationAgent', 'TestGenerationAgent', assignedComplexity, finalUserInput, { targetFile: absolutePath }, seniorIntuition);
     
         if (!absolutePath) {
              return `${baseSystem}\n\n**Error**: No source file provided for test generation.`;

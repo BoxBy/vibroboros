@@ -18,7 +18,7 @@ export class TaskDecompositionAgent extends BaseAgent {
 
     // --- Unified Flow Implementation ---
 
-    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext, seniorIntuition?: string): Promise<string> {
         // 1. Extract Complexity from Dual-Channel Fallback (Text)
         // Format: [SYSTEM INSTRUCTION: This task is assigned Complexity Level 5. Execute accordingly.]
         const complexityMatch = userInput.match(/Complexity Level (\d+)/);
@@ -38,7 +38,7 @@ export class TaskDecompositionAgent extends BaseAgent {
                  finalUserInput = JSON.stringify(payload, null, 2);
              }
         }
-        return SystemPromptFactory.getInstance().generate('pm', 'TaskDecompositionAgent', assignedComplexity, finalUserInput);
+        return SystemPromptFactory.getInstance().generate('pm', 'TaskDecompositionAgent', assignedComplexity, finalUserInput, undefined, seniorIntuition);
     }
 
 

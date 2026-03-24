@@ -39,9 +39,14 @@ async function main() {
 		console.log('Media assets copied successfully!');
 		// --- 추가된 부분 끝 ---
 
-		fs.copySync('node_modules/@vscode/codicons/dist/codicon.css', 'dist/codicon.css', { overwrite: true });
+		const codiconCssPath = 'node_modules/@vscode/codicons/dist/codicon.css';
+		let codiconCss = fs.readFileSync(codiconCssPath, 'utf8');
+		// Remove query string from font URL (?hash...) for better VS Code Webview compatibility especially on macOS
+		codiconCss = codiconCss.replace(/\?.[^'")]*/g, '');
+		fs.writeFileSync('dist/codicon.css', codiconCss);
+		
 		fs.copySync('node_modules/@vscode/codicons/dist/codicon.ttf', 'dist/codicon.ttf', { overwrite: true });
-		console.log('Codicon assets copied successfully!');
+		console.log('Codicon assets patched and copied successfully!');
 
 
 		console.log('Build successful!');

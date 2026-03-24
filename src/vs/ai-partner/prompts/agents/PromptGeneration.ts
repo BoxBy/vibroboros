@@ -6,14 +6,16 @@ import { getCriticalRules } from '../sections/Rules';
 import { getToolUsage } from '../sections/ToolUsage';
 import { getComplexityControl } from '../sections/Complexity';
 import { getUserPreferences, getUserCustomRules } from '../sections/UserPreferences';
-import { getProjectContext } from '../sections/Context';
-import { getA2AInstructions } from '../sections/A2A';
+// import { getProjectContext } from '../sections/Context'; // Tier 5
+// import { getA2AInstructions } from '../sections/A2A'; 
 import { getCloningInstructions } from '../sections/Cloning';
-import { getChatHistory } from '../sections/History';
+// import { getChatHistory } from '../sections/History'; // Tier 5
 
 export const getPromptGenerationSystemPrompt = (options: AgentSystemPromptOptions): string => {
-    const { userLang, complexity = 50, thinkingLang, creationTime, userPrefs, projectContext = '', userInput = '', metrics, isSubAgent } = options;
+    const { userLang, complexity = 50, thinkingLang, userPrefs, isSubAgent } = options;
     const agentName = options.agentName || 'PromptGenerationAgent';
+
+
     const builder = new PromptBuilder(userLang);
 
     // 1. Identity & Role
@@ -22,9 +24,12 @@ export const getPromptGenerationSystemPrompt = (options: AgentSystemPromptOption
         roleTitle: 'AI System Architect & Prompt Engineer',
         coreFunction: 'Design highly specialized behavioral rules for new dynamically spawned agents.',
         mindset: '**Structured & Methodological**. Prompts are code. Use logic, variables, and clear constraints.',
-        creationTime,
+        creationTime: new Date().toISOString().split('T')[0],
         isSubAgent
     }));
+
+
+
 
     // 2. Principles
     builder.addSection(getCorePrinciples([
@@ -47,7 +52,8 @@ export const getPromptGenerationSystemPrompt = (options: AgentSystemPromptOption
     // 4. User Preferences & Custom Rules
     builder.addSection(getUserPreferences(userPrefs));
     builder.addSection(getUserCustomRules());
-    builder.addSection(getCloningInstructions({ isSubAgent: !!isSubAgent, agentName: 'PromptGenerationAgent' }));
+    builder.addSection(getCloningInstructions({ isSubAgent: !!options.isSubAgent, agentName: 'PromptGenerationAgent' }));
+
 
     // 5. Complexity Control
     builder.addSection(getComplexityControl(complexity));
@@ -65,11 +71,9 @@ Return pure JSON wrapped in \`\`\`json tags matching this schema:
     "requiredTools": ["tool1", "tool2"]
 }`);
 
-    // 8. Context & History
-    builder.addSection(`USER'S ORIGINAL TASK:
-${userInput || 'N/A'}`);
-    builder.addSection(getProjectContext(projectContext || ''));
-    builder.addSection(getChatHistory());
+    // 8. Context & History (Tier 5 - Handled by runtime)
+    // builder.addSection(getChatHistory()); // Removed to protect cache
 
     return builder.build();
 };
+

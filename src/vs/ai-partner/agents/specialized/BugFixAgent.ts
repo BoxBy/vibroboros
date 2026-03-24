@@ -3,7 +3,8 @@ import { AgentCard, Message } from "@a2a-js/sdk";
 import { RequestContext, ExecutionEventBus } from "@a2a-js/sdk/server";
 import { v4 as uuidv4 } from 'uuid';
 import { BaseAgent } from '../core/BaseAgent';
-import { SystemPromptFactory } from "../../services/SystemPromptFactory";
+import { CompositionRoot, ServiceIdentifiers } from '../../di/CompositionRoot';
+import { ISystemPromptFactory } from '../../di/interfaces/ISystemPromptFactory';
 import { getCoreLLMTools } from '../../services/LLMTools';
 
 export class BugFixAgent extends BaseAgent {
@@ -12,7 +13,7 @@ export class BugFixAgent extends BaseAgent {
         super(card);
     }
 
-    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext, seniorIntuition?: string): Promise<string> {
         // Generate base prompt from Factory
         // Now using specialized 'BugFixAgent' role which includes all logic
 
@@ -28,7 +29,8 @@ export class BugFixAgent extends BaseAgent {
                  finalUserInput = JSON.stringify(payload, null, 2);
              }
         }
-        return SystemPromptFactory.generate('BugFixAgent', 'BugFixAgent', 60, finalUserInput);
+        const promptFactory = CompositionRoot.resolve<ISystemPromptFactory>(ServiceIdentifiers.SystemPromptFactory);
+        return promptFactory.generate('BugFixAgent', 'BugFixAgent', 60, finalUserInput, undefined, seniorIntuition);
     }
 
     protected async getTools(userInput: string, requestContext: RequestContext): Promise<any[]> {

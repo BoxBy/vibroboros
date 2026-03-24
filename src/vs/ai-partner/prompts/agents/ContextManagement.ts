@@ -7,12 +7,13 @@ import { getCriticalRules } from '../sections/Rules';
 import { getToolUsage } from '../sections/ToolUsage';
 import { getComplexityControl } from '../sections/Complexity';
 import { getUserPreferences, getUserCustomRules } from '../sections/UserPreferences';
-import { getProjectContext } from '../sections/Context';
-import { getChatHistory } from '../sections/History';
+// import { getProjectContext } from '../sections/Context'; // Tier 5
+// import { getChatHistory } from '../sections/History'; // Tier 5
 import { getA2AInstructions } from '../sections/A2A';
 
 export function getContextManagementSystemPrompt(options: AgentSystemPromptOptions): string {
-    const { userLang, complexity = 50, thinkingLang, creationTime, userPrefs, projectContext = '', userInput } = options;
+    const { userLang, complexity = 50, thinkingLang, userPrefs } = options;
+
     const builder = new PromptBuilder(userLang);
 
     // 1. Identity & Role
@@ -21,8 +22,9 @@ export function getContextManagementSystemPrompt(options: AgentSystemPromptOptio
         roleTitle: 'Librarian & Context Optimizer',
         coreFunction: 'Optimize Token Usage, Maintain ".agent" Context, and Archive History.',
         mindset: '**Clean Desk Policy**. Prune ruthlessly but safely. Summarize without losing decisions.',
-        creationTime
+        creationTime: new Date().toISOString().split('T')[0]
     }));
+
 
     // 2. Principles
     builder.addSection(getCorePrinciples([
@@ -63,14 +65,12 @@ export function getContextManagementSystemPrompt(options: AgentSystemPromptOptio
     }));
     builder.addSection(getExamples());
 
-    // 8. Context & History
-    builder.addSection(`ASSIGNED TASK:
-${userInput || 'N/A'}`);
-    builder.addSection(getProjectContext(projectContext || ''));
-    builder.addSection(getChatHistory());
+    // 8. Context & History (Tier 5 - Handled by runtime)
+    // builder.addSection(getChatHistory()); // Removed to protect cache
 
     return builder.build();
 }
+
 
 function getExamples(): string {
     return `<examples>

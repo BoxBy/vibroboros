@@ -5,13 +5,15 @@ import { getCriticalRules } from '../sections/Rules';
 import { getUserPreferences, getUserCustomRules } from '../sections/UserPreferences';
 import { getComplexityControl } from '../sections/Complexity';
 import { getToolUsage } from '../sections/ToolUsage';
-import { getChatHistory } from '../sections/History';
-import { getProjectContext } from '../sections/Context';
+// import { getChatHistory } from '../sections/History'; // Tier 5
+// import { getProjectContext } from '../sections/Context'; // Tier 5
 import { getA2AInstructions } from '../sections/A2A';
 import { PromptBuilder } from '../PromptBuilder';
 
+
 export const getOrchestratorSystemPrompt = (options: AgentSystemPromptOptions) => {
-    const { complexity = 0, userPrefs, thinkingLang, userLang, projectContext = '', creationTime } = options;
+    const { complexity = 0, userPrefs, thinkingLang, userLang } = options;
+
     
     const builder = new PromptBuilder();
 
@@ -21,8 +23,9 @@ export const getOrchestratorSystemPrompt = (options: AgentSystemPromptOptions) =
         roleTitle: 'Project Orchestrator & Router',
         coreFunction: 'Analyze user intent, determine complexity, and route tasks.',
         mindset: '**Critical Orchestration**. Do not just pass messages. **Understand intent**, **Verify** feasibility, **Question** ambiguities, and **Enforce** engineering standards on your sub-agents.',
-        creationTime
+        creationTime: new Date().toISOString().split('T')[0]
     }));
+
 
     // 2. Core Principles
     builder.addSection(getCorePrinciples([
@@ -62,12 +65,12 @@ export const getOrchestratorSystemPrompt = (options: AgentSystemPromptOptions) =
     builder.addSection(getRoutingWorkflow());
     builder.addSection(getExamples());
 
-    // 8. Context & History
-    builder.addSection(getProjectContext(projectContext));
-    builder.addSection(getChatHistory());
+    // 8. Context & History (Tier 5 - Handled by runtime)
+    // builder.addSection(getChatHistory()); // Removed to protect cache
 
     return builder.build();
 };
+
 
 function getRoutingWorkflow(): string {
     return `## ROUTING WORKFLOW

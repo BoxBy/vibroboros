@@ -1,4 +1,5 @@
-﻿import { SystemPromptFactory } from '../services/SystemPromptFactory';
+﻿import { CompositionRoot, ServiceIdentifiers } from '../di/CompositionRoot';
+import { ISystemPromptFactory } from '../di/interfaces/ISystemPromptFactory';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { AgentCard, Message } from "@a2a-js/sdk";
@@ -15,7 +16,7 @@ export class ReadmeGenerationAgent extends BaseAgent {
 
     // --- Unified Flow Implementation ---
 
-    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext, seniorIntuition?: string): Promise<string> {
         // 1. Extract Complexity
         const complexityMatch = userInput.match(/Complexity Level (\d+)/);
         const assignedComplexity = complexityMatch ? parseInt(complexityMatch[1], 10) : 30; // Default to Lv 1 (Simple) if undefined
@@ -34,7 +35,8 @@ export class ReadmeGenerationAgent extends BaseAgent {
                  finalUserInput = JSON.stringify(payload, null, 2);
              }
         }
-        return await SystemPromptFactory.generate('ReadmeGenerationAgent', 'ReadmeGenerationAgent', assignedComplexity, finalUserInput);
+        const promptFactory = CompositionRoot.resolve<ISystemPromptFactory>(ServiceIdentifiers.SystemPromptFactory);
+        return await promptFactory.generate('ReadmeGenerationAgent', 'ReadmeGenerationAgent', assignedComplexity, finalUserInput, undefined, seniorIntuition);
     }
 
     protected async getTools(userInput: string, requestContext: RequestContext): Promise<any[]> {

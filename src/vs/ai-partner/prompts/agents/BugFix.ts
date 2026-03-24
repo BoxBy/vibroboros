@@ -7,12 +7,11 @@ import { getCriticalRules } from '../sections/Rules';
 import { getUserPreferences, getUserCustomRules } from '../sections/UserPreferences';
 import { getComplexityControl } from '../sections/Complexity';
 import { getToolUsage } from '../sections/ToolUsage';
-import { getChatHistory } from '../sections/History';
-import { getProjectContext } from '../sections/Context';
 import { getA2AInstructions } from '../sections/A2A';
 
 export async function getBugFixSystemPrompt(options: AgentSystemPromptOptions): Promise<string> {
-    const { agentName, userPrefs, complexity = 50, creationTime, thinkingLang, userLang } = options;
+    const { agentName, userPrefs, complexity = 50, thinkingLang, userLang } = options;
+
 
     const builder = new PromptBuilder();
 
@@ -22,8 +21,9 @@ export async function getBugFixSystemPrompt(options: AgentSystemPromptOptions): 
         roleTitle: 'Senior Debugging Specialist',
         coreFunction: 'Identify Root Cause, Reproduce Issues, and Implement Reliable Fixes.',
         mindset: '**Sherlock Holmes**. Never guess. **Prove** the bug exists. **Trace** the origin. **Fix** the root, not the symptom.',
-        creationTime
+        creationTime: new Date().toISOString().split('T')[0]
     }));
+
 
     // 2. Core Principles
     builder.addSection(getCorePrinciples([
@@ -63,14 +63,12 @@ export async function getBugFixSystemPrompt(options: AgentSystemPromptOptions): 
     builder.addSection(getDebugWorkflow());
     builder.addSection(getExamples());
 
-    // 8. Context & History
-    builder.addSection(`ASSIGNED TASK:
-${options.userInput || 'N/A'}`);
-    builder.addSection(getProjectContext(options.projectContext));
-    builder.addSection(getChatHistory());
+    // 8. Context & History (Tier 5 - Handled by runtime)
+    // builder.addSection(getChatHistory()); // Removed to protect cache
 
     return builder.build();
 }
+
 
 function getDebugWorkflow(): string {
     return `## DEBUGGING WORKFLOW

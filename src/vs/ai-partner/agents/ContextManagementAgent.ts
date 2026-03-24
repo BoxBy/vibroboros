@@ -18,7 +18,7 @@ export class ContextManagementAgent extends BaseAgent {
 
     // --- Unified Flow Implementation ---
 
-    protected async getSystemPrompt(userInput: string, requestContext: RequestContext): Promise<string> {
+    protected async getSystemPrompt(userInput: string, requestContext: RequestContext, seniorIntuition?: string): Promise<string> {
         // 1. Extract Complexity
         const complexityMatch = userInput.match(/Complexity Level (\d+)/);
         const assignedComplexity = complexityMatch ? parseInt(complexityMatch[1], 10) : 30; // Default to Lv 1 (Simple)
@@ -95,7 +95,7 @@ export class ContextManagementAgent extends BaseAgent {
             targetContent,
             dynamicRules,
             examples
-        });
+        }, seniorIntuition);
     }
 
     protected async getTools(): Promise<any[]> {
