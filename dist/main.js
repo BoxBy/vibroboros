@@ -52094,11 +52094,11 @@ var require_refractor = __commonJS({
 });
 
 // src/vs/ai-partner/ui/index.tsx
-var import_react18 = __toESM(require_react());
+var import_react23 = __toESM(require_react());
 var import_client = __toESM(require_client());
 
 // src/vs/ai-partner/ui/MainView.tsx
-var import_react17 = __toESM(require_react());
+var import_react21 = __toESM(require_react());
 
 // src/vs/ai-partner/ui/Header.tsx
 var import_react2 = __toESM(require_react());
@@ -64465,6 +64465,7 @@ var SettingsPage = ({ models: propModels = [] }) => {
   const modelPollDeadlineRef = (0, import_react5.useRef)(0);
   const [streamingEnabled, setStreamingEnabled] = (0, import_react5.useState)(false);
   const [advancedHistorySummaryEnabled, setAdvancedHistorySummaryEnabled] = (0, import_react5.useState)(false);
+  const [autoCompactionEnabled, setAutoCompactionEnabled] = (0, import_react5.useState)(false);
   const [agentOverridesDraft, setAgentOverridesDraft] = (0, import_react5.useState)({});
   const [showAgentOverrides, setShowAgentOverrides] = (0, import_react5.useState)(false);
   const [showLlmConfiguration, setShowLlmConfiguration] = (0, import_react5.useState)(false);
@@ -64531,6 +64532,7 @@ var SettingsPage = ({ models: propModels = [] }) => {
         const p = message.payload || {};
         setStreamingEnabled(!!p.streamingEnabled);
         setAdvancedHistorySummaryEnabled(!!p.advancedHistorySummaryEnabled);
+        if (p.autoCompactionEnabled !== void 0) setAutoCompactionEnabled(!!p.autoCompactionEnabled);
         if (typeof p.summarizeTokenLimit === "number") setSummarizeTokenLimit(p.summarizeTokenLimit);
         if (typeof p.thinkingLanguage === "string") setThinkingLanguage(p.thinkingLanguage);
         if (typeof p.userLanguage === "string") setUserLanguage(p.userLanguage);
@@ -64967,6 +64969,23 @@ var SettingsPage = ({ models: propModels = [] }) => {
               const val = !!e.target.checked;
               setAdvancedHistorySummaryEnabled(val);
               vscodeService.postMessage({ command: "setAdvancedHistorySummaryEnabled", payload: { enabled: val } });
+            }
+          }
+        )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "setting-item", style: { display: "flex", alignItems: "center", marginBottom: 8, justifyContent: "space-between" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontWeight: 600 }, children: "LLM Context Auto-Compaction" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { opacity: 0.8, fontSize: 12 }, children: "Automatically summarize long sessions using ContextManagementAgent (costs LLM tokens)." })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          VSCodeCheckbox,
+          {
+            checked: autoCompactionEnabled,
+            onChange: (e) => {
+              const val = !!e.target.checked;
+              setAutoCompactionEnabled(val);
+              vscodeService.postMessage({ command: "setAutoCompactionEnabled", payload: { enabled: val } });
             }
           }
         )
@@ -66151,10 +66170,10 @@ var WelcomeScreen = ({ onSendMessage, recentSessions = [], onPickSession }) => {
 };
 
 // src/vs/ai-partner/ui/MessageList.tsx
-var import_react13 = __toESM(require_react());
+var import_react15 = __toESM(require_react());
 
 // src/vs/ai-partner/ui/MessageItem.tsx
-var import_react12 = __toESM(require_react());
+var import_react13 = __toESM(require_react());
 
 // node_modules/devlop/lib/default.js
 function ok() {
@@ -80216,18 +80235,17 @@ var TerminalOutput = ({
     }, children: needsApproval ? /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)(import_jsx_runtime6.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("span", { style: { color: "#888", marginRight: "auto" }, children: "Allow this command to run?" }),
       /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-        "button",
+        VSCodeButton,
         {
+          appearance: "secondary",
           onClick: onDecline,
-          style: { background: "transparent", border: "1px solid #555", color: "#ccc", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: "11px" },
           children: "Decline"
         }
       ),
       /* @__PURE__ */ (0, import_jsx_runtime6.jsx)(
-        "button",
+        VSCodeButton,
         {
           onClick: onAllow,
-          style: { background: "#0e639c", border: "none", color: "#fff", borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontSize: "11px" },
           children: "Allow"
         }
       )
@@ -80265,13 +80283,13 @@ var markdownComponents = {
   }
 };
 var ProgressLogItem = ({ message, isLast, depth = 0 }) => {
-  const [isCollapsed, setIsCollapsed] = (0, import_react12.useState)(!isLast);
-  (0, import_react12.useEffect)(() => {
+  const [isCollapsed, setIsCollapsed] = (0, import_react13.useState)(!isLast);
+  (0, import_react13.useEffect)(() => {
     if (!isLast) {
       setIsCollapsed(true);
     }
   }, [isLast]);
-  const { preRouting, routingLine, postRouting } = (0, import_react12.useMemo)(() => {
+  const { preRouting, routingLine, postRouting } = (0, import_react13.useMemo)(() => {
     const text7 = message.text || "";
     const routingRegex = /^(Routing to .*?)(?:\.\.\.|…)?$/m;
     const match = text7.match(routingRegex);
@@ -80283,7 +80301,7 @@ var ProgressLogItem = ({ message, isLast, depth = 0 }) => {
     }
     return { preRouting: text7, routingLine: null, postRouting: null };
   }, [message.text]);
-  const collapsedPreview = (0, import_react12.useMemo)(() => {
+  const collapsedPreview = (0, import_react13.useMemo)(() => {
     if (routingLine) return routingLine;
     const text7 = message.text || "";
     const orchThinkRegex = /^(?:>\s*)?\[(OrchestratorAgent|Orchestrator|Agent)\](?:\s*Thinking\.\.\.|\s*Thinking Process).*$/i;
@@ -80393,9 +80411,9 @@ var ProgressLogItem = ({ message, isLast, depth = 0 }) => {
   ] });
 };
 var ProgressGroupItem = ({ group, hasSubsequentUserMessage }) => {
-  const [isCollapsed, setIsCollapsed] = (0, import_react12.useState)(!!hasSubsequentUserMessage);
-  const [userInteracted, setUserInteracted] = (0, import_react12.useState)(false);
-  (0, import_react12.useEffect)(() => {
+  const [isCollapsed, setIsCollapsed] = (0, import_react13.useState)(!!hasSubsequentUserMessage);
+  const [userInteracted, setUserInteracted] = (0, import_react13.useState)(false);
+  (0, import_react13.useEffect)(() => {
     if (!userInteracted && hasSubsequentUserMessage) {
       setIsCollapsed(true);
     }
@@ -80496,9 +80514,9 @@ var ProgressGroupItem = ({ group, hasSubsequentUserMessage }) => {
   ] });
 };
 var AgentGroupItem = ({ group, hasSubsequentUserMessage, onAction, onRollback, isLast, isThinking }) => {
-  const [isCollapsed, setIsCollapsed] = (0, import_react12.useState)(!!hasSubsequentUserMessage);
-  const [userInteracted, setUserInteracted] = (0, import_react12.useState)(false);
-  (0, import_react12.useEffect)(() => {
+  const [isCollapsed, setIsCollapsed] = (0, import_react13.useState)(!!hasSubsequentUserMessage);
+  const [userInteracted, setUserInteracted] = (0, import_react13.useState)(false);
+  (0, import_react13.useEffect)(() => {
     if (!userInteracted && hasSubsequentUserMessage) {
       setIsCollapsed(true);
     }
@@ -80561,19 +80579,19 @@ var AgentGroupItem = ({ group, hasSubsequentUserMessage, onAction, onRollback, i
   ] });
 };
 var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubsequentUserMessage }) => {
-  const [showThought, setShowThought] = (0, import_react12.useState)(false);
+  const [showThought, setShowThought] = (0, import_react13.useState)(false);
   const isModel = message.sender === "ai";
   const isOrchestrator = !message.senderName || (message.senderName || "").trim() === "OrchestratorAgent";
-  const [showAgentBubble, setShowAgentBubble] = (0, import_react12.useState)(true);
-  const [chipsOpen, setChipsOpen] = (0, import_react12.useState)(false);
-  const prevDiffRef = (0, import_react12.useRef)(message.diff);
-  (0, import_react12.useEffect)(() => {
+  const [showAgentBubble, setShowAgentBubble] = (0, import_react13.useState)(true);
+  const [chipsOpen, setChipsOpen] = (0, import_react13.useState)(false);
+  const prevDiffRef = (0, import_react13.useRef)(message.diff);
+  (0, import_react13.useEffect)(() => {
     if (prevDiffRef.current && !message.diff) {
       setShowAgentBubble(false);
     }
     prevDiffRef.current = message.diff;
   }, [message.diff]);
-  (0, import_react12.useEffect)(() => {
+  (0, import_react13.useEffect)(() => {
     if (isModel && !isOrchestrator) {
       if (message.requiresUserInput && !showAgentBubble) {
         setShowAgentBubble(true);
@@ -80701,7 +80719,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
     const lintSummary = message.lintSummary;
     const hasLintErrors = lintSummary && !lintSummary.includes("0 lint");
     const leftStatusText = lintSummary;
-    const diffStats = (0, import_react12.useMemo)(() => {
+    const diffStats = (0, import_react13.useMemo)(() => {
       if (!message.diff || !message.diff.originalCode || !message.diff.modifiedCode) return null;
       try {
         const changes = diffLines(message.diff.originalCode, message.diff.modifiedCode);
@@ -81147,9 +81165,8 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
         return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: { marginTop: "12px", padding: "12px", background: "var(--vscode-editor-inactiveSelectionBackground)", borderRadius: "6px", border: "1px solid var(--vscode-editorWidget-border)" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "action-buttons", style: { display: "flex", gap: "8px", flexWrap: "wrap" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-              "button",
+              VSCodeButton,
               {
-                style: { padding: "8px 16px", background: "var(--vscode-button-background)", color: "var(--vscode-button-foreground)", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" },
                 onClick: () => {
                   vscodeService.postMessage({
                     command: "acceptUroborosMode",
@@ -81158,15 +81175,15 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
                   if (onAction) onAction();
                 },
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-check" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { slot: "start", className: "codicon codicon-check" }),
                   "Approve"
                 ]
               }
             ),
             /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)(
-              "button",
+              VSCodeButton,
               {
-                style: { padding: "8px 16px", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px" },
+                appearance: "secondary",
                 onClick: () => {
                   vscodeService.postMessage({
                     command: "declineUroborosMode",
@@ -81175,7 +81192,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
                   if (onAction) onAction();
                 },
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { className: "codicon codicon-close" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { slot: "start", className: "codicon codicon-close" }),
                   "Decline"
                 ]
               }
@@ -81203,8 +81220,9 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
         const isSecondary = btn.style === "secondary";
         const isDanger = btn.style === "danger";
         return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
-          "button",
+          VSCodeButton,
           {
+            appearance: isSecondary ? "secondary" : "primary",
             onClick: () => {
               vscodeService.postMessage({
                 command: btn.command,
@@ -81212,25 +81230,14 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
               });
               if (onAction) onAction();
             },
-            style: {
-              padding: "8px 16px",
-              background: isDanger ? "var(--vscode-errorForeground)" : isSecondary ? "var(--vscode-button-secondaryBackground)" : "var(--vscode-button-background)",
-              color: isDanger ? "var(--vscode-button-foreground)" : isSecondary ? "var(--vscode-button-secondaryForeground)" : "var(--vscode-button-foreground)",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: 500,
-              display: "flex",
-              alignItems: "center",
-              gap: "6px"
-            },
+            style: isDanger ? { backgroundColor: "var(--vscode-errorForeground)", color: "var(--vscode-button-foreground)" } : {},
             children: btn.label
           },
           idx
         );
       }) }),
-      message.diff && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "action-buttons", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "action-btn edit-btn", onClick: () => {
+      message.diff && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { className: "action-buttons", style: { display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "12px" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(VSCodeButton, { appearance: "secondary", onClick: () => {
           if (!message.diff) return;
           vscodeService.postMessage({
             command: "showDiff",
@@ -81239,7 +81246,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
             title: message.diff.title || message.diff.filePath
           });
         }, children: "Edit" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "action-btn accept-btn", onClick: () => {
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(VSCodeButton, { onClick: () => {
           if (!message.diff) return;
           vscodeService.postMessage({
             command: "acceptChange",
@@ -81249,14 +81256,14 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
             suggestionType: message.diff.suggestionType
           });
         }, children: "Approve" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "action-btn decline-btn", onClick: () => {
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(VSCodeButton, { appearance: "secondary", onClick: () => {
           if (!message.diff) return;
           vscodeService.postMessage({
             command: "declineChange",
             filePath: message.diff.filePath
           });
         }, children: "Decline" }),
-        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("button", { className: "action-btn accept-always-btn", onClick: () => {
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(VSCodeButton, { appearance: "secondary", onClick: () => {
           if (!message.diff) return;
           vscodeService.postMessage({
             command: "acceptAlways",
@@ -81274,7 +81281,7 @@ var MessageItem = ({ message, onAction, onRollback, isLast, isThinking, hasSubse
 // src/vs/ai-partner/ui/MessageList.tsx
 var import_jsx_runtime8 = __toESM(require_jsx_runtime());
 var MessageList = ({ messages, isThinking, onAction, onRollback }) => {
-  const groupedMessages = (0, import_react13.useMemo)(() => {
+  const groupedMessages = (0, import_react15.useMemo)(() => {
     const result = [];
     let currentProgressGroup = null;
     let currentAgentGroup = null;
@@ -81344,30 +81351,30 @@ var MessageList = ({ messages, isThinking, onAction, onRollback }) => {
 };
 
 // src/vs/ai-partner/ui/InputArea.tsx
-var import_react14 = __toESM(require_react());
+var import_react16 = __toESM(require_react());
 var import_jsx_runtime9 = __toESM(require_jsx_runtime());
 var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemoveAttachment, onClearAttachments, onStop }) => {
-  const [message, setMessage] = (0, import_react14.useState)("");
-  const textareaRef = (0, import_react14.useRef)(null);
-  const fileInputRef = (0, import_react14.useRef)(null);
-  const imageInputRef = (0, import_react14.useRef)(null);
-  const directoryInputRef = (0, import_react14.useRef)(null);
-  const [suggestions, setSuggestions] = (0, import_react14.useState)([]);
-  const [showSuggestions, setShowSuggestions] = (0, import_react14.useState)(false);
-  const [activeSuggestionIndex, setActiveSuggestionIndex] = (0, import_react14.useState)(0);
-  const [showAttachMenu, setShowAttachMenu] = (0, import_react14.useState)(false);
-  const attachMenuRef = (0, import_react14.useRef)(null);
-  const [showFilePicker, setShowFilePicker] = (0, import_react14.useState)(false);
-  const [showDirectoryPicker, setShowDirectoryPicker] = (0, import_react14.useState)(false);
-  const [fileList, setFileList] = (0, import_react14.useState)([]);
-  const [currentPath, setCurrentPath] = (0, import_react14.useState)("");
+  const [message, setMessage] = (0, import_react16.useState)("");
+  const textareaRef = (0, import_react16.useRef)(null);
+  const fileInputRef = (0, import_react16.useRef)(null);
+  const imageInputRef = (0, import_react16.useRef)(null);
+  const directoryInputRef = (0, import_react16.useRef)(null);
+  const [suggestions, setSuggestions] = (0, import_react16.useState)([]);
+  const [showSuggestions, setShowSuggestions] = (0, import_react16.useState)(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = (0, import_react16.useState)(0);
+  const [showAttachMenu, setShowAttachMenu] = (0, import_react16.useState)(false);
+  const attachMenuRef = (0, import_react16.useRef)(null);
+  const [showFilePicker, setShowFilePicker] = (0, import_react16.useState)(false);
+  const [showDirectoryPicker, setShowDirectoryPicker] = (0, import_react16.useState)(false);
+  const [fileList, setFileList] = (0, import_react16.useState)([]);
+  const [currentPath, setCurrentPath] = (0, import_react16.useState)("");
   const atCommandItems = [
     { command: "@file", description: "Attach file" },
     { command: "@folder", description: "Attach folder" },
     { command: "@mcp", description: "Attach MCP resource" },
     { command: "@browser", description: "Attach browser target/URL" }
   ];
-  const [isDragging, setIsDragging] = (0, import_react14.useState)(false);
+  const [isDragging, setIsDragging] = (0, import_react16.useState)(false);
   const handleSend = () => {
     if (message.trim() && !disabled) {
       onSendMessage(message);
@@ -81451,7 +81458,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       handleSend();
     }
   };
-  (0, import_react14.useEffect)(() => {
+  (0, import_react16.useEffect)(() => {
     if (message.startsWith("/")) {
       const searchTerm = message.toLowerCase();
       const filteredCommands = commands.filter(
@@ -81461,7 +81468,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       setShowSuggestions(filteredCommands.length > 0);
     }
   }, [commands, message]);
-  (0, import_react14.useEffect)(() => {
+  (0, import_react16.useEffect)(() => {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = "0px";
@@ -81470,13 +81477,13 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       textarea.style.height = `${newHeight}px`;
     }
   }, [message]);
-  (0, import_react14.useEffect)(() => {
+  (0, import_react16.useEffect)(() => {
     const textarea = textareaRef.current;
     if (textarea && !message) {
       textarea.style.height = "28px";
     }
   }, []);
-  (0, import_react14.useEffect)(() => {
+  (0, import_react16.useEffect)(() => {
     const handleClickOutside = (event) => {
       if (attachMenuRef.current && !attachMenuRef.current.contains(event.target)) {
         setShowAttachMenu(false);
@@ -81487,7 +81494,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [showAttachMenu]);
-  (0, import_react14.useEffect)(() => {
+  (0, import_react16.useEffect)(() => {
     if (!showFilePicker && !showDirectoryPicker) return;
     const handleMessage = (event) => {
       const message2 = event.data;
@@ -81566,8 +81573,10 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                   isImage && a.content ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("img", { src: a.content, className: "attachment-preview-img", alt: a.label }) : /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: `codicon ${a.type === "file" ? "codicon-file" : a.type === "folder" ? "codicon-folder" : a.type === "code" ? "codicon-code" : "codicon-link"}`, style: { fontSize: 14 } }),
                   !isImage && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { style: { lineHeight: "18px", fontWeight: 500 }, children: a.label }),
                   /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
-                    "button",
+                    "div",
                     {
+                      role: "button",
+                      tabIndex: 0,
                       onClick: (e) => {
                         e.stopPropagation();
                         onRemoveAttachment?.(a.label);
@@ -81596,8 +81605,9 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
           /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "input-area", children: [
             /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: { position: "relative" }, ref: attachMenuRef, children: [
               /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
-                "button",
+                VSCodeButton,
                 {
+                  appearance: "icon",
                   onClick: () => setShowAttachMenu((v) => !v),
                   title: "Add context",
                   disabled,
@@ -81608,13 +81618,15 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
               showAttachMenu && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { className: "context-menu", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { className: "context-menu-header", children: "Add context" }),
                 /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
-                  "button",
+                  "div",
                   {
                     onClick: () => {
                       imageInputRef.current?.click();
                       setShowAttachMenu(false);
                     },
                     className: "context-menu-item",
+                    role: "button",
+                    tabIndex: 0,
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-file-media" }),
                       /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "Images" })
@@ -81622,7 +81634,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
-                  "button",
+                  "div",
                   {
                     onClick: () => {
                       setShowAttachMenu(false);
@@ -81630,6 +81642,8 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                       textareaRef.current?.focus();
                     },
                     className: "context-menu-item",
+                    role: "button",
+                    tabIndex: 0,
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-mention" }),
                       /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "Mentions" })
@@ -81637,7 +81651,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
-                  "button",
+                  "div",
                   {
                     onClick: () => {
                       setShowAttachMenu(false);
@@ -81645,6 +81659,8 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                       textareaRef.current?.focus();
                     },
                     className: "context-menu-item",
+                    role: "button",
+                    tabIndex: 0,
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-symbol-event" }),
                       /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { children: "Workflows" })
@@ -81737,8 +81753,9 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
               }
             ),
             /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
-              "button",
+              VSCodeButton,
               {
+                appearance: "icon",
                 onClick: handleSend,
                 title: "Send",
                 disabled: disabled || !message.trim(),
@@ -81748,8 +81765,9 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
               }
             ),
             disabled && onStop && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
-              "button",
+              VSCodeButton,
               {
+                appearance: "icon",
                 onClick: (e) => {
                   e.preventDefault();
                   onStop();
@@ -81811,8 +81829,10 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
           showFilePicker ? "File" : "Directory"
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
-          "button",
+          "div",
           {
+            role: "button",
+            tabIndex: 0,
             onClick: () => {
               setShowFilePicker(false);
               setShowDirectoryPicker(false);
@@ -81833,8 +81853,9 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
       ] }),
       currentPath && /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: { marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
-          "button",
+          VSCodeButton,
           {
+            appearance: "secondary",
             onClick: () => {
               const parentPath = currentPath.split(/[\\/]/).slice(0, -1).join("/");
               setCurrentPath(parentPath);
@@ -81843,17 +81864,9 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
                 payload: { path: parentPath, type: showDirectoryPicker ? "directory" : void 0 }
               });
             },
-            style: {
-              background: "var(--vscode-button-secondaryBackground)",
-              color: "var(--vscode-button-secondaryForeground)",
-              border: "none",
-              borderRadius: 4,
-              padding: "4px 8px",
-              cursor: "pointer",
-              fontSize: "12px"
-            },
+            style: { padding: "0 8px" },
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { className: "codicon codicon-arrow-up" }),
+              /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("span", { slot: "start", className: "codicon codicon-arrow-up" }),
               " Up"
             ]
           }
@@ -81869,8 +81882,10 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
         minHeight: "300px",
         maxHeight: "400px"
       }, children: fileList.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: { textAlign: "center", color: "var(--vscode-descriptionForeground)", padding: "20px" }, children: "Loading..." }) : /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("ul", { style: { listStyle: "none", padding: 0, margin: 0 }, children: fileList.map((item, idx) => /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("li", { children: /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)(
-        "button",
+        "div",
         {
+          role: "button",
+          tabIndex: 0,
           onClick: () => {
             if (item.type === "directory") {
               const newPath = item.path;
@@ -81911,7 +81926,7 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
         }
       ) }, idx)) }) }),
       showDirectoryPicker && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: { marginTop: "12px", display: "flex", justifyContent: "flex-end" }, children: /* @__PURE__ */ (0, import_jsx_runtime9.jsx)(
-        "button",
+        VSCodeButton,
         {
           onClick: () => {
             if (currentPath) {
@@ -81925,14 +81940,6 @@ var InputArea = ({ onSendMessage, disabled, commands, attachments = [], onRemove
             }
           },
           disabled: !currentPath,
-          style: {
-            padding: "6px 12px",
-            background: currentPath ? "var(--vscode-button-background)" : "var(--vscode-button-secondaryBackground)",
-            color: currentPath ? "var(--vscode-button-foreground)" : "var(--vscode-button-secondaryForeground)",
-            border: "none",
-            borderRadius: 4,
-            cursor: currentPath ? "pointer" : "not-allowed"
-          },
           children: "Select"
         }
       ) })
@@ -81963,7 +81970,7 @@ var ErrorDisplay = ({ error }) => {
 };
 
 // src/vs/ai-partner/ui/PlanView.tsx
-var import_react16 = __toESM(require_react());
+var import_react19 = __toESM(require_react());
 var import_jsx_runtime11 = __toESM(require_jsx_runtime());
 var getStatusIcon = (status) => {
   switch (status) {
@@ -81982,8 +81989,8 @@ var PlanView = ({ plan, isAutonomousMode, isCollapsed, onToggleCollapse }) => {
   if (!plan || plan.length === 0) {
     return null;
   }
-  const [editing, setEditing] = (0, import_react16.useState)(false);
-  const [draft, setDraft] = (0, import_react16.useState)(plan.map((p) => p.description));
+  const [editing, setEditing] = (0, import_react19.useState)(false);
+  const [draft, setDraft] = (0, import_react19.useState)(plan.map((p) => p.description));
   const handleApprove = () => {
     vscodeService.postMessage({ command: "userQuery", query: "yes" });
   };
@@ -82055,9 +82062,9 @@ var PlanView = ({ plan, isAutonomousMode, isCollapsed, onToggleCollapse }) => {
         )
       ] }, i)) }),
       /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: () => setDraft((d) => [...d, ""]), style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Add Step" }),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: handleSaveEdit, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-background)", color: "var(--vscode-button-foreground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Save" }),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: handleCancelEdit, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Cancel" })
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(VSCodeButton, { appearance: "secondary", onClick: () => setDraft((d) => [...d, ""]), children: "Add Step" }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(VSCodeButton, { onClick: handleSaveEdit, children: "Save" }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(VSCodeButton, { appearance: "secondary", onClick: handleCancelEdit, children: "Cancel" })
       ] })
     ] }) : /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(import_jsx_runtime11.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("ul", { className: "plan-steps", style: { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "8px", maxHeight: "240px", overflowY: "auto", paddingLeft: 4 }, children: visiblePlan.map((step, index2) => /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)(
@@ -82108,9 +82115,9 @@ var PlanView = ({ plan, isAutonomousMode, isCollapsed, onToggleCollapse }) => {
         index2
       )) }),
       isAutonomousMode && isPending && /* @__PURE__ */ (0, import_jsx_runtime11.jsxs)("div", { className: "plan-actions", style: { display: "flex", gap: "8px", marginTop: 8 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: handleApprove, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-background)", color: "var(--vscode-button-foreground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Approve" }),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: handleDecline, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Decline" }),
-        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)("button", { onClick: handleEdit, style: { border: "1px solid var(--vscode-button-border)", background: "var(--vscode-button-secondaryBackground)", color: "var(--vscode-button-secondaryForeground)", padding: "4px 12px", cursor: "pointer", borderRadius: "4px" }, children: "Edit" })
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(VSCodeButton, { onClick: handleApprove, children: "Approve" }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(VSCodeButton, { appearance: "secondary", onClick: handleDecline, children: "Decline" }),
+        /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(VSCodeButton, { appearance: "secondary", onClick: handleEdit, children: "Edit" })
       ] })
     ] }) })
   ] });
@@ -82136,9 +82143,6 @@ function createMessageHandlerRegistry(context) {
     },
     llmSettingsResponse: (payload) => {
       if (payload) {
-        if (typeof payload.llmProvider === "string") {
-          context.setCurrentProvider(payload.llmProvider);
-        }
         if (typeof payload.model === "string") {
           context.setCurrentModel(payload.model);
         }
@@ -82681,7 +82685,7 @@ function createMessageHandlerRegistry(context) {
 
 // src/vs/ai-partner/ui/MainView.tsx
 var import_jsx_runtime12 = __toESM(require_jsx_runtime());
-var ErrorBoundary = class extends import_react17.default.Component {
+var ErrorBoundary = class extends import_react21.default.Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -82718,21 +82722,9 @@ ${errorInfo.componentStack}` });
           opacity: 0.9
         }, children: this.state.error?.message }),
         /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
-          "button",
+          VSCodeButton,
           {
             onClick: () => this.setState({ hasError: false }),
-            style: {
-              alignSelf: "flex-start",
-              padding: "6px 12px",
-              background: "var(--vscode-button-background)",
-              color: "var(--vscode-button-foreground)",
-              border: "none",
-              borderRadius: "2px",
-              cursor: "pointer",
-              fontSize: "12px"
-            },
-            onMouseEnter: (e) => e.currentTarget.style.background = "var(--vscode-button-hoverBackground)",
-            onMouseLeave: (e) => e.currentTarget.style.background = "var(--vscode-button-background)",
             children: "Reload View"
           }
         )
@@ -82745,42 +82737,39 @@ var MainView = () => {
   return /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(ErrorBoundary, { children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(MainViewContent, {}) });
 };
 var MainViewContent = () => {
-  const [view, setView] = (0, import_react17.useState)("welcome");
-  const viewRef = (0, import_react17.useRef)("welcome");
-  const [sessions, setSessions] = (0, import_react17.useState)([]);
-  const [activeSessionId, setActiveSessionId] = (0, import_react17.useState)("");
-  const [messages, setMessages] = (0, import_react17.useState)([]);
-  const [plan, setPlan] = (0, import_react17.useState)([]);
-  const [error, setError] = (0, import_react17.useState)(null);
-  const [showHistoryPanel, setShowHistoryPanel] = (0, import_react17.useState)(false);
-  const [isAutonomousMode, setAutonomousMode] = (0, import_react17.useState)(false);
-  const [statusText, setStatusText] = (0, import_react17.useState)(null);
-  const [slashCommands, setSlashCommands] = (0, import_react17.useState)([]);
-  const [currentProvider, setCurrentProvider] = (0, import_react17.useState)(void 0);
-  const [availableModels, setAvailableModels] = (0, import_react17.useState)([]);
-  const [currentModel, setCurrentModel] = (0, import_react17.useState)(void 0);
-  const [profiles, setProfiles] = (0, import_react17.useState)([]);
-  const [activeProfileId, setActiveProfileId] = (0, import_react17.useState)(null);
-  const [loadingStatus, setLoadingStatus] = (0, import_react17.useState)({
+  const [view, setView] = (0, import_react21.useState)("welcome");
+  const viewRef = (0, import_react21.useRef)("welcome");
+  const [sessions, setSessions] = (0, import_react21.useState)([]);
+  const [activeSessionId, setActiveSessionId] = (0, import_react21.useState)("");
+  const [messages, setMessages] = (0, import_react21.useState)([]);
+  const [plan, setPlan] = (0, import_react21.useState)([]);
+  const [error, setError] = (0, import_react21.useState)(null);
+  const [showHistoryPanel, setShowHistoryPanel] = (0, import_react21.useState)(false);
+  const [isAutonomousMode, setAutonomousMode] = (0, import_react21.useState)(false);
+  const [statusText, setStatusText] = (0, import_react21.useState)(null);
+  const [slashCommands, setSlashCommands] = (0, import_react21.useState)([]);
+  const [availableModels, setAvailableModels] = (0, import_react21.useState)([]);
+  const [currentModel, setCurrentModel] = (0, import_react21.useState)(void 0);
+  const [profiles, setProfiles] = (0, import_react21.useState)([]);
+  const [activeProfileId, setActiveProfileId] = (0, import_react21.useState)(null);
+  const [loadingStatus, setLoadingStatus] = (0, import_react21.useState)({
     llmSettings: true,
     models: true,
     profiles: true,
     slashCommands: true
   });
-  const [isThinking, setIsThinking] = (0, import_react17.useState)(false);
-  const [uroborosProposal, setUroborosProposal] = (0, import_react17.useState)(null);
-  const mainViewRef = (0, import_react17.useRef)(null);
-  const [pendingDiffs, setPendingDiffs] = (0, import_react17.useState)([]);
-  const [showDiffSummary, setShowDiffSummary] = (0, import_react17.useState)(false);
-  const [isPlanVisible, setIsPlanVisible] = (0, import_react17.useState)(true);
-  const [isPlanCollapsed, setIsPlanCollapsed] = (0, import_react17.useState)(true);
-  const diffSummaryRef = (0, import_react17.useRef)(null);
-  const [attachments, setAttachments] = (0, import_react17.useState)([]);
-  const [showAttachmentMenu, setShowAttachmentMenu] = (0, import_react17.useState)(false);
-  const lastUserAttachmentsRef = (0, import_react17.useRef)([]);
-  const dropIncomingRef = (0, import_react17.useRef)(false);
-  const welcomeLockRef = (0, import_react17.useRef)(true);
-  (0, import_react17.useEffect)(() => {
+  const [isThinking, setIsThinking] = (0, import_react21.useState)(false);
+  const mainViewRef = (0, import_react21.useRef)(null);
+  const [pendingDiffs, setPendingDiffs] = (0, import_react21.useState)([]);
+  const [showDiffSummary, setShowDiffSummary] = (0, import_react21.useState)(false);
+  const [isPlanVisible, setIsPlanVisible] = (0, import_react21.useState)(true);
+  const [isPlanCollapsed, setIsPlanCollapsed] = (0, import_react21.useState)(true);
+  const diffSummaryRef = (0, import_react21.useRef)(null);
+  const [attachments, setAttachments] = (0, import_react21.useState)([]);
+  const lastUserAttachmentsRef = (0, import_react21.useRef)([]);
+  const dropIncomingRef = (0, import_react21.useRef)(false);
+  const welcomeLockRef = (0, import_react21.useRef)(true);
+  (0, import_react21.useEffect)(() => {
     const diffsFromMessages = messages.filter((m) => m.kind === "codeEditFile" && m.diff).map((m) => m.diff);
     setPendingDiffs((prev) => {
       const merged = [...diffsFromMessages];
@@ -82792,7 +82781,7 @@ var MainViewContent = () => {
       return merged;
     });
   }, [messages]);
-  (0, import_react17.useEffect)(() => {
+  (0, import_react21.useEffect)(() => {
     viewRef.current = view;
   }, [view]);
   const mapHistoryToDisplayMessages = (history) => {
@@ -82826,7 +82815,6 @@ var MainViewContent = () => {
   };
   const handlerContext = {
     setSlashCommands,
-    setCurrentProvider,
     setCurrentModel,
     setAvailableModels,
     setProfiles,
@@ -82839,7 +82827,6 @@ var MainViewContent = () => {
     setIsThinking,
     setPendingDiffs,
     setShowDiffSummary,
-    setUroborosProposal,
     mapHistoryToDisplayMessages,
     welcomeLockRef,
     viewRef,
@@ -82852,12 +82839,11 @@ var MainViewContent = () => {
   const generateId = () => {
     return "msg-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9);
   };
-  const messageHandlerRegistryRef = (0, import_react17.useRef)(createMessageHandlerRegistry(handlerContext));
-  (0, import_react17.useEffect)(() => {
+  const messageHandlerRegistryRef = (0, import_react21.useRef)(createMessageHandlerRegistry(handlerContext));
+  (0, import_react21.useEffect)(() => {
     messageHandlerRegistryRef.current = createMessageHandlerRegistry(handlerContext);
   }, [
     setSlashCommands,
-    setCurrentProvider,
     setCurrentModel,
     setAvailableModels,
     setProfiles,
@@ -82869,10 +82855,9 @@ var MainViewContent = () => {
     setStatusText,
     setIsThinking,
     setPendingDiffs,
-    setShowDiffSummary,
-    setUroborosProposal
+    setShowDiffSummary
   ]);
-  const handleExtensionMessage = (0, import_react17.useCallback)((event) => {
+  const handleExtensionMessage = (0, import_react21.useCallback)((event) => {
     const message = event.data;
     console.log("Received message from extension:", message);
     if (!message || typeof message.command !== "string") {
@@ -82913,11 +82898,11 @@ var MainViewContent = () => {
       console.warn(`[MainView] No handler registered for command: ${message.command}`);
     }
   }, [handlerContext]);
-  (0, import_react17.useEffect)(() => {
+  (0, import_react21.useEffect)(() => {
     window.addEventListener("message", handleExtensionMessage);
     return () => window.removeEventListener("message", handleExtensionMessage);
   }, [handleExtensionMessage]);
-  (0, import_react17.useEffect)(() => {
+  (0, import_react21.useEffect)(() => {
     vscodeService.postMessage({ command: "requestInitialData" });
     vscodeService.postMessage({ command: "requestHistory" });
     vscodeService.postMessage({ command: "getSlashCommands" });
@@ -82929,7 +82914,7 @@ var MainViewContent = () => {
     }, 5e3);
     return () => clearTimeout(loadingTimeout);
   }, []);
-  (0, import_react17.useEffect)(() => {
+  (0, import_react21.useEffect)(() => {
     const container = mainViewRef.current;
     if (container) {
       container.scrollTop = container.scrollHeight;
@@ -83100,13 +83085,15 @@ var MainViewContent = () => {
     if (!showHistoryPanel) return null;
     return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "history-panel", children: [
       /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "history-header", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "chevron-btn", onClick: handleShowHistory, "aria-expanded": showHistoryPanel, title: showHistoryPanel ? "Collapse" : "Expand", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: `codicon ${showHistoryPanel ? "codicon-chevron-down" : "codicon-chevron-right"}` }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { role: "button", tabIndex: 0, className: "chevron-btn", onClick: handleShowHistory, "aria-expanded": showHistoryPanel, title: showHistoryPanel ? "Collapse" : "Expand", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: `codicon ${showHistoryPanel ? "codicon-chevron-down" : "codicon-chevron-right"}` }) }),
         /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "history-title", children: "Chat History" })
       ] }),
       sessions.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { className: "history-empty", children: "No chat history" }) : /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("ul", { style: { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }, children: sessions.map((s) => /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("li", { style: { position: "relative", display: "flex", alignItems: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)(
-          "button",
+          "div",
           {
+            role: "button",
+            tabIndex: 0,
             onClick: () => handleSelectSession(s.id),
             style: {
               width: "100%",
@@ -83135,8 +83122,10 @@ var MainViewContent = () => {
           }
         ),
         /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(
-          "button",
+          "div",
           {
+            role: "button",
+            tabIndex: 0,
             onClick: () => handleDeleteSession(s.id),
             title: "Delete chat",
             "aria-label": `Delete ${s.title}`,
@@ -83189,16 +83178,16 @@ var MainViewContent = () => {
     if (pendingDiffs.length === 0) return null;
     return /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "diff-summary-bar", ref: diffSummaryRef, children: [
       /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "diff-summary-header", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "chevron-btn", onClick: () => setShowDiffSummary((v) => !v), "aria-expanded": showDiffSummary, title: showDiffSummary ? "Collapse" : "Expand", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: `codicon ${showDiffSummary ? "codicon-chevron-down" : "codicon-chevron-right"}` }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("div", { role: "button", tabIndex: 0, className: "chevron-btn", onClick: () => setShowDiffSummary((v) => !v), "aria-expanded": showDiffSummary, title: showDiffSummary ? "Collapse" : "Expand", children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: `codicon ${showDiffSummary ? "codicon-chevron-down" : "codicon-chevron-right"}` }) }),
         /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("span", { className: "diff-summary-title", children: [
           pendingDiffs.length,
           " Files"
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "diff-summary-actions", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "diff-summary-btn", onClick: () => {
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(VSCodeButton, { className: "diff-summary-btn", onClick: () => {
             vscodeService.postMessage({ command: "acceptAllChanges", payload: pendingDiffs.map((d) => ({ filePath: d.filePath, originalCode: d.originalCode, modifiedCode: d.modifiedCode, suggestionType: d.suggestionType })) });
           }, children: "Accept All" }),
-          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "diff-summary-btn secondary", onClick: () => {
+          /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(VSCodeButton, { appearance: "secondary", className: "diff-summary-btn secondary", onClick: () => {
             vscodeService.postMessage({ command: "declineAllChanges", payload: pendingDiffs.map((d) => ({ filePath: d.filePath })) });
             setPendingDiffs([]);
             setShowDiffSummary(false);
@@ -83226,11 +83215,11 @@ var MainViewContent = () => {
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime12.jsxs)("div", { className: "file-actions", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "file-action-btn accept", title: "Accept", onClick: () => {
+            /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(VSCodeButton, { appearance: "icon", className: "file-action-btn accept", title: "Accept", onClick: () => {
               vscodeService.postMessage({ command: "acceptChange", filePath: d.filePath, originalCode: d.originalCode, modifiedCode: d.modifiedCode, suggestionType: d.suggestionType });
               setPendingDiffs((prev) => prev.filter((x) => x.filePath !== d.filePath));
             }, children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "codicon codicon-check" }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("button", { className: "file-action-btn reject", title: "Reject", onClick: () => {
+            /* @__PURE__ */ (0, import_jsx_runtime12.jsx)(VSCodeButton, { appearance: "icon", className: "file-action-btn reject", title: "Reject", onClick: () => {
               vscodeService.postMessage({ command: "declineChange", filePath: d.filePath });
               setPendingDiffs((prev) => prev.filter((x) => x.filePath !== d.filePath));
             }, children: /* @__PURE__ */ (0, import_jsx_runtime12.jsx)("span", { className: "codicon codicon-close" }) })
@@ -83239,7 +83228,7 @@ var MainViewContent = () => {
       }) })
     ] });
   };
-  const [ctxMenu, setCtxMenu] = (0, import_react17.useState)({ visible: false, x: 0, y: 0 });
+  const [ctxMenu, setCtxMenu] = (0, import_react21.useState)({ visible: false, x: 0, y: 0 });
   const onMainViewContextMenu = (e) => {
     e.preventDefault();
     setCtxMenu({ visible: true, x: e.clientX, y: e.clientY });
@@ -83412,7 +83401,7 @@ var import_jsx_runtime13 = __toESM(require_jsx_runtime());
 var rootElement = document.getElementById("root");
 if (rootElement) {
   import_client.default.createRoot(rootElement).render(
-    /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_react18.default.StrictMode, { children: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(MainView, {}) })
+    /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(import_react23.default.StrictMode, { children: /* @__PURE__ */ (0, import_jsx_runtime13.jsx)(MainView, {}) })
   );
 } else {
   console.error("Failed to find the root element to mount the React app.");

@@ -77,6 +77,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
   // Feature toggles
   const [streamingEnabled, setStreamingEnabled] = useState<boolean>(false);
   const [advancedHistorySummaryEnabled, setAdvancedHistorySummaryEnabled] = useState<boolean>(false);
+  const [autoCompactionEnabled, setAutoCompactionEnabled] = useState<boolean>(false);
   const [agentOverridesDraft, setAgentOverridesDraft] = useState<Record<string, { useDefault: boolean; model: string; endpoint?: string; profileId?: string; useExternal?: boolean; externalUrl?: string }>>({});
   const [showAgentOverrides, setShowAgentOverrides] = useState<boolean>(false);
   const [showLlmConfiguration, setShowLlmConfiguration] = useState<boolean>(false);
@@ -176,6 +177,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
         const p = message.payload || {};
         setStreamingEnabled(!!p.streamingEnabled);
         setAdvancedHistorySummaryEnabled(!!p.advancedHistorySummaryEnabled);
+        if (p.autoCompactionEnabled !== undefined) setAutoCompactionEnabled(!!p.autoCompactionEnabled);
         if (typeof p.summarizeTokenLimit === 'number') setSummarizeTokenLimit(p.summarizeTokenLimit);
         if (typeof p.thinkingLanguage === 'string') setThinkingLanguage(p.thinkingLanguage);
         if (typeof p.userLanguage === 'string') setUserLanguage(p.userLanguage);
@@ -698,6 +700,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ models: propModels =
               const val = !!e.target.checked;
               setAdvancedHistorySummaryEnabled(val);
               vscodeService.postMessage({ command: 'setAdvancedHistorySummaryEnabled', payload: { enabled: val } });
+            }}
+          />
+        </div>
+        <div className="setting-item" style={{ display: 'flex', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>LLM Context Auto-Compaction</div>
+            <div style={{ opacity: 0.8, fontSize: 12 }}>Automatically summarize long sessions using ContextManagementAgent (costs LLM tokens).</div>
+          </div>
+          <VSCodeCheckbox
+            checked={autoCompactionEnabled}
+            onChange={(e: any) => {
+              const val = !!e.target.checked;
+              setAutoCompactionEnabled(val);
+              vscodeService.postMessage({ command: 'setAutoCompactionEnabled', payload: { enabled: val } });
             }}
           />
         </div>

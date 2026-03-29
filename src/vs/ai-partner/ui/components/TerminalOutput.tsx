@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { vscodeService } from '../services/vscode';
+import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 
 interface TerminalOutputProps {
     command: string;
@@ -160,18 +161,17 @@ export const TerminalOutput: React.FC<TerminalOutputProps> = ({
                 {needsApproval ? (
                     <>
                         <span style={{ color: '#888', marginRight: 'auto' }}>Allow this command to run?</span>
-                        <button
+                        <VSCodeButton
+                            appearance="secondary"
                             onClick={onDecline}
-                            style={{ background: 'transparent', border: '1px solid #555', color: '#ccc', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: '11px' }}
                         >
                             Decline
-                        </button>
-                        <button
+                        </VSCodeButton>
+                        <VSCodeButton
                             onClick={onAllow}
-                            style={{ background: '#0e639c', border: 'none', color: '#fff', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: '11px' }}
                         >
                             Allow
-                        </button>
+                        </VSCodeButton>
                     </>
                 ) : (
                     exitCode !== undefined ? (

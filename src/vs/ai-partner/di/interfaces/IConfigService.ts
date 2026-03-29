@@ -71,6 +71,8 @@ export interface IConfigService {
     setSummarizeTokenLimit(limit: number): Promise<void>;
     getMaxContextOverride(): number | undefined;
     setMaxContextOverride(limit: number | undefined): Promise<void>;
+    getAutoCompactionEnabled(): boolean;
+    setAutoCompactionEnabled(enabled: boolean): Promise<void>;
 
     // ========================================================================
     // Routing Settings

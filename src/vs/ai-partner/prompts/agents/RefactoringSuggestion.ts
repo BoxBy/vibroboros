@@ -1,6 +1,6 @@
 import { getRoleAndIdentity } from '../sections/Identity';
-import { getGeneralPrinciples } from '../sections/GeneralPrinciples';
-import { getGlobalRules } from '../sections/GlobalRules';
+import { getCorePrinciples } from '../sections/Principles';
+import { getCriticalRules } from '../sections/Rules';
 import { getA2AInstructions } from '../sections/A2A';
 import { UserPreferences } from '../../services/MemoryService';
 
@@ -44,9 +44,9 @@ export function getRefactoringSuggestionSystemPrompt(options: RefactoringSuggest
 
     return `${identity}
 
-${getGeneralPrinciples()}
+${getCorePrinciples()}
 
-${getGlobalRules()}
+${getCriticalRules({ thinkingLang, userLang })}
 
 ## AGENT SPECIFIC ROLE: REFACTORING SPECIALIST
 Your mission is to analyze existing code and propose structural improvements that enhance readability, maintainability, and performance without changing external behavior.

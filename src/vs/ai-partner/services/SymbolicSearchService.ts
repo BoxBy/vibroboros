@@ -210,6 +210,47 @@ export class SymbolicSearchService implements ISymbolicSearchService {
     }
 
     /**
+     * Extract import module paths from a file using AST parsing.
+     * Walks top-level `import_statement` nodes and reads the `source` field.
+     */
+    public async getImports(filePath: string): Promise<string[]> {
+        if (!this.isInitialized) { await this.initialize(); }
+        if (!this.parser) { return []; }
+
+        try {
+            const fullPath = path.isAbsolute(filePath) ? filePath : path.join(this.workspaceRoot, filePath);
+            const content = await fs.readFile(fullPath, 'utf-8');
+            const ext = path.extname(filePath).toLowerCase();
+
+            let langId = 'typescript';
+            if (ext === '.js' || ext === '.jsx') { langId = 'javascript'; }
+
+            const lang = this.languages.get(langId);
+            if (!lang) { return []; }
+
+            this.parser.setLanguage(lang);
+            const tree = this.parser.parse(content);
+            if (!tree) { return []; }
+
+            const imports: string[] = [];
+            for (const child of tree.rootNode.children) {
+                // tree-sitter-typescript: import_statement
+                // tree-sitter-javascript: import_statement
+                if (child.type === 'import_statement') {
+                    const source = child.childForFieldName('source');
+                    if (source) {
+                        imports.push(source.text.replace(/['"]/g, ''));
+                    }
+                }
+            }
+            return imports;
+        } catch (error) {
+            console.error(`[SymbolicSearchService] Error getting imports for ${filePath}:`, error);
+            return [];
+        }
+    }
+
+    /**
      * [Phase 3] Top 3 files → tree-sitter function bounds pipeline.
      * Accepts an array of file paths (e.g. reranker Top-3 output) and returns
      * all symbol boundaries per file, enabling the agent to read only the

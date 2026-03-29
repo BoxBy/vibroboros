@@ -1,5 +1,7 @@
 import type { IConfigService } from '../di/interfaces/IConfigService';
 import type { ISystemPromptFactory, AgentRole, GenerateOptions } from '../di/interfaces/ISystemPromptFactory';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { ServiceLocator } from '../di/ServiceLocator';
 import { getBrainstormSystemPrompt } from '../prompts/agents/Brainstorm';
 import { getBugFixSystemPrompt } from '../prompts/agents/BugFix';
@@ -23,6 +25,9 @@ export class SystemPromptFactory implements ISystemPromptFactory {
     private static instance: SystemPromptFactory;
 
     private configService: IConfigService;
+    private skillCache: Map<string, string[]> = new Map();
+    private skillCacheTimestamp: number = 0;
+    private static readonly SKILL_CACHE_TTL_MS = 60_000; // 1분
 
     constructor(
         configService?: IConfigService
@@ -106,7 +111,9 @@ export class SystemPromptFactory implements ISystemPromptFactory {
                 });
 
                 console.log('[SystemPromptFactory] Step 4c: Orchestrator Prompt Generated');
-                return p;
+                // Inject workspace skills into router prompt
+                const routerSkills = await this.getSkillsSection();
+                return routerSkills ? `${p}\n\n${routerSkills}` : p;
 
             case 'pm': // TaskDecomposition
                 return getTaskDecompositionSystemPrompt({
@@ -287,6 +294,9 @@ ${contextMeta}
         const effectiveRoleForComplexity = role;
         const complexitySection = getLegacyComplexityControl(effectiveRoleForComplexity, complexity);
 
+        // Load workspace skills
+        const skillsSection = await this.getSkillsSection();
+
         // Final Assembly
         return [
             basePrompt,
@@ -294,6 +304,7 @@ ${contextMeta}
             preferenceSection,
             complexitySection,
             contextSection,
+            skillsSection,
             seniorIntuition ? `## SENIOR INTUITION (Past Experiences)\n${seniorIntuition}` : '',
             collaborationInstruction
         ].filter(Boolean).join('\n\n');
@@ -302,6 +313,66 @@ ${contextMeta}
     // ========================================================================
     // Helper Methods
     // ========================================================================
+
+    /**
+     * Load .agent/skills/*.md files from the workspace and return as a prompt section.
+     * Results are cached for SKILL_CACHE_TTL_MS to avoid repeated disk reads.
+     */
+    private async getSkillsSection(): Promise<string> {
+        const cwd = this.configService.getWorkspacePath();
+        if (!cwd) { return ''; }
+
+        const cacheKey = cwd;
+        const now = Date.now();
+        if (this.skillCache.has(cacheKey) && (now - this.skillCacheTimestamp) < SystemPromptFactory.SKILL_CACHE_TTL_MS) {
+            const cached = this.skillCache.get(cacheKey)!;
+            return cached.length > 0 ? this.formatSkills(cached) : '';
+        }
+
+        const skillsDir = path.join(cwd, '.agent', 'skills');
+        try {
+            const stat = await fs.stat(skillsDir);
+            if (!stat.isDirectory()) {
+                this.skillCache.set(cacheKey, []);
+                this.skillCacheTimestamp = now;
+                return '';
+            }
+        } catch {
+            // Directory doesn't exist
+            this.skillCache.set(cacheKey, []);
+            this.skillCacheTimestamp = now;
+            return '';
+        }
+
+        try {
+            const files = await fs.readdir(skillsDir);
+            const mdFiles = files.filter(f => f.endsWith('.md')).slice(0, 20); // Cap at 20 skills
+            const contents: string[] = [];
+
+            for (const file of mdFiles) {
+                try {
+                    const content = await fs.readFile(path.join(skillsDir, file), 'utf-8');
+                    // Truncate very large skills to avoid token explosion
+                    const truncated = content.length > 2000 ? content.slice(0, 2000) + '\n... (truncated)' : content;
+                    contents.push(`### Skill: ${file.replace('.md', '')}\n${truncated}`);
+                } catch {
+                    // Skip unreadable files
+                }
+            }
+
+            this.skillCache.set(cacheKey, contents);
+            this.skillCacheTimestamp = now;
+            return contents.length > 0 ? this.formatSkills(contents) : '';
+        } catch {
+            this.skillCache.set(cacheKey, []);
+            this.skillCacheTimestamp = now;
+            return '';
+        }
+    }
+
+    private formatSkills(skills: string[]): string {
+        return `## WORKSPACE SKILLS\nThe following custom skills are available from \`.agent/skills/\`:\n\n${skills.join('\n\n---\n\n')}`;
+    }
 
     public getAgentDescriptions(): string {
         const internalAgents = this.configService.getInternalAgents();

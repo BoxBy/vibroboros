@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { vscodeService } from './services/vscode';
+import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 
 interface InputAreaProps {
 	onSendMessage: (message: string) => void;
@@ -261,7 +262,9 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                                         <span className={`codicon ${a.type === 'file' ? 'codicon-file' : a.type === 'folder' ? 'codicon-folder' : a.type === 'code' ? 'codicon-code' : 'codicon-link'}`} style={{ fontSize: 14 }} />
                                     )}
                                     {!isImage && <span style={{ lineHeight: '18px', fontWeight: 500 }}>{a.label}</span>}
-                                    <button
+                                    <div
+                                        role="button"
+                                        tabIndex={0}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             onRemoveAttachment?.(a.label);
@@ -279,7 +282,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                                             alignItems: 'center',
                                             fontSize: 16
                                         }}
-                                    >×</button>
+                                    >×</div>
                                 </div>
                             );
                         })}
@@ -287,54 +290,61 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                 )}
                 <div className="input-area">
                     <div style={{ position: 'relative' }} ref={attachMenuRef}>
-                        <button
+                        <VSCodeButton
+                            appearance="icon"
                             onClick={() => setShowAttachMenu(v => !v)}
                             title="Add context"
                             disabled={disabled}
                             className="input-attach-btn"
                         >
                             <span className="codicon codicon-add"></span>
-                        </button>
+                        </VSCodeButton>
                         {showAttachMenu && (
                             <div className="context-menu">
                                 <div className="context-menu-header">
                                     Add context
                                 </div>
                                 
-                                <button
+                                <div
                                     onClick={() => {
                                         imageInputRef.current?.click();
                                         setShowAttachMenu(false);
                                     }}
                                     className="context-menu-item"
+                                    role="button"
+                                    tabIndex={0}
                                 >
                                     <span className="codicon codicon-file-media" />
                                     <span>Images</span>
-                                </button>
+                                </div>
 
-                                <button
+                                <div
                                     onClick={() => {
                                         setShowAttachMenu(false);
                                         setMessage(prev => prev + '@');
                                         textareaRef.current?.focus();
                                     }}
                                     className="context-menu-item"
+                                    role="button"
+                                    tabIndex={0}
                                 >
                                     <span className="codicon codicon-mention" />
                                     <span>Mentions</span>
-                                </button>
+                                </div>
 
-                                <button
+                                <div
                                     onClick={() => {
                                         setShowAttachMenu(false);
                                         setMessage(prev => prev + '/workflow ');
                                         textareaRef.current?.focus();
                                     }}
                                     className="context-menu-item"
+                                    role="button"
+                                    tabIndex={0}
                                 >
                                     <span className="codicon codicon-symbol-event" />
                                     <span>Workflows</span>
-                                </button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -409,7 +419,8 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                         rows={1}
                         disabled={disabled}
                     />
-                    <button 
+                    <VSCodeButton 
+                        appearance="icon"
                         onClick={handleSend} 
                         title="Send" 
                         disabled={disabled || !message.trim()} 
@@ -417,15 +428,16 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                         className="input-action-btn primary"
                     >
                         <span className="codicon codicon-send" />
-                    </button>
+                    </VSCodeButton>
                     {disabled && onStop && (
-                        <button 
-                            onClick={(e) => { e.preventDefault(); onStop(); }} 
+                        <VSCodeButton 
+                            appearance="icon"
+                            onClick={(e: React.MouseEvent) => { e.preventDefault(); onStop(); }} 
                             title="Stop Generating"
                             className="input-action-btn stop"
                         >
                             <span className="codicon codicon-debug-stop" />
-                        </button>
+                        </VSCodeButton>
                     )}
                 </div>
             </div>
@@ -477,7 +489,9 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                     }} onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                             <h3 style={{ margin: 0 }}>Select {showFilePicker ? 'File' : 'Directory'}</h3>
-                            <button
+                            <div
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => {
                                     setShowFilePicker(false);
                                     setShowDirectoryPicker(false);
@@ -492,11 +506,12 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                                     fontSize: '18px',
                                     padding: '4px 8px'
                                 }}
-                            >×</button>
+                            >×</div>
                         </div>
                         {currentPath && (
                             <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <button
+                                <VSCodeButton
+                                    appearance="secondary"
                                     onClick={() => {
                                         const parentPath = currentPath.split(/[\\/]/).slice(0, -1).join('/');
                                         setCurrentPath(parentPath);
@@ -505,18 +520,10 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                                             payload: { path: parentPath, type: showDirectoryPicker ? 'directory' : undefined }
                                         });
                                     }}
-                                    style={{
-                                        background: 'var(--vscode-button-secondaryBackground)',
-                                        color: 'var(--vscode-button-secondaryForeground)',
-                                        border: 'none',
-                                        borderRadius: 4,
-                                        padding: '4px 8px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px'
-                                    }}
+                                    style={{ padding: '0 8px' }}
                                 >
-                                    <span className="codicon codicon-arrow-up" /> Up
-                                </button>
+                                    <span slot="start" className="codicon codicon-arrow-up" /> Up
+                                </VSCodeButton>
                                 <span style={{ fontSize: '12px', color: 'var(--vscode-descriptionForeground)' }}>{currentPath || '/'}</span>
                             </div>
                         )}
@@ -537,7 +544,9 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                                 <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                                     {fileList.map((item, idx) => (
                                         <li key={idx}>
-                                            <button
+                                            <div
+                                                role="button"
+                                                tabIndex={0}
                                                 onClick={() => {
                                                     if (item.type === 'directory') {
                                                         const newPath = item.path;
@@ -569,12 +578,12 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                                                     alignItems: 'center',
                                                     gap: 8
                                                 }}
-                                                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--vscode-list-hoverBackground)'}
-                                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                                onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => e.currentTarget.style.background = 'var(--vscode-list-hoverBackground)'}
+                                                onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => e.currentTarget.style.background = 'transparent'}
                                             >
                                                 <span className={`codicon ${item.type === 'directory' ? 'codicon-folder' : 'codicon-file'}`} />
                                                 <span>{item.name}</span>
-                                            </button>
+                                            </div>
                                         </li>
                                     ))}
                                 </ul>
@@ -582,7 +591,7 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                         </div>
                         {showDirectoryPicker && (
                             <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
-                                <button
+                                <VSCodeButton
                                     onClick={() => {
                                         if (currentPath) {
                                             vscodeService.postMessage({
@@ -595,17 +604,9 @@ export const InputArea: React.FC<InputAreaProps> = ({ onSendMessage, disabled, c
                                         }
                                     }}
                                     disabled={!currentPath}
-                                    style={{
-                                        padding: '6px 12px',
-                                        background: currentPath ? 'var(--vscode-button-background)' : 'var(--vscode-button-secondaryBackground)',
-                                        color: currentPath ? 'var(--vscode-button-foreground)' : 'var(--vscode-button-secondaryForeground)',
-                                        border: 'none',
-                                        borderRadius: 4,
-                                        cursor: currentPath ? 'pointer' : 'not-allowed'
-                                    }}
                                 >
                                     Select
-                                </button>
+                                </VSCodeButton>
                             </div>
                         )}
                     </div>

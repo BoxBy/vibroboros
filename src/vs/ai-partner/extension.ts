@@ -1,4 +1,4 @@
-﻿import * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -22,7 +22,7 @@ import { AuthService } from './auth_service';
 import { DeveloperLogService } from './services/DeveloperLogService';
 import { A2AMessage } from './interfaces/A2AMessage';
 import { OrchestratorAgent } from './agents/OrchestratorAgent';
-import { SemanticModelService } from './services/SemanticModelService';
+// SemanticModelService removed — replaced by SymbolicSearchService
 import { CompositionRoot, ServiceIdentifiers } from './di/CompositionRoot';
 import { ISystemPromptFactory } from './di/interfaces/ISystemPromptFactory';
 import * as jsdiff from 'diff'; // jsdiff
@@ -267,7 +267,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const configService = CompositionRoot.resolve<ConfigService>(ServiceIdentifiers.ConfigService);
         const llmService = CompositionRoot.resolve<LLMService>(ServiceIdentifiers.LLMService);
         const devLogService = CompositionRoot.resolve<DeveloperLogService>(ServiceIdentifiers.Logger);
-        const semanticModelService = CompositionRoot.resolve<SemanticModelService>(ServiceIdentifiers.SemanticModelService);
+        // SemanticModelService removed — no longer resolved
         const systemPromptFactory = CompositionRoot.resolve<ISystemPromptFactory>(ServiceIdentifiers.SystemPromptFactory);
         const authService = AuthService.getInstance(configService); 
         // Register AuthService in DI for components using it via DI
@@ -816,37 +816,9 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         });
 
-        // Semantic Graph Refresh Command
-        context.subscriptions.push(
-            vscode.commands.registerCommand('viper.refreshSemanticGraph', async () => {
-                await semanticModelService.refresh();
-            })
-        );
 
-        // Semantic Graph Auto-Update on Save
-        context.subscriptions.push(
-            vscode.workspace.onDidSaveTextDocument(async (doc) => {
-                await semanticModelService.onFileSave(doc);
-            })
-        );
+        // SemanticModelService removed — file watchers and refresh command no longer needed
 
-        // Semantic Graph Auto-Update on Create
-        context.subscriptions.push(
-            vscode.workspace.onDidCreateFiles(async (event) => {
-                for (const file of event.files) {
-                    await semanticModelService.onFileCreate(file);
-                }
-            })
-        );
-
-        // Semantic Graph Auto-Update on Delete
-        context.subscriptions.push(
-            vscode.workspace.onDidDeleteFiles(async (event) => {
-                for (const file of event.files) {
-                    await semanticModelService.onFileDelete(file);
-                }
-            })
-        );
 
         // 10. Checkpoint commands
         context.subscriptions.push(

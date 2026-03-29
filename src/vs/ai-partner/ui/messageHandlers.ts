@@ -12,7 +12,6 @@ export type MessageHandler = (payload: any, context: HandlerContext) => void;
 
 export interface HandlerContext {
 	setSlashCommands: (commands: { command: string; description: string }[]) => void;
-	setCurrentProvider: (provider: 'openai' | 'ollama' | 'anthropic' | 'xai' | 'google' | 'groq' | 'openrouter' | undefined) => void;
 	setCurrentModel: (model: string | undefined) => void;
 	setAvailableModels: React.Dispatch<React.SetStateAction<Array<{ id: string; maxContext?: number }>>>;
 	setProfiles: (profiles: Array<{ id: string; name: string; provider?: string; endpoint?: string; model?: string }>) => void;
@@ -25,13 +24,6 @@ export interface HandlerContext {
 	setIsThinking: (thinking: boolean) => void;
 	setPendingDiffs: React.Dispatch<React.SetStateAction<any[]>>;
 	setShowDiffSummary: (show: boolean) => void;
-	setUroborosProposal: React.Dispatch<React.SetStateAction<{
-		userText: string;
-		complexityScore: number;
-		expectedSteps: number;
-		affectedScope: string;
-		complexityReasons: string[];
-	} | null>>;
 	mapHistoryToDisplayMessages: (history: any[]) => DisplayMessage[];
 	welcomeLockRef: React.MutableRefObject<boolean>;
 	viewRef: React.MutableRefObject<'welcome' | 'chat' | 'settings'>;
@@ -70,9 +62,6 @@ export function createMessageHandlerRegistry(context: HandlerContext): Record<st
 		},
 		llmSettingsResponse: (payload) => {
 			if (payload) {
-				if (typeof payload.llmProvider === 'string') {
-					context.setCurrentProvider(payload.llmProvider);
-				}
 				if (typeof payload.model === 'string') {
 					context.setCurrentModel(payload.model);
 				}

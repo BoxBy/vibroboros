@@ -32,6 +32,7 @@ import { messages as AgentMessages } from '../messages';
 import { SessionManager } from '../services/SessionManager';
 import { SessionStateManager } from './core/SessionStateManager';
 import { WorkflowEngine } from './core/WorkflowEngine';
+import { DynamicSpecialistAgent, DynamicAgentParams } from './DynamicSpecialistAgent';
 // import { IntentRouter } from '../core/IntentRouter'; // Removed
 
 // Note: ServiceLocator import retained for cases where DI is not yet available
@@ -2586,22 +2587,61 @@ Output ONLY the raw JSON object: {"intent": "confirm"|"deny"|"uncertain"}`;
 
         // Delegate to Specialist Agent
         const targetAgent = step.targetAgent || 'BrainstormAgent';
-        
-        await this.dispatch({
-            messageId: uuidv4(),
-            sender: OrchestratorAgent.AGENT_ID,
-            recipient: targetAgent,
-            timestamp: new Date().toISOString(),
-            // contextId: uuidv4(), // Removed as it's not in A2AMessage interface
-            type: 'task', // Unified task type
-            payload: {
-                task: step.description,
-                context: `Step ${nextIndex + 1} of current orchestration plan.`,
-                correlationId: step.executionId,
-                targetFile: this.lastSourceFilePath || this.lastContextFilePath,
-                relatedFiles: this.lastAttachmentFilePaths
-            }
-        });
+        const knownAgents = OrchestratorAgent.SPECIALIST_AGENTS.map(a => a.name);
+        const isKnownAgent = knownAgents.includes(targetAgent);
+
+        if (isKnownAgent) {
+            // Standard dispatch to registered specialist
+            await this.dispatch({
+                messageId: uuidv4(),
+                sender: OrchestratorAgent.AGENT_ID,
+                recipient: targetAgent,
+                timestamp: new Date().toISOString(),
+                type: 'task',
+                payload: {
+                    task: step.description,
+                    context: `Step ${nextIndex + 1} of current orchestration plan.`,
+                    correlationId: step.executionId,
+                    targetFile: this.lastSourceFilePath || this.lastContextFilePath,
+                    relatedFiles: this.lastAttachmentFilePaths
+                }
+            });
+        } else {
+            // Dynamic agent: spawn DynamicSpecialistAgent for skill-based execution
+            this.developerLogService.log(`[OrchestratorAgent] Spawning DynamicSpecialistAgent for unregistered target: ${targetAgent}`);
+            const dynamicParams: DynamicAgentParams = {
+                roleName: targetAgent,
+                description: step.description,
+                roleInstruction: `You are a dynamic specialist agent named "${targetAgent}". Your task: ${step.description}`,
+                requiredTools: [] // All MCP tools available
+            };
+            const dynamicCard = {
+                name: targetAgent,
+                description: step.description,
+                url: '',
+                capabilities: { streaming: false, pushNotifications: false },
+                skills: []
+            } as any;
+            const dynamicAgent = new DynamicSpecialistAgent(dynamicCard, dynamicParams);
+            // Register in AgentRegistry so A2A dispatch can find it
+            const { AgentRegistry } = require('./core/AgentRegistry');
+            AgentRegistry.getInstance().register(targetAgent, dynamicAgent);
+            // Dispatch via A2A message to dynamically registered agent
+            await this.dispatch({
+                messageId: uuidv4(),
+                sender: OrchestratorAgent.AGENT_ID,
+                recipient: targetAgent,
+                timestamp: new Date().toISOString(),
+                type: 'task',
+                payload: {
+                    task: step.description,
+                    context: `Step ${nextIndex + 1} of current orchestration plan. Dynamic agent: ${targetAgent}`,
+                    correlationId: step.executionId,
+                    targetFile: this.lastSourceFilePath || this.lastContextFilePath,
+                    relatedFiles: this.lastAttachmentFilePaths
+                }
+            });
+        }
     }
 
 

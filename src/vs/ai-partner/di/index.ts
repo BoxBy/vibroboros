@@ -44,7 +44,6 @@ export type { ServiceFactory } from './bindings';
 // Service interfaces
 export type { IConfigService, LLMProfile, ISecretStorageService } from './interfaces/IConfigService';
 export type { ILLMService, LlmMessage, LlmMessageContent, LlmFullResponse, LLMProvider } from './interfaces/ILLMService';
-export type { ISemanticModelService, CodeSymbol, Relation, SemanticGraph } from './interfaces/ISemanticModelService';
 export type { ISessionManager, ChatMessage, TaskItem, SessionMetadata, SessionState } from './interfaces/ISessionManager';
 
 // System service interfaces

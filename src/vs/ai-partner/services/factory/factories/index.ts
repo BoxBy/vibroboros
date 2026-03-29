@@ -8,7 +8,6 @@
 export { LLMServiceFactory } from './LLMServiceFactory';
 export { ConfigServiceFactory } from './ConfigServiceFactory';
 export { LoggerServiceFactory } from './LoggerServiceFactory';
-export { SemanticModelServiceFactory } from './SemanticModelServiceFactory';
 export { SessionManagerFactory } from './SessionManagerFactory';
 export { EmbeddingServiceFactory } from './EmbeddingServiceFactory';
 export { RerankerServiceFactory } from './RerankerServiceFactory';

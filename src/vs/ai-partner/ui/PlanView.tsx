@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { vscodeService } from './services/vscode';
+import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 
 export interface PlanStep {
     description: string;
@@ -116,9 +117,9 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, isAutonomousMode, isCo
                                 ))}
                             </ul>
                             <div style={{ display: 'flex', gap: 8 }}>
-                                <button onClick={() => setDraft(d => [...d, ''])} style={{ border: '1px solid var(--vscode-button-border)', background: 'var(--vscode-button-secondaryBackground)', color: 'var(--vscode-button-secondaryForeground)', padding: '4px 12px', cursor: 'pointer', borderRadius: '4px' }}>Add Step</button>
-                                <button onClick={handleSaveEdit} style={{ border: '1px solid var(--vscode-button-border)', background: 'var(--vscode-button-background)', color: 'var(--vscode-button-foreground)', padding: '4px 12px', cursor: 'pointer', borderRadius: '4px' }}>Save</button>
-                                <button onClick={handleCancelEdit} style={{ border: '1px solid var(--vscode-button-border)', background: 'var(--vscode-button-secondaryBackground)', color: 'var(--vscode-button-secondaryForeground)', padding: '4px 12px', cursor: 'pointer', borderRadius: '4px' }}>Cancel</button>
+                                <VSCodeButton appearance="secondary" onClick={() => setDraft(d => [...d, ''])}>Add Step</VSCodeButton>
+                                <VSCodeButton onClick={handleSaveEdit}>Save</VSCodeButton>
+                                <VSCodeButton appearance="secondary" onClick={handleCancelEdit}>Cancel</VSCodeButton>
                             </div>
                         </div>
                     ) : (
@@ -168,9 +169,9 @@ export const PlanView: React.FC<PlanViewProps> = ({ plan, isAutonomousMode, isCo
                             </ul>
                             {isAutonomousMode && isPending && (
                                 <div className="plan-actions" style={{ display: 'flex', gap: '8px', marginTop: 8 }}>
-                                    <button onClick={handleApprove} style={{ border: '1px solid var(--vscode-button-border)', background: 'var(--vscode-button-background)', color: 'var(--vscode-button-foreground)', padding: '4px 12px', cursor: 'pointer', borderRadius: '4px' }}>Approve</button>
-                                    <button onClick={handleDecline} style={{ border: '1px solid var(--vscode-button-border)', background: 'var(--vscode-button-secondaryBackground)', color: 'var(--vscode-button-secondaryForeground)', padding: '4px 12px', cursor: 'pointer', borderRadius: '4px' }}>Decline</button>
-                                    <button onClick={handleEdit} style={{ border: '1px solid var(--vscode-button-border)', background: 'var(--vscode-button-secondaryBackground)', color: 'var(--vscode-button-secondaryForeground)', padding: '4px 12px', cursor: 'pointer', borderRadius: '4px' }}>Edit</button>
+                                    <VSCodeButton onClick={handleApprove}>Approve</VSCodeButton>
+                                    <VSCodeButton appearance="secondary" onClick={handleDecline}>Decline</VSCodeButton>
+                                    <VSCodeButton appearance="secondary" onClick={handleEdit}>Edit</VSCodeButton>
                                 </div>
                             )}
                         </>

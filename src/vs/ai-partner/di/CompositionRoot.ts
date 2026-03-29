@@ -28,7 +28,6 @@ export const ServiceIdentifiers = {
     // ========================================================================
     LLMService: Symbol('ILLMService'),
     ConfigService: Symbol('IConfigService'),
-    SemanticModelService: Symbol('ISemanticModelService'),
     Logger: Symbol('ILogger'),
     SecretStorage: Symbol('ISecretStorage'),
     AuthService: Symbol('IAuthService'),

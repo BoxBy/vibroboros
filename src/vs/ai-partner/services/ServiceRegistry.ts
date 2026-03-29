@@ -16,7 +16,7 @@
 import { LLMService } from './LLMService';
 import { ConfigService } from '../config_service';
 import { DeveloperLogService } from './DeveloperLogService';
-import { SemanticModelService } from './SemanticModelService';
+
 import { SessionManager } from './SessionManager';
 import { EmbeddingService } from './EmbeddingService';
 import { RerankerService } from './RerankerService';
@@ -30,7 +30,6 @@ import {
     LLMServiceFactory,
     ConfigServiceFactory,
     LoggerServiceFactory,
-    SemanticModelServiceFactory,
     SessionManagerFactory,
     EmbeddingServiceFactory,
     RerankerServiceFactory,
@@ -64,12 +63,7 @@ export interface ILoggerService {
     warn(message: string): void;
 }
 
-export interface ISemanticModelService {
-    getContextForQuery(query: string): string;
-    getDirectoryStructureOnly(): string;
-    getSmartContext(activeFilePath?: string, explicitRelatedFiles?: string[]): string;
-    queryGraph(query: string, type: 'search' | 'file-related' | 'symbol-lookup'): string;
-}
+
 
 export interface ISessionManager {
     createSession(id: string): any;
@@ -136,7 +130,6 @@ export class ServiceRegistry implements IServiceRegistry, IServiceRegistrar {
                 new LLMServiceFactory(),
                 new ConfigServiceFactory(),
                 new LoggerServiceFactory(),
-                new SemanticModelServiceFactory(),
                 new SessionManagerFactory(),
                 new EmbeddingServiceFactory(),
                 new RerankerServiceFactory(),

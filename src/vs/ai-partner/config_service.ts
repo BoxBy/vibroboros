@@ -225,6 +225,21 @@ export class ConfigService implements IConfigService {
         } catch {}
     }
 
+    // -------- Auto-Compaction (ContextManagementAgent) --------
+    public getAutoCompactionEnabled(): boolean {
+        try {
+            return this.getConfiguration('agent.contextManagement').get<boolean>('autoCompaction') || false;
+        } catch {
+            return false;
+        }
+    }
+
+    public async setAutoCompactionEnabled(enabled: boolean): Promise<void> {
+        try {
+            await this.getConfiguration('agent.contextManagement').update('autoCompaction', !!enabled, vscode.ConfigurationTarget.Global);
+        } catch {}
+    }
+
     public getA2AServerPort(): number {
         return this.getConfiguration('a2a.server').get<number>('port') || 3000;
     }

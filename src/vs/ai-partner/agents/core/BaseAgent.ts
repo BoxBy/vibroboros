@@ -443,6 +443,11 @@ export abstract class BaseAgent implements AgentExecutor {
         }
 
         if (name === 'manage_context') {
+            // Gate behind auto-compaction toggle (default OFF to avoid LLM costs)
+            if (!this.configService.getAutoCompactionEnabled()) {
+                return `Auto-compaction is disabled. Enable it in Settings → Basic Settings → LLM Context Auto-Compaction.`;
+            }
+
             const mode = args.mode || 'summarize';
             const instructions = args.instructions || '';
             const task = `Perform context management. Mode: ${mode}. ${instructions}`.trim();

@@ -149,21 +149,7 @@ export function createServiceBindings(): ServiceBinding[] {
     // ========================================================================
     // Search & Semantic Services (Layer 1)
     // ========================================================================
-
-    bindings.push({
-        identifier: ServiceIdentifiers.SemanticModelService,
-        factory: (container) => {
-            const { SemanticModelService } = require('../services/SemanticModelService');
-            const { DeveloperLogService } = require('../services/DeveloperLogService');
-            const semanticModelService = new SemanticModelService(
-                DeveloperLogService.getInstance?.() || new DeveloperLogService()
-            );
-            SemanticModelService.setInstance?.(semanticModelService);
-            return semanticModelService;
-        },
-        lifetime: ServiceLifetime.SINGLETON,
-        description: 'Semantic code graph service'
-    });
+    // SemanticModelService removed — replaced by SymbolicSearchService
 
     // ========================================================================
     // Session & State Services (Layer 2)
@@ -268,18 +254,14 @@ export function createServiceBindings(): ServiceBinding[] {
         factory: (container) => {
             const { SystemPromptFactory } = require('../services/SystemPromptFactory');
             const configService = container.resolve(ServiceIdentifiers.ConfigService);
-            const semanticModelService = container.resolve(ServiceIdentifiers.SemanticModelService);
-            const llmService = container.resolve(ServiceIdentifiers.LLMService);
             const systemPromptFactory = new SystemPromptFactory(
-                configService,
-                semanticModelService,
-                llmService
+                configService
             );
             SystemPromptFactory.setInstance?.(systemPromptFactory);
             return systemPromptFactory;
         },
         lifetime: ServiceLifetime.SINGLETON,
-        dependencies: [ServiceIdentifiers.ConfigService, ServiceIdentifiers.SemanticModelService, ServiceIdentifiers.LLMService],
+        dependencies: [ServiceIdentifiers.ConfigService, ServiceIdentifiers.LLMService],
         description: 'System prompt generation'
     });
 

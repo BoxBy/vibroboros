@@ -34,4 +34,10 @@ export interface ISymbolicSearchService {
         filePaths: string[],
         symbolQuery?: string
     ): Promise<Array<{ filePath: string; symbols: Array<{ name: string; kind: string; startLine: number; endLine: number }> }>>;
+
+    /**
+     * Extract import module paths from a file using AST parsing.
+     * Returns an array of raw module specifiers (e.g. './foo', 'vscode', '../utils/bar').
+     */
+    getImports(filePath: string): Promise<string[]>;
 }

@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm';
 import { vscodeService } from './services/vscode';
 import { diffLines } from 'diff';
 import { TerminalOutput } from './components/TerminalOutput';
+import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 
 interface MessageItemProps {
     message: DisplayMessage;
@@ -1050,8 +1051,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                         return (
                             <div style={{ marginTop: '12px', padding: '12px', background: 'var(--vscode-editor-inactiveSelectionBackground)', borderRadius: '6px', border: '1px solid var(--vscode-editorWidget-border)' }}>
                                 <div className="action-buttons" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <button
-                                        style={{ padding: '8px 16px', background: 'var(--vscode-button-background)', color: 'var(--vscode-button-foreground)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}
+                                    <VSCodeButton
                                         onClick={() => {
                                             vscodeService.postMessage({
                                                 command: 'acceptUroborosMode',
@@ -1060,11 +1060,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                                             if (onAction) onAction();
                                         }}
                                     >
-                                        <span className="codicon codicon-check" />
+                                        <span slot="start" className="codicon codicon-check" />
                                         Approve
-                                    </button>
-                                    <button
-                                        style={{ padding: '8px 16px', background: 'var(--vscode-button-secondaryBackground)', color: 'var(--vscode-button-secondaryForeground)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '6px' }}
+                                    </VSCodeButton>
+                                    <VSCodeButton
+                                        appearance="secondary"
                                         onClick={() => {
                                             vscodeService.postMessage({
                                                 command: 'declineUroborosMode',
@@ -1073,9 +1073,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                                             if (onAction) onAction();
                                         }}
                                     >
-                                        <span className="codicon codicon-close" />
+                                        <span slot="start" className="codicon codicon-close" />
                                         Decline
-                                    </button>
+                                    </VSCodeButton>
                                 </div>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px', fontSize: '12px', color: 'var(--vscode-descriptionForeground)', cursor: 'pointer' }}>
                                     <input
@@ -1099,8 +1099,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                                 const isSecondary = btn.style === 'secondary';
                                 const isDanger = btn.style === 'danger';
                                 return (
-                                    <button
+                                    <VSCodeButton
                                         key={idx}
+                                        appearance={isSecondary ? "secondary" : "primary"}
                                         onClick={() => {
                                             vscodeService.postMessage({
                                                 command: btn.command,
@@ -1108,21 +1109,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                                             });
                                             if (onAction) onAction();
                                         }}
-                                        style={{
-                                            padding: '8px 16px',
-                                            background: isDanger ? 'var(--vscode-errorForeground)' : (isSecondary ? 'var(--vscode-button-secondaryBackground)' : 'var(--vscode-button-background)'),
-                                            color: isDanger ? 'var(--vscode-button-foreground)' : (isSecondary ? 'var(--vscode-button-secondaryForeground)' : 'var(--vscode-button-foreground)'),
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            cursor: 'pointer',
-                                            fontWeight: 500,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px'
-                                        }}
+                                        style={isDanger ? { backgroundColor: 'var(--vscode-errorForeground)', color: 'var(--vscode-button-foreground)' } : {}}
                                     >
                                         {btn.label}
-                                    </button>
+                                    </VSCodeButton>
                                 );
                             })}
                         </div>
@@ -1130,31 +1120,31 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onAction, onR
                     {message.diff && (
                         <div>
                             {/* Hidden diff body in favor of simple stats in the header */}
-                            <div className="action-buttons">
-                                <button className="action-btn edit-btn" onClick={() => { if (!message.diff) return; vscodeService.postMessage({
+                            <div className="action-buttons" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '12px' }}>
+                                <VSCodeButton appearance="secondary" onClick={() => { if (!message.diff) return; vscodeService.postMessage({
                                     command: 'showDiff',
                                     originalCode: message.diff.originalCode,
                                     modifiedCode: message.diff.modifiedCode,
                                     title: message.diff.title || message.diff.filePath,
-                                }); }}>Edit</button>
-                                <button className="action-btn accept-btn" onClick={() => { if (!message.diff) return; vscodeService.postMessage({
+                                }); }}>Edit</VSCodeButton>
+                                <VSCodeButton onClick={() => { if (!message.diff) return; vscodeService.postMessage({
                                     command: 'acceptChange',
                                     filePath: message.diff.filePath,
                                     originalCode: message.diff.originalCode,
                                     modifiedCode: message.diff.modifiedCode,
                                     suggestionType: message.diff.suggestionType,
-                                }); }}>Approve</button>
-                                <button className="action-btn decline-btn" onClick={() => { if (!message.diff) return; vscodeService.postMessage({
+                                }); }}>Approve</VSCodeButton>
+                                <VSCodeButton appearance="secondary" onClick={() => { if (!message.diff) return; vscodeService.postMessage({
                                     command: 'declineChange',
                                     filePath: message.diff.filePath,
-                                }); }}>Decline</button>
-                                <button className="action-btn accept-always-btn" onClick={() => { if (!message.diff) return; vscodeService.postMessage({
+                                }); }}>Decline</VSCodeButton>
+                                <VSCodeButton appearance="secondary" onClick={() => { if (!message.diff) return; vscodeService.postMessage({
                                     command: 'acceptAlways',
                                     filePath: message.diff.filePath,
                                     originalCode: message.diff.originalCode,
                                     modifiedCode: message.diff.modifiedCode,
                                     suggestionType: message.diff.suggestionType,
-                                }); }}>Accept Always</button>
+                                }); }}>Accept Always</VSCodeButton>
                             </div>
                         </div>
                     )}

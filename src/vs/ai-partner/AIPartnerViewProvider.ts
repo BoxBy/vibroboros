@@ -266,6 +266,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                     try {
                         const streamingEnabled = this.configService.isStreamingEnabled();
                         const advancedHistorySummaryEnabled = this.configService.getAdvancedHistorySummaryEnabled();
+                        const autoCompactionEnabled = this.configService.getAutoCompactionEnabled();
                         const summarizeTokenLimit = this.configService.getSummarizeTokenLimit();
                         const contextTokenThreshold = this.configService.getContextTokenThreshold();
                         const thinkingLanguage = this.configService.getThinkingLanguage();
@@ -292,6 +293,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                             payload: { 
                                 streamingEnabled, 
                                 advancedHistorySummaryEnabled,
+                                autoCompactionEnabled,
                                 summarizeTokenLimit,
                                 contextTokenThreshold,
                                 thinkingLanguage,
@@ -316,6 +318,7 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                             payload: { 
                                 streamingEnabled: false, 
                                 advancedHistorySummaryEnabled: false,
+                                autoCompactionEnabled: false,
                                 summarizeTokenLimit: 0.75,
                                 contextTokenThreshold: 100000,
                                 thinkingLanguage: 'English',
@@ -506,6 +509,18 @@ export class AIPartnerViewProvider implements vscode.WebviewViewProvider {
                         }
                     } catch (e) {
                         console.error('setFileAccessPolicy failed', e);
+                    }
+                    break;
+                }
+                case 'setAutoCompactionEnabled': {
+                    try {
+                        const { enabled } = message.payload;
+                        if (typeof enabled === 'boolean') {
+                            await this.configService.setAutoCompactionEnabled(enabled);
+                            this.postMessage({ command: 'featureToggles', payload: { autoCompactionEnabled: enabled } });
+                        }
+                    } catch (e) {
+                        console.error('setAutoCompactionEnabled failed', e);
                     }
                     break;
                 }

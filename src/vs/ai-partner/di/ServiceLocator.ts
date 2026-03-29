@@ -11,7 +11,6 @@ import { CompositionRoot, ServiceIdentifiers } from './CompositionRoot';
 import type {
     IConfigService,
     ILLMService,
-    ISemanticModelService,
     ISessionManager,
     ISystemPromptFactory,
     IMemoryService,
@@ -51,12 +50,7 @@ export class ServiceLocator {
         return CompositionRoot.resolve<ILLMService>(ServiceIdentifiers.LLMService);
     }
 
-    /**
-     * Get Semantic Model Service
-     */
-    static getSemanticModelService(): ISemanticModelService {
-        return CompositionRoot.resolve<ISemanticModelService>(ServiceIdentifiers.SemanticModelService);
-    }
+
 
     /**
      * Get Session Manager

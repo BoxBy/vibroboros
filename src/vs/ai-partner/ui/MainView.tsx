@@ -9,6 +9,7 @@ import { PlanView, PlanStep } from './PlanView';
 export type { PlanStep };
 import { vscodeService } from './services/vscode';
 import { createMessageHandlerRegistry, HandlerContext } from './messageHandlers';
+import { VSCodeButton } from '@vscode/webview-ui-toolkit/react';
 
 export interface DisplayMessage {
 	sender: 'user' | 'ai';
@@ -102,23 +103,11 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
                     }}>
                         {this.state.error?.message}
                     </div>
-                    <button 
+                    <VSCodeButton 
                         onClick={() => this.setState({ hasError: false })} 
-                        style={{ 
-                            alignSelf: 'flex-start',
-                            padding: '6px 12px',
-                            background: 'var(--vscode-button-background)',
-                            color: 'var(--vscode-button-foreground)',
-                            border: 'none',
-                            borderRadius: '2px',
-                            cursor: 'pointer',
-                            fontSize: '12px'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--vscode-button-hoverBackground)'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'var(--vscode-button-background)'}
                     >
                         Reload View
-                    </button>
+                    </VSCodeButton>
                 </div>
             );
         }
@@ -147,7 +136,6 @@ const MainViewContent: React.FC = () => {
 	const [isAutonomousMode, setAutonomousMode] = useState(false);
 	const [statusText, setStatusText] = useState<string | null>(null);
     const [slashCommands, setSlashCommands] = useState<{ command: string, description: string }[]>([]);
-    const [currentProvider, setCurrentProvider] = useState<'openai' | 'ollama' | 'anthropic' | 'xai' | 'google' | 'groq' | 'openrouter' | undefined>(undefined);
     const [availableModels, setAvailableModels] = useState<Array<{ id: string; maxContext?: number }>>([]);
     const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
     const [profiles, setProfiles] = useState<Array<{ id: string; name: string; provider?: string; endpoint?: string; model?: string }>>([]);
@@ -160,13 +148,6 @@ const MainViewContent: React.FC = () => {
     });
 
 	const [isThinking, setIsThinking] = useState(false);
-	const [uroborosProposal, setUroborosProposal] = useState<{
-		userText: string;
-		complexityScore: number;
-		expectedSteps: number;
-		affectedScope: string;
-		complexityReasons: string[];
-	} | null>(null);
 
 	const mainViewRef = useRef<HTMLDivElement>(null);
 
@@ -192,7 +173,6 @@ const MainViewContent: React.FC = () => {
     // Attachments inserted via context menus or @commands
     type Attachment = { type: 'file' | 'folder' | 'code' | 'mcp' | 'browser'; uri?: string; label: string; content?: string };
     const [attachments, setAttachments] = useState<Attachment[]>([]);
-    const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
     const lastUserAttachmentsRef = useRef<Attachment[]>([]);
     const dropIncomingRef = useRef<boolean>(false);
     const welcomeLockRef = useRef<boolean>(true); // true면 초기 로드에서 loadHistory를 무시하고 Welcome 유지
@@ -259,7 +239,6 @@ const MainViewContent: React.FC = () => {
 	// Create handler context and registry following SDK pattern (similar to toolRegistry in MCPServer)
 	const handlerContext: HandlerContext = {
 		setSlashCommands,
-		setCurrentProvider,
 		setCurrentModel,
 		setAvailableModels,
 		setProfiles,
@@ -272,7 +251,6 @@ const MainViewContent: React.FC = () => {
 		setIsThinking,
 		setPendingDiffs,
 		setShowDiffSummary,
-        setUroborosProposal,
 		mapHistoryToDisplayMessages,
 		welcomeLockRef,
 		viewRef,
@@ -294,7 +272,6 @@ const MainViewContent: React.FC = () => {
 		messageHandlerRegistryRef.current = createMessageHandlerRegistry(handlerContext);
 	}, [
 		setSlashCommands,
-		setCurrentProvider,
 		setCurrentModel,
 		setAvailableModels,
 		setProfiles,
@@ -306,8 +283,7 @@ const MainViewContent: React.FC = () => {
 		setStatusText,
 		setIsThinking,
 		setPendingDiffs,
-		setShowDiffSummary,
-		setUroborosProposal
+		setShowDiffSummary
 	]);
 
 	const handleExtensionMessage = useCallback((event: MessageEvent) => {
@@ -573,9 +549,9 @@ const handleNewChat = () => {
 		return (
 			<div className="history-panel">
 				<div className="history-header">
-					<button className="chevron-btn" onClick={handleShowHistory} aria-expanded={showHistoryPanel} title={showHistoryPanel ? 'Collapse' : 'Expand'}>
+					<div role="button" tabIndex={0} className="chevron-btn" onClick={handleShowHistory} aria-expanded={showHistoryPanel} title={showHistoryPanel ? 'Collapse' : 'Expand'}>
 						<span className={`codicon ${showHistoryPanel ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
-					</button>
+					</div>
 					<span className="history-title">Chat History</span>
 				</div>
 				{sessions.length === 0 ? (
@@ -584,7 +560,9 @@ const handleNewChat = () => {
 					<ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
 						{sessions.map(s => (
 							<li key={s.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-								<button
+								<div
+                                    role="button"
+                                    tabIndex={0}
 									onClick={() => handleSelectSession(s.id)}
 									style={{
 										width: '100%',
@@ -611,8 +589,10 @@ const handleNewChat = () => {
 											}
 										})()}
 									</span>
-								</button>
-								<button
+								</div>
+								<div
+                                    role="button"
+                                    tabIndex={0}
 									onClick={() => handleDeleteSession(s.id)}
 									title="Delete chat"
 									aria-label={`Delete ${s.title}`}
@@ -635,7 +615,7 @@ const handleNewChat = () => {
 									}}
 								>
 									&#x1F5D1;
-								</button>
+								</div>
 							</li>
 						))}
 					</ul>
@@ -671,20 +651,20 @@ const handleNewChat = () => {
             return (
                 <div className="diff-summary-bar" ref={diffSummaryRef}>
                     <div className="diff-summary-header">
-                        <button className="chevron-btn" onClick={() => setShowDiffSummary(v => !v)} aria-expanded={showDiffSummary} title={showDiffSummary ? 'Collapse' : 'Expand'}>
+                        <div role="button" tabIndex={0} className="chevron-btn" onClick={() => setShowDiffSummary(v => !v)} aria-expanded={showDiffSummary} title={showDiffSummary ? 'Collapse' : 'Expand'}>
                             <span className={`codicon ${showDiffSummary ? 'codicon-chevron-down' : 'codicon-chevron-right'}`} />
-                        </button>
+                        </div>
                         <span className="diff-summary-title">{pendingDiffs.length} Files</span>
                         <div className="diff-summary-actions">
-                            <button className="diff-summary-btn" onClick={() => {
+                            <VSCodeButton className="diff-summary-btn" onClick={() => {
                                 // Accept All
                                 vscodeService.postMessage({ command: 'acceptAllChanges', payload: pendingDiffs.map(d => ({ filePath: d.filePath, originalCode: d.originalCode, modifiedCode: d.modifiedCode, suggestionType: d.suggestionType })) });
-                            }}>Accept All</button>
-                            <button className="diff-summary-btn secondary" onClick={() => {
+                            }}>Accept All</VSCodeButton>
+                            <VSCodeButton appearance="secondary" className="diff-summary-btn secondary" onClick={() => {
                                 vscodeService.postMessage({ command: 'declineAllChanges', payload: pendingDiffs.map(d => ({ filePath: d.filePath })) });
                                 setPendingDiffs([]);
                                 setShowDiffSummary(false);
-                            }}>Reject All</button>
+                            }}>Reject All</VSCodeButton>
                         </div>
                     </div>
                     {showDiffSummary && (
@@ -707,18 +687,18 @@ const handleNewChat = () => {
                                             </span>
                                         )}
                                         <div className="file-actions">
-                                            <button className="file-action-btn accept" title="Accept" onClick={() => {
+                                            <VSCodeButton appearance="icon" className="file-action-btn accept" title="Accept" onClick={() => {
                                                 vscodeService.postMessage({ command: 'acceptChange', filePath: d.filePath, originalCode: d.originalCode, modifiedCode: d.modifiedCode, suggestionType: d.suggestionType });
                                                 setPendingDiffs(prev => prev.filter(x => x.filePath !== d.filePath));
                                             }}>
                                                 <span className="codicon codicon-check" />
-                                            </button>
-                                            <button className="file-action-btn reject" title="Reject" onClick={() => {
+                                            </VSCodeButton>
+                                            <VSCodeButton appearance="icon" className="file-action-btn reject" title="Reject" onClick={() => {
                                                 vscodeService.postMessage({ command: 'declineChange', filePath: d.filePath });
                                                 setPendingDiffs(prev => prev.filter(x => x.filePath !== d.filePath));
                                             }}>
                                                 <span className="codicon codicon-close" />
-                                            </button>
+                                            </VSCodeButton>
                                         </div>
                                     </li>
                                 );
