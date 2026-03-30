@@ -39,14 +39,17 @@ async function main() {
 		console.log('Media assets copied successfully!');
 		// --- 추가된 부분 끝 ---
 
+		// Inline codicon.ttf as base64 data URI into codicon.css
+		// This avoids relative path resolution issues in macOS WKWebView
 		const codiconCssPath = 'node_modules/@vscode/codicons/dist/codicon.css';
+		const codiconTtfPath = 'node_modules/@vscode/codicons/dist/codicon.ttf';
 		let codiconCss = fs.readFileSync(codiconCssPath, 'utf8');
-		// Remove query string from font URL (?hash...) for better VS Code Webview compatibility especially on macOS
-		codiconCss = codiconCss.replace(/\?.[^'")]*/g, '');
+		const codiconTtfBase64 = fs.readFileSync(codiconTtfPath).toString('base64');
+		const dataUri = `data:font/truetype;charset=utf-8;base64,${codiconTtfBase64}`;
+		// Replace the font URL (with or without query string) with the data URI
+		codiconCss = codiconCss.replace(/url\(["']?\.\/codicon\.ttf[^"')]*["']?\)/g, `url("${dataUri}")`);
 		fs.writeFileSync('dist/codicon.css', codiconCss);
-		
-		fs.copySync('node_modules/@vscode/codicons/dist/codicon.ttf', 'dist/codicon.ttf', { overwrite: true });
-		console.log('Codicon assets patched and copied successfully!');
+		console.log('Codicon CSS with inlined font created successfully!');
 
 
 		console.log('Build successful!');

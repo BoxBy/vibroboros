@@ -54466,7 +54466,7 @@ function getWebviewContent(webview, extensionUri) {
     `default-src 'none'`,
     `style-src ${cspSource} 'unsafe-inline' https://cdnjs.cloudflare.com`,
     // cdnjs.cloudflare.com 추가
-    `font-src ${cspSource}`,
+    `font-src ${cspSource} data:`,
     `img-src ${cspSource} https: data:`,
     `script-src ${cspSource} ${scriptSrc} https://cdnjs.cloudflare.com`,
     // Allow local webview resources and cdnjs
